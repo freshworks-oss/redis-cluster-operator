@@ -4,6 +4,20 @@ metadata:
   annotations:
     # if your operator run as cluster-scoped, add this annotations
     redis.kun/scope: cluster-scoped
+  name: adminsecret
+type: Opaque
+stringData:
+  acl: ~* +@all
+  password: testpwd
+  username: default
+---
+
+apiVersion: v1
+kind: Secret
+metadata:
+  annotations:
+    # if your operator run as cluster-scoped, add this annotations
+    redis.kun/scope: cluster-scoped
   name: defaultsecret
 type: Opaque
 stringData:
@@ -56,6 +70,8 @@ spec:
   clusterReplicas: 1
   defaultUser:
     name: defaultsecret
+  adminUser:
+    name: adminsecret
   additionalUsers:
     - name: user1
     - name: user2
