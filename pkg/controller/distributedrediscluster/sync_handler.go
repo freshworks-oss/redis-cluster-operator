@@ -1,6 +1,7 @@
 package distributedrediscluster
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -169,8 +170,8 @@ func (r *ReconcileDistributedRedisCluster) initRestore(cluster *redisv1alpha1.Di
 	return update, nil
 }
 
-func (r *ReconcileDistributedRedisCluster) waitForClusterJoin(ctx *syncContext) error {
-	if infos, err := ctx.admin.GetClusterInfos(); err == nil {
+func (r *ReconcileDistributedRedisCluster) waitForClusterJoin(ctx *syncContext, context context.Context) error {
+	if infos, err := ctx.admin.GetClusterInfos(context); err == nil {
 		ctx.reqLogger.V(6).Info("debug waitForClusterJoin", "cluster infos", infos)
 		return nil
 	}
@@ -180,7 +181,7 @@ func (r *ReconcileDistributedRedisCluster) waitForClusterJoin(ctx *syncContext) 
 		break
 	}
 	ctx.reqLogger.Info(">>> Sending CLUSTER MEET messages to join the cluster")
-	err := ctx.admin.AttachNodeToCluster(firstNode.IPPort())
+	err := ctx.admin.AttachNodeToCluster(context, firstNode.IPPort())
 	if err != nil {
 		return Redis.Wrap(err, "AttachNodeToCluster")
 	}
@@ -189,14 +190,14 @@ func (r *ReconcileDistributedRedisCluster) waitForClusterJoin(ctx *syncContext) 
 	// the config as they are still empty with unassigned slots.
 	time.Sleep(1 * time.Second)
 
-	_, err = ctx.admin.GetClusterInfos()
+	_, err = ctx.admin.GetClusterInfos(context)
 	if err != nil {
 		return Requeue.Wrap(err, "wait for cluster join")
 	}
 	return nil
 }
 
-func (r *ReconcileDistributedRedisCluster) syncCluster(ctx *syncContext) error {
+func (r *ReconcileDistributedRedisCluster) syncCluster(ctx *syncContext, context context.Context) error {
 	cluster := ctx.cluster
 	admin := ctx.admin
 	clusterInfos := ctx.clusterInfos
@@ -218,11 +219,11 @@ func (r *ReconcileDistributedRedisCluster) syncCluster(ctx *syncContext) error {
 			return Cluster.Wrap(err, "PlaceSlaves")
 
 		}
-		if err := clusterCtx.AttachingSlavesToMaster(admin); err != nil {
+		if err := clusterCtx.AttachingSlavesToMaster(admin, context); err != nil {
 			return Cluster.Wrap(err, "AttachingSlavesToMaster")
 		}
 
-		if err := clusterCtx.AllocSlots(admin, newMasters); err != nil {
+		if err := clusterCtx.AllocSlots(admin, newMasters, context); err != nil {
 			return Cluster.Wrap(err, "AllocSlots")
 		}
 	} else if len(newMasters) > len(curMasters) {
@@ -231,11 +232,11 @@ func (r *ReconcileDistributedRedisCluster) syncCluster(ctx *syncContext) error {
 			return Cluster.Wrap(err, "PlaceSlaves")
 
 		}
-		if err := clusterCtx.AttachingSlavesToMaster(admin); err != nil {
+		if err := clusterCtx.AttachingSlavesToMaster(admin, context); err != nil {
 			return Cluster.Wrap(err, "AttachingSlavesToMaster")
 		}
 
-		if err := clusterCtx.RebalancedCluster(admin, newMasters); err != nil {
+		if err := clusterCtx.RebalancedCluster(admin, newMasters, context); err != nil {
 			return Cluster.Wrap(err, "RebalancedCluster")
 		}
 	} else if cluster.Status.MinReplicationFactor < cluster.Spec.ClusterReplicas {
@@ -244,7 +245,7 @@ func (r *ReconcileDistributedRedisCluster) syncCluster(ctx *syncContext) error {
 			return Cluster.Wrap(err, "PlaceSlaves")
 
 		}
-		if err := clusterCtx.AttachingSlavesToMaster(admin); err != nil {
+		if err := clusterCtx.AttachingSlavesToMaster(admin, context); err != nil {
 			return Cluster.Wrap(err, "AttachingSlavesToMaster")
 		}
 	} else if len(curMasters) > int(expectMasterNum) {
@@ -252,17 +253,17 @@ func (r *ReconcileDistributedRedisCluster) syncCluster(ctx *syncContext) error {
 		var allMaster redisutil.Nodes
 		allMaster = append(allMaster, newMasters...)
 		allMaster = append(allMaster, curMasters...)
-		if err := clusterCtx.DispatchSlotToNewMasters(admin, newMasters, curMasters, allMaster); err != nil {
+		if err := clusterCtx.DispatchSlotToNewMasters(admin, newMasters, curMasters, allMaster, context); err != nil {
 			return err
 		}
-		if err := r.scalingDown(ctx, len(curMasters), clusterCtx.GetStatefulsetNodes()); err != nil {
+		if err := r.scalingDown(ctx, len(curMasters), clusterCtx.GetStatefulsetNodes(), context); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (r *ReconcileDistributedRedisCluster) scalingDown(ctx *syncContext, currentMasterNum int, statefulSetNodes map[string]redisutil.Nodes) error {
+func (r *ReconcileDistributedRedisCluster) scalingDown(ctx *syncContext, currentMasterNum int, statefulSetNodes map[string]redisutil.Nodes, context context.Context) error {
 	cluster := ctx.cluster
 	SetClusterRebalancing(&cluster.Status,
 		fmt.Sprintf("scale down, currentMasterSize: %d, expectMasterSize %d", currentMasterNum, cluster.Spec.MasterSize))
@@ -272,7 +273,7 @@ func (r *ReconcileDistributedRedisCluster) scalingDown(ctx *syncContext, current
 	for i := currentMasterNum - 1; i >= expectMasterNum; i-- {
 		stsName := statefulsets.ClusterStatefulSetName(cluster.Name, i)
 		for _, node := range statefulSetNodes[stsName] {
-			admin.Connections().Remove(node.IPPort())
+			admin.Connections().Remove(context, node.IPPort())
 		}
 	}
 	for i := currentMasterNum - 1; i >= expectMasterNum; i-- {
@@ -287,7 +288,7 @@ func (r *ReconcileDistributedRedisCluster) scalingDown(ctx *syncContext, current
 			if len(node.Slots) > 0 {
 				return Redis.New(fmt.Sprintf("node %s is not empty! Reshard data away and try again", node.String()))
 			}
-			if err := admin.ForgetNode(node.ID); err != nil {
+			if err := admin.ForgetNode(context, node.ID); err != nil {
 				return Redis.Wrap(err, "ForgetNode")
 			}
 		}
@@ -353,12 +354,17 @@ func (r *ReconcileDistributedRedisCluster) checkandUpadtePassword(client client.
 			return err, newsecretver
 		}
 
+		// Setting context for redis operations
+		context := context.Background()
+
 		podSet := clusterPods(redisClusterPods.Items)
-		admin, err := newRedisAdmin(podSet, adminPassword, config.RedisConf(), ctx.reqLogger)
+		// change to this and check do we need this
+		//admin, err := newRedisAdmin(podSet, adminPassword, config.RedisConf(), ctx.reqLogger, context)
+		_, err = newRedisAdmin(podSet, adminPassword, config.RedisConf(), ctx.reqLogger, context)
 		if err != nil {
 			return err, newsecretver
 		}
-		defer admin.Close()
+		//defer admin.Close(context)
 		aclcommands, err2 := statefulsets.GenerateAclcommands(ctx.reqLogger, r.client, ctx.cluster, newaclconf, newsecretver)
 
 		if err2 != nil {

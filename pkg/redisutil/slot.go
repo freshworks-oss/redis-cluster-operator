@@ -14,6 +14,14 @@ var migratingSeparator = "->-"
 // Slot represent a Redis Cluster slot
 type Slot uint64
 
+// Define customtype int
+type CustomType int
+
+// ToInt converts a CustomType to an int.
+func (s Slot) ToInt() int {
+	return int(s)
+}
+
 // String string representation of a slot
 func (s Slot) String() string {
 	return strconv.FormatUint(uint64(s), 10)
@@ -74,11 +82,12 @@ func (s MigratingSlot) String() string {
 }
 
 // DecodeSlotRange decode from a string a RangeSlot
-//  each entry can have 4 representations:
-//       * single slot: ex: 42
-//       * slot range: ex: 42-52
-//       * migrating slot: ex: [42->-67ed2db8d677e59ec4a4cefb06858cf2a1a89fa1]
-//       * importing slot: ex: [42-<-67ed2db8d677e59ec4a4cefb06858cf2a1a89fa1]
+//
+//	each entry can have 4 representations:
+//	     * single slot: ex: 42
+//	     * slot range: ex: 42-52
+//	     * migrating slot: ex: [42->-67ed2db8d677e59ec4a4cefb06858cf2a1a89fa1]
+//	     * importing slot: ex: [42-<-67ed2db8d677e59ec4a4cefb06858cf2a1a89fa1]
 func DecodeSlotRange(str string) ([]Slot, *ImportingSlot, *MigratingSlot, error) {
 	val := strings.Split(str, slotSeparator)
 	var min, max, slot Slot

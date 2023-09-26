@@ -9,7 +9,7 @@ type: Opaque
 stringData:
   acl: ~* +@all
   password: testpwd
-  username: default
+  username: admin
 ---
 
 apiVersion: v1

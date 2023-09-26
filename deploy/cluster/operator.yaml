@@ -16,7 +16,7 @@ spec:
       containers:
         - name: redis-cluster-operator
           # Replace this with the built image name
-          image: docker.io/dineshkumar/cluster-operator:5ea1734-dirty
+          image: docker.io/dineshkumar/cluster-operator:latest
           command:
           - redis-cluster-operator
           args:
@@ -47,7 +47,6 @@ metadata:
   name: redis-admin
 data:
   redis.conf: |-
-    rename-command CONFIG lni07z1p
     rename-command BGSAVE pp14qluk
     rename-command DEBUG 8a4insyv
     rename-command SAVE 6on30p6z
