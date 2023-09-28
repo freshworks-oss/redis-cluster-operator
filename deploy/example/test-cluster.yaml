@@ -4,7 +4,7 @@ metadata:
   annotations:
     # if your operator run as cluster-scoped, add this annotations
     redis.kun/scope: cluster-scoped
-  name: adminsecret
+  name: dbaas-redis--dbaas-redis--test-cluster--admin
 type: Opaque
 stringData:
   acl: ~* +@all
@@ -18,7 +18,7 @@ metadata:
   annotations:
     # if your operator run as cluster-scoped, add this annotations
     redis.kun/scope: cluster-scoped
-  name: defaultsecret
+  name: dbaas-redis--dbaas-redis--test-cluster--default
 type: Opaque
 stringData:
   acl: ~* +@all
@@ -32,7 +32,7 @@ metadata:
   annotations:
     # if your operator run as cluster-scoped, add this annotations
     redis.kun/scope: cluster-scoped
-  name: user1
+  name: dbaas-redis--dbaas-redis--test-cluster--dinesh
 type: Opaque
 stringData:
   acl: ~* +@all
@@ -45,7 +45,7 @@ metadata:
   annotations:
     # if your operator run as cluster-scoped, add this annotations
     redis.kun/scope: cluster-scoped
-  name: user2
+  name: dbaas-redis--dbaas-redis--test-cluster--samuel
 type: Opaque
 stringData:
   acl: ~* +@all
@@ -69,12 +69,12 @@ spec:
   masterSize: 3
   clusterReplicas: 1
   defaultUser:
-    name: defaultsecret
+    name: dbaas-redis--dbaas-redis--test-cluster--default
   adminUser:
-    name: adminsecret
+    name: dbaas-redis--dbaas-redis--test-cluster--admin
   additionalUsers:
-    - name: user1
-    - name: user2
+    - name: dbaas-redis--dbaas-redis--test-cluster--dinesh
+    - name: dbaas-redis--dbaas-redis--test-cluster--samuel
   image: redis:6.2.12
   resources:
     limits:

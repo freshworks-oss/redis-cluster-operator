@@ -3,14 +3,13 @@ package distributedrediscluster
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	redisv1alpha1 "github.com/ucloud/redis-cluster-operator/pkg/apis/redis/v1alpha1"
-	"github.com/ucloud/redis-cluster-operator/pkg/config"
 	"github.com/ucloud/redis-cluster-operator/pkg/controller/clustering"
 	"github.com/ucloud/redis-cluster-operator/pkg/controller/manager"
 	"github.com/ucloud/redis-cluster-operator/pkg/k8sutil"
@@ -325,55 +324,41 @@ func (r *ReconcileDistributedRedisCluster) scalingDown(ctx *syncContext, current
 	return nil
 }
 
-func (r *ReconcileDistributedRedisCluster) checkandUpadtePassword(client client.Client, ctx *syncContext) (error, map[string]string) {
+func (r *ReconcileDistributedRedisCluster) checkandUpdatePassword(admin redisutil.IAdmin, ctx *syncContext, context context.Context) (map[string]string, error) {
 
-	passChanged, newaclconf, newsecretver, err1 := r.checker.CheckPasswordChanged(ctx.cluster)
-	if err1 != nil {
-		ctx.reqLogger.Error(err1, "error when checking acl difference")
-		return err1, nil
+	passChanged, newaclconf, newsecretver, err := r.checker.CheckPasswordChanged(ctx.cluster)
+	if err != nil {
+		ctx.reqLogger.Error(err, "Error while checking difference in ACL")
+		return nil, err
 	}
 	if !passChanged {
-		ctx.reqLogger.Info("no changes in acl secrets when checking acl differences")
+		ctx.reqLogger.Info("No changes in acl secrets, Proceeding..")
 		return nil, nil
 	}
-	ctx.reqLogger.Info("acl difference found trying to update password")
-	SetClusterResetPassword(&ctx.cluster.Status, "updating acl's")
+	ctx.reqLogger.Info("Difference in ACL found, trying to update password")
+	SetClusterResetPassword(&ctx.cluster.Status, "Updating ACL's")
 	r.crController.UpdateCRStatus(ctx.cluster)
 
 	if err := r.checker.CheckRedisNodeNum(ctx.cluster); err == nil {
-		namespace := ctx.cluster.Namespace
+		aclcommands, err := statefulsets.GenerateAclcommands(ctx.reqLogger, r.client, ctx.cluster, newaclconf, newsecretver)
 
-		matchLabels := getLabels(ctx.cluster)
-		redisClusterPods, err := r.statefulSetController.GetStatefulSetPodsByLabels(namespace, matchLabels)
 		if err != nil {
-			return err, newsecretver
-		}
-
-		adminPassword, err := statefulsets.GetRedisClusterAdminPassword(r.client, ctx.cluster, ctx.reqLogger)
-		if err != nil {
-			return err, newsecretver
-		}
-
-		// Setting context for redis operations
-		context := context.Background()
-
-		podSet := clusterPods(redisClusterPods.Items)
-		// change to this and check do we need this
-		//admin, err := newRedisAdmin(podSet, adminPassword, config.RedisConf(), ctx.reqLogger, context)
-		_, err = newRedisAdmin(podSet, adminPassword, config.RedisConf(), ctx.reqLogger, context)
-		if err != nil {
-			return err, newsecretver
-		}
-		//defer admin.Close(context)
-		aclcommands, err2 := statefulsets.GenerateAclcommands(ctx.reqLogger, r.client, ctx.cluster, newaclconf, newsecretver)
-
-		if err2 != nil {
-			return err2, newsecretver
+			return newsecretver, err
 
 		} else {
-			ctx.reqLogger.Info("Printing acl commands to be run:")
-			for key, value := range aclcommands {
-				ctx.reqLogger.Info("user: ", key, "aclcommand: ", value)
+			for _, acl := range aclcommands {
+				for addr, c := range admin.Connections().GetAll() {
+					ctx.reqLogger.Info("Setting ACL for", "address", addr)
+					cmd := strings.Fields(acl)
+					args := make([]interface{}, len(cmd))
+					for i, c := range cmd {
+						args[i] = c
+					}
+					resp := c.Do(context, args...)
+					if err := admin.Connections().ValidateResp(context, resp, addr, "unable to set ACL"); err != nil {
+						return nil, err
+					}
+				}
 			}
 		}
 		/*
@@ -390,5 +375,5 @@ func (r *ReconcileDistributedRedisCluster) checkandUpadtePassword(client client.
 			}
 		*/
 	}
-	return nil, newsecretver
+	return newsecretver, nil
 }

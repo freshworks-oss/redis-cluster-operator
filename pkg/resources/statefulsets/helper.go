@@ -66,23 +66,34 @@ func GenerateAclcommands(log logr.Logger, client client.Client, cluster *redisv1
 
 	//First add the set of usersnewly added if any and list of users for which acl rules changed
 	for key := range newsecretver {
+		username := ""
+		// Sample secret: dbaas-redis--dbaas-redis--test-endpoint--admin
+		secretName := strings.Split(key, "--")
+		if len(secretName) > 0 {
+			username = secretName[len(secretName)-1]
+		}
 		if _, ok := existingsecretver[key]; !ok {
-			log.Info("diffAclConfigs", "New User found in latest secret", key)
-			aclcommands[key] = fmt.Sprintf("acl setuser %s", newacldata[key])
+			log.Info("diffAclConfigs", "New User found in latest secret", username)
+			aclcommands[username] = fmt.Sprintf("acl setuser %s", newacldata[username])
 		} else if map1Value, ok := existingsecretver[key]; ok {
 			map2Value := newsecretver[key]
 			if !reflect.DeepEqual(map1Value, map2Value) {
-				log.Info("diffAclConfigs", "update in acl data found for user/secret", key)
-				aclcommands[key] = fmt.Sprintf("acl setuser %s", newacldata[key])
+				log.Info("diffAclConfigs", "update in acl data found for user/secret", username)
+				aclcommands[username] = fmt.Sprintf("acl setuser %s", newacldata[username])
 			}
 		}
 	}
 
 	// Give deluser for the users which are to be removed
 	for key := range existingsecretver {
+		username := ""
+		secretName := strings.Split(key, "--")
+		if len(secretName) > 0 {
+			username = secretName[len(secretName)-1]
+		}
 		if _, ok := newsecretver[key]; !ok {
-			log.Info("diffAclConfigs", "User not found in latest secret, possibly deleted", key)
-			aclcommands[key] = fmt.Sprintf("acl setuser %s", key)
+			log.Info("diffAclConfigs", "User not found in latest secret, possibly deleted", username)
+			aclcommands[username] = fmt.Sprintf("acl setuser %s", username)
 		}
 	}
 

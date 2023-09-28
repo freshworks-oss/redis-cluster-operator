@@ -246,7 +246,20 @@ func (r *ReconcileDistributedRedisCluster) Reconcile(request reconcile.Request) 
 		return reconcile.Result{RequeueAfter: requeueAfter}, nil
 	}
 
-	err, secretver := r.checkandUpadtePassword(r.client, ctx)
+	password, err := statefulsets.GetRedisClusterAdminPassword(r.client, ctx.cluster, reqLogger)
+	if err != nil {
+		return reconcile.Result{}, Kubernetes.Wrap(err, "getClusterPassword")
+	}
+
+	context := context.Background()
+
+	admin, err := newRedisAdmin(ctx.pods, password, config.RedisConf(), reqLogger, context)
+	if err != nil {
+		return reconcile.Result{}, Redis.Wrap(err, "newRedisAdmin")
+	}
+	defer admin.Close(context)
+
+	secretver, err := r.checkandUpdatePassword(admin, ctx, context)
 	newsecretStatus := instance.Status.DeepCopy()
 	if err != nil {
 		reqLogger.WithValues("err", err).Info("error checking / updating password")
@@ -264,20 +277,8 @@ func (r *ReconcileDistributedRedisCluster) Reconcile(request reconcile.Request) 
 		}
 	}
 	r.updateClusterIfNeed(instance, newsecretStatus, reqLogger)
-
-	password, err := statefulsets.GetRedisClusterAdminPassword(r.client, ctx.cluster, reqLogger)
-	if err != nil {
-		return reconcile.Result{}, Kubernetes.Wrap(err, "getClusterPassword")
-	}
 	//reqLogger.WithValues("adminpassword:", password).Info("please check adminpass")
 	// Setting this context for request flow
-	context := context.Background()
-
-	admin, err := newRedisAdmin(ctx.pods, password, config.RedisConf(), reqLogger, context)
-	if err != nil {
-		return reconcile.Result{}, Redis.Wrap(err, "newRedisAdmin")
-	}
-	defer admin.Close(context)
 
 	clusterInfos, err := admin.GetClusterInfos(context)
 
