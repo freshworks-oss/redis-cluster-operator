@@ -108,8 +108,8 @@ case "$op" in
     # cleanup data dump dir
     rm -rf *
 
-    redis-cli --rdb dump.rdb -h "${REDIS_HOST}" -a "${REDIS_PASSWORD}"
-    redis-cli -h "${REDIS_HOST}" -a "${REDIS_PASSWORD}" CLUSTER NODES | grep myself > nodes.conf
+    redis-cli --rdb dump.rdb -h "${REDIS_HOST}" --user admin -a "${REDIS_PASSWORD}"
+    redis-cli -h "${REDIS_HOST}" --user admin -a "${REDIS_PASSWORD}" CLUSTER NODES | grep myself > nodes.conf
     pwd
     ls -lh "$SOURCE_DIR"
     echo "Uploading dump file to the backend......."
