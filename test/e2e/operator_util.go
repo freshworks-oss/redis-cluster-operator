@@ -17,10 +17,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
-	redisv1alpha1 "github.com/ucloud/redis-cluster-operator/pkg/apis/redis/v1alpha1"
-	"github.com/ucloud/redis-cluster-operator/pkg/config"
-	"github.com/ucloud/redis-cluster-operator/pkg/redisutil"
-	"github.com/ucloud/redis-cluster-operator/pkg/utils"
+	redisv1alpha1 "github.com/dinesh-murugiah/rediscluster-operator/api/v1alpha1"
+	config "github.com/dinesh-murugiah/rediscluster-operator/redisconfig"
+	utils "github.com/dinesh-murugiah/rediscluster-operator/utils/commonutils"
+	"github.com/dinesh-murugiah/rediscluster-operator/utils/redisutil"
 )
 
 const (

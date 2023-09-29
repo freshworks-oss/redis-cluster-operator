@@ -6,8 +6,8 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 
-	redisv1alpha1 "github.com/ucloud/redis-cluster-operator/pkg/apis/redis/v1alpha1"
-	"github.com/ucloud/redis-cluster-operator/test/e2e"
+	redisv1alpha1 "github.com/dinesh-murugiah/rediscluster-operator/api/v1alpha1"
+	"github.com/dinesh-murugiah/rediscluster-operator/test/e2e"
 )
 
 var f *e2e.Framework
