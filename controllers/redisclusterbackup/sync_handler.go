@@ -2,6 +2,7 @@ package redisclusterbackup
 
 import (
 	"fmt"
+	"strconv"
 
 	"github.com/go-logr/logr"
 	appsv1 "k8s.io/api/apps/v1"
@@ -42,13 +43,15 @@ func (r *RedisClusterBackupReconciler) start(reqLogger logr.Logger, backup *redi
 			err = r.DeploymentController.CreateDeployment(deployment)
 			if err != nil {
 				return err
+			} else {
+				return nil
 			}
 		} else {
 			return err
 		}
 	}
 	// Validate CR Spec against the current deployment spec, call Update Deployment if there is any change
-	if validateCRcandDeploymentSpec(backup, dp) {
+	if validateCRcandDeploymentSpec(backup, dp, cluster) {
 		deployment := deployments.NewDeploymentForCR(backup, cluster, deplName, secretName)
 		err = r.DeploymentController.UpdateDeployment(deployment)
 		if err != nil {
@@ -58,14 +61,32 @@ func (r *RedisClusterBackupReconciler) start(reqLogger logr.Logger, backup *redi
 	return nil
 }
 
-func validateCRcandDeploymentSpec(backup *redisv1alpha1.RedisClusterBackup, deployment *appsv1.Deployment) bool {
+func validateCRcandDeploymentSpec(backup *redisv1alpha1.RedisClusterBackup, deployment *appsv1.Deployment, cluster *redisv1alpha1.DistributedRedisCluster) bool {
 	//Currently, we are comparing only image in CR vs actual Deployment Spec.
 	deploymentUpdate := false
+	masterSize := cluster.Spec.MasterSize
+	clusterReplicas := cluster.Spec.ClusterReplicas
+	var envs []corev1.EnvVar
 	for _, container := range deployment.Spec.Template.Spec.Containers {
 		if container.Name == "rediscluster-util-container" {
+			envs = container.Env
 			if backup.Spec.Image != container.Image {
 				deploymentUpdate = true
 				break
+			}
+		}
+	}
+	// This part to ensure master size and cluster replicas are same as the actual cluster. When cluster scaled up or down, same should be reflected in Util Deployment.
+	// Hence this check for the below env's.
+	for _, env := range envs {
+		if env.Name == "MASTER_SIZE" {
+			if env.Value != strconv.Itoa(int(masterSize)) {
+				deploymentUpdate = true
+			}
+		}
+		if env.Name == "CLUSTER_REPLICAS" {
+			if env.Value != strconv.Itoa(int(clusterReplicas)) {
+				deploymentUpdate = true
 			}
 		}
 	}

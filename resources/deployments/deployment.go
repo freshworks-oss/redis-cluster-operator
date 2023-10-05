@@ -1,6 +1,8 @@
 package deployments
 
 import (
+	"strconv"
+
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -77,6 +79,14 @@ func generatePodTemplate(instance *redisv1alpha1.RedisClusterBackup, cluster *re
 						{
 							Name:  "REDIS_PORT",
 							Value: "6379", //TODO: Change this to the port from the RedisCluster Spec when custom port support is added.
+						},
+						{
+							Name:  "MASTER_SIZE",
+							Value: strconv.Itoa(int(cluster.Spec.MasterSize)),
+						},
+						{
+							Name:  "CLUSTER_REPLICAS",
+							Value: strconv.Itoa(int(cluster.Spec.ClusterReplicas)),
 						},
 					},
 					VolumeMounts: []corev1.VolumeMount{
