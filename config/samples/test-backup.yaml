@@ -6,12 +6,26 @@ metadata:
   annotations:
     redis.kun/scope: cluster-scoped
 spec:
-  image: operator/redis-tools:5.0.4
-  # on same namespace
+  image: nginx:latest
   redisClusterName: example-distributedrediscluster
-  local:
-    mountPath: /bkp
-    emptyDir:
-      sizeLimit: 1Gi
-  backupCronEnable: true
-  backupSchedule: "*/3 * * * *"
+  utilConfig: "test-config"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: test-config
+data:
+  backupschedule.yaml: |
+    backupEnabled: true
+    logEnabled: true
+    backupInterval: 59
+    s3retry: 6
+    backupretry: 6
+    logInterval: 30
+    initretry: 50
+    backupDir: /data
+    dbfilename: dump.rdb
+    termCheckIteration: -1
+    termCheckInterval: 5
+  
+

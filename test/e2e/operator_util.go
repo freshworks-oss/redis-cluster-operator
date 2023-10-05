@@ -13,7 +13,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	store "kmodules.xyz/objectstore-api/api/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
@@ -339,13 +338,13 @@ func NewRedisClusterBackup(name, namespace, image, drcName, storageSecretName, s
 		Spec: redisv1alpha1.RedisClusterBackupSpec{
 			Image:            image,
 			RedisClusterName: drcName,
-			Backend: store.Backend{
-				StorageSecretName: storageSecretName,
-				S3: &store.S3Spec{
-					Endpoint: s3Endpoint,
-					Bucket:   s3Bucket,
-				},
-			},
+			// Backend: store.Backend{
+			// 	StorageSecretName: storageSecretName,
+			// 	S3: &store.S3Spec{
+			// 		Endpoint: s3Endpoint,
+			// 		Bucket:   s3Bucket,
+			// 	},
+			// },
 		},
 	}
 

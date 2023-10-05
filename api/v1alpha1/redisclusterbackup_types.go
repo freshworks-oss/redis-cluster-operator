@@ -19,7 +19,6 @@ package v1alpha1
 import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	store "kmodules.xyz/objectstore-api/api/v1"
 )
 
 const (
@@ -35,14 +34,14 @@ type RedisClusterBackupSpec struct {
 	// Important: Run "make" to regenerate code after modifying this file
 
 	// Foo is an example field of RedisClusterBackup. Edit redisclusterbackup_types.go to remove/update
-	Image                 string        `json:"image,omitempty"`
-	RedisClusterName      string        `json:"redisClusterName"`
-	Storage               *RedisStorage `json:"storage,omitempty"`
-	store.Backend         `json:",inline"`
-	PodSpec               *PodSpec `json:"podSpec,omitempty"`
-	ActiveDeadlineSeconds *int64   `json:"activeDeadlineSeconds,omitempty"`
-	BackupCron            bool     `json:"backupCronEnable,omitempty"`
-	BackupSchedule        string   `json:"backupSchedule,omitempty"`
+	Image            string `json:"image"`
+	RedisClusterName string `json:"redisClusterName"`
+	// Storage               *RedisStorage `json:"storage,omitempty"`
+	// store.Backend         `json:",inline"`
+	// PodSpec               *PodSpec `json:"podSpec,omitempty"`
+	// ActiveDeadlineSeconds *int64   `json:"activeDeadlineSeconds,omitempty"`
+	// BackupCron            bool     `json:"backupCronEnable,omitempty"`
+	UtilConfig string `json:"utilConfig"`
 }
 
 type PodSpec struct {
