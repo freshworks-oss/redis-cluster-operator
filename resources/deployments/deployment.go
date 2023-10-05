@@ -88,6 +88,10 @@ func generatePodTemplate(instance *redisv1alpha1.RedisClusterBackup, cluster *re
 							Name:  "CLUSTER_REPLICAS",
 							Value: strconv.Itoa(int(cluster.Spec.ClusterReplicas)),
 						},
+						{
+							Name:  "CLUSTER_NAME",
+							Value: instance.Spec.RedisClusterName,
+						},
 					},
 					VolumeMounts: []corev1.VolumeMount{
 						{
