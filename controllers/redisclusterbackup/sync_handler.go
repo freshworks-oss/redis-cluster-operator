@@ -31,14 +31,12 @@ func (r *RedisClusterBackupReconciler) start(reqLogger logr.Logger, backup *redi
 		reqLogger.Info("Validation Failed Retrying")
 		return nil
 	}
-	reqLogger.Info("SAS_TODO-HERE", "NameSp", backup.Namespace)
 
 	//Check If Deployment Exists or Create a new Deployment for RedisClusterBackup
 	deplName := redisClusterBackupName + backup.Name
 	dp, err := r.DeploymentController.GetDeployment(backup.Namespace, deplName)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			fmt.Println("SAS_TODO")
 			reqLogger.Info("Creating", "deployment", backup.Namespace)
 			deployment := deployments.NewDeploymentForCR(backup, cluster, deplName, secretName)
 			err = r.DeploymentController.CreateDeployment(deployment)
