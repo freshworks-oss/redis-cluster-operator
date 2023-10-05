@@ -74,6 +74,10 @@ func generatePodTemplate(instance *redisv1alpha1.RedisClusterBackup, cluster *re
 								},
 							},
 						},
+						{
+							Name:  "REDIS_PORT",
+							Value: "6379", //TODO: Change this to the port from the RedisCluster Spec when custom port support is added.
+						},
 					},
 					VolumeMounts: []corev1.VolumeMount{
 						{
