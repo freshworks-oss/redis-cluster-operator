@@ -67,6 +67,15 @@ spec:
     imagePullPolicy: IfNotPresent
   masterSize: 3
   clusterReplicas: 1
+  monitor:
+    image: oliver006/redis_exporter
+    resources:
+      requests:
+        cpu: 300m
+        memory: 600Mi
+      limits:
+        cpu: 400m
+        memory: 1000Mi
   adminUser:
     name: dbaas-redis--dbaas-redis--test-cluster--admin
   defaultUser:

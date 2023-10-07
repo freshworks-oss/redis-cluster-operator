@@ -203,7 +203,8 @@ func getRedisCommand(cluster *redisv1alpha1.DistributedRedisCluster, password *c
 	}
 	if password != nil {
 		cmd = append(cmd, "--requirepass no",
-			fmt.Sprintf("--masterauth '$(%s)'", redisv1alpha1.PasswordENV))
+			fmt.Sprintf("--masterauth '$(%s)'", redisv1alpha1.PasswordENV),
+			"-- masteruser admin")
 	}
 
 	renameCmdMap := utils.BuildCommandReplaceMapping(config.RedisConf().GetRenameCommandsFile(), log)
