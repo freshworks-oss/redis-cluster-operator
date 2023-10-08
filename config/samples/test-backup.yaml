@@ -6,9 +6,11 @@ metadata:
   annotations:
     redis.kun/scope: cluster-scoped
 spec:
-  image: nginx:latest
+  image: docker.io/sasidharan/redisclusterutil:v6
   redisClusterName: example-distributedrediscluster
   utilConfig: "test-config"
+  startupCommand: "/usr/local/bin/redisUtil"
+  imagePullPolicy: "Never"
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -17,14 +19,11 @@ metadata:
 data:
   backupschedule.yaml: |
     backupEnabled: true
-    logEnabled: true
-    backupInterval: 59
+    logEnabled: false
+    backupInterval: 3m
     s3retry: 6
     backupretry: 6
     logInterval: 30
-    initretry: 50
-    backupDir: /data
-    dbfilename: dump.rdb
     termCheckIteration: -1
     termCheckInterval: 5
   

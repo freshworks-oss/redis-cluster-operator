@@ -41,7 +41,9 @@ type RedisClusterBackupSpec struct {
 	// PodSpec               *PodSpec `json:"podSpec,omitempty"`
 	// ActiveDeadlineSeconds *int64   `json:"activeDeadlineSeconds,omitempty"`
 	// BackupCron            bool     `json:"backupCronEnable,omitempty"`
-	UtilConfig string `json:"utilConfig"`
+	UtilConfig      string `json:"utilConfig"`
+	StartUpCommand  string `json:"startupCommand"`
+	ImagePullPolicy string `json:"imagePullPolicy,omitempty"`
 }
 
 type PodSpec struct {

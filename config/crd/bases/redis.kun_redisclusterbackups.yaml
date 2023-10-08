@@ -40,7 +40,11 @@ spec:
                 description: Foo is an example field of RedisClusterBackup. Edit redisclusterbackup_types.go
                   to remove/update
                 type: string
+              imagePullPolicy:
+                type: string
               redisClusterName:
+                type: string
+              startupCommand:
                 type: string
               utilConfig:
                 description: Storage               *RedisStorage `json:"storage,omitempty"`
@@ -51,6 +55,7 @@ spec:
             required:
             - image
             - redisClusterName
+            - startupCommand
             - utilConfig
             type: object
           status:

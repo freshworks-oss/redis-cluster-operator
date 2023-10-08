@@ -42,6 +42,12 @@ func generateDeploymentSpec(instance *redisv1alpha1.RedisClusterBackup, cluster 
 
 func generatePodTemplate(instance *redisv1alpha1.RedisClusterBackup, cluster *redisv1alpha1.DistributedRedisCluster, secretName string) corev1.PodTemplateSpec {
 	TerminationGracePeriodSeconds := int64(300)
+	var imagePullPolicy corev1.PullPolicy
+	if instance.Spec.ImagePullPolicy == "" {
+		imagePullPolicy = corev1.PullAlways
+	} else {
+		imagePullPolicy = corev1.PullPolicy(instance.Spec.ImagePullPolicy)
+	}
 	podTemplate := corev1.PodTemplateSpec{
 		ObjectMeta: metav1.ObjectMeta{
 			Labels: map[string]string{
@@ -51,8 +57,10 @@ func generatePodTemplate(instance *redisv1alpha1.RedisClusterBackup, cluster *re
 		Spec: corev1.PodSpec{
 			Containers: []corev1.Container{
 				{
-					Name:  "rediscluster-util-container",
-					Image: instance.Spec.Image,
+					Name:            "rediscluster-util-container",
+					Image:           instance.Spec.Image,
+					ImagePullPolicy: imagePullPolicy,
+					Command:         []string{instance.Spec.StartUpCommand},
 					Env: []corev1.EnvVar{
 						{
 							Name: "REDIS_USER", // Change this to the desired environment variable name
