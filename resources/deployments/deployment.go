@@ -103,22 +103,24 @@ func generatePodTemplate(instance *redisv1alpha1.RedisClusterBackup, cluster *re
 					},
 					VolumeMounts: []corev1.VolumeMount{
 						{
-							Name:      "configmap-volume", // Name of the ConfigMap volume
-							MountPath: configMapMountPath, // Mount path for the ConfigMap
+							Name:      "configmap-volume",
+							MountPath: configMapMountPath,
+						},
+						{
+							Name:      "redis-data",
+							MountPath: "/data",
 						},
 					},
 				},
 			},
-			Volumes: []corev1.Volume{
-				generateConfigmapVolumeSpec(instance), // Add the volume for the ConfigMap
-			},
+			Volumes:                       generateConfigmapVolumeSpec(instance),
 			TerminationGracePeriodSeconds: &TerminationGracePeriodSeconds,
 		},
 	}
 	return podTemplate
 }
 
-func generateConfigmapVolumeSpec(instance *redisv1alpha1.RedisClusterBackup) corev1.Volume {
+func generateConfigmapVolumeSpec(instance *redisv1alpha1.RedisClusterBackup) []corev1.Volume {
 	executeMode := int32(0755)
 	configMapVolume := corev1.Volume{
 		Name: "configmap-volume",
@@ -131,5 +133,17 @@ func generateConfigmapVolumeSpec(instance *redisv1alpha1.RedisClusterBackup) cor
 			},
 		},
 	}
-	return configMapVolume
+
+	// Define the new emptyDir volume for downloading redis RDB's
+	redisDataVolume := corev1.Volume{
+		Name: "redis-data",
+		VolumeSource: corev1.VolumeSource{
+			EmptyDir: &corev1.EmptyDirVolumeSource{},
+		},
+	}
+
+	return []corev1.Volume{
+		configMapVolume,
+		redisDataVolume,
+	}
 }

@@ -6,7 +6,7 @@ metadata:
   annotations:
     redis.kun/scope: cluster-scoped
 spec:
-  image: docker.io/sasidharan/redisclusterutil:v6
+  image: docker.io/sasidharan/redisclusterutil:v9
   redisClusterName: example-distributedrediscluster
   utilConfig: "test-config"
   startupCommand: "/usr/local/bin/redisUtil"
