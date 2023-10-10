@@ -199,11 +199,11 @@ func (r *RedisClusterBackupReconciler) Reconcile(ctx context.Context, request ct
 	cluster, err := r.CrController.GetDistributedRedisCluster(instance.Namespace, instance.Spec.RedisClusterName)
 	if err != nil {
 		reqLogger.Error(err, "Unable to get cluster instance")
-		return reconcile.Result{}, err
+		return reconcile.Result{RequeueAfter: time.Duration(60) * time.Second}, nil
 	}
 
 	//Create Util Deployment
-	err = r.startUtilDeployment(reqLogger, instance, cluster)
+	err = r.reconcileUtilDeployment(reqLogger, instance, cluster)
 	if err != nil {
 		reqLogger.Error(err, "Unable to create Util Deployment due to the above erros, Kindly fix them!")
 	}

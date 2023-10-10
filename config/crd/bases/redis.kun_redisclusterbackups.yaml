@@ -36,27 +36,35 @@ spec:
           spec:
             description: RedisClusterBackupSpec defines the desired state of RedisClusterBackup
             properties:
-              image:
+              redisClusterName:
                 description: Foo is an example field of RedisClusterBackup. Edit redisclusterbackup_types.go
                   to remove/update
                 type: string
-              imagePullPolicy:
-                type: string
-              redisClusterName:
-                type: string
-              startupCommand:
-                type: string
-              utilConfig:
-                description: Storage               *RedisStorage `json:"storage,omitempty"`
-                  store.Backend         `json:",inline"` PodSpec               *PodSpec
-                  `json:"podSpec,omitempty"` ActiveDeadlineSeconds *int64   `json:"activeDeadlineSeconds,omitempty"`
-                  BackupCron            bool     `json:"backupCronEnable,omitempty"`
-                type: string
+              utilSpec:
+                properties:
+                  image:
+                    type: string
+                  imagePullPolicy:
+                    type: string
+                  replicas:
+                    format: int32
+                    type: integer
+                  s3Bucket:
+                    type: string
+                  startupCommand:
+                    type: string
+                  utilConfig:
+                    type: string
+                required:
+                - image
+                - replicas
+                - s3Bucket
+                - startupCommand
+                - utilConfig
+                type: object
             required:
-            - image
             - redisClusterName
-            - startupCommand
-            - utilConfig
+            - utilSpec
             type: object
           status:
             description: RedisClusterBackupStatus defines the observed state of RedisClusterBackup

@@ -336,7 +336,7 @@ func NewRedisClusterBackup(name, namespace, image, drcName, storageSecretName, s
 			},
 		},
 		Spec: redisv1alpha1.RedisClusterBackupSpec{
-			Image:            image,
+			//			Image:            image,
 			RedisClusterName: drcName,
 			// Backend: store.Backend{
 			// 	StorageSecretName: storageSecretName,

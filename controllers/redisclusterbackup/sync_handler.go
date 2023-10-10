@@ -20,7 +20,7 @@ import (
 // 	backupRetry   = true
 // )
 
-func (r *RedisClusterBackupReconciler) startUtilDeployment(reqLogger logr.Logger, backup *redisv1alpha1.RedisClusterBackup, cluster *redisv1alpha1.DistributedRedisCluster) error {
+func (r *RedisClusterBackupReconciler) reconcileUtilDeployment(reqLogger logr.Logger, backup *redisv1alpha1.RedisClusterBackup, cluster *redisv1alpha1.DistributedRedisCluster) error {
 	var secretName string
 	if cluster.Spec.AdminSecret != nil {
 		secretName = cluster.Spec.AdminSecret.Name
@@ -35,7 +35,7 @@ func (r *RedisClusterBackupReconciler) startUtilDeployment(reqLogger logr.Logger
 	}
 
 	// Check if the ConfigMap Exists
-	_, err := r.ConfigmapController.GetConfigMap(backup.Namespace, backup.Spec.UtilConfig)
+	_, err := r.ConfigmapController.GetConfigMap(backup.Namespace, backup.Spec.UtilSpec.UtilConfig)
 	if err != nil {
 		reqLogger.Error(err, "Configmap for Util is missing", "tenant", backup.Spec.RedisClusterName)
 		return nil
@@ -59,7 +59,7 @@ func (r *RedisClusterBackupReconciler) startUtilDeployment(reqLogger logr.Logger
 	if err != nil {
 		if errors.IsNotFound(err) {
 			reqLogger.Info("Creating", "deployment", backup.Namespace)
-			deployment := deployments.NewDeploymentForCR(backup, cluster, deplName, secretName)
+			deployment := deployments.UtilNewDeploymentForCR(backup, cluster, deplName, secretName)
 			err = r.DeploymentController.CreateDeployment(deployment)
 			if err != nil {
 				return err
@@ -72,7 +72,7 @@ func (r *RedisClusterBackupReconciler) startUtilDeployment(reqLogger logr.Logger
 	}
 	// Validate CR Spec against the current deployment spec, call Update Deployment if there is any change
 	if validateCRcandDeploymentSpec(backup, dp, cluster) {
-		deployment := deployments.NewDeploymentForCR(backup, cluster, deplName, secretName)
+		deployment := deployments.UtilNewDeploymentForCR(backup, cluster, deplName, secretName)
 		err = r.DeploymentController.UpdateDeployment(deployment)
 		if err != nil {
 			return err
@@ -90,7 +90,7 @@ func validateCRcandDeploymentSpec(backup *redisv1alpha1.RedisClusterBackup, depl
 	for _, container := range deployment.Spec.Template.Spec.Containers {
 		if container.Name == "rediscluster-util-container" {
 			envs = container.Env
-			if backup.Spec.Image != container.Image {
+			if backup.Spec.UtilSpec.Image != container.Image {
 				deploymentUpdate = true
 				break
 			}

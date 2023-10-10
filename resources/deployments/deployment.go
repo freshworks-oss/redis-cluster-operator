@@ -12,16 +12,17 @@ import (
 
 const (
 	configMapMountPath = "/config"
+	utilContainerName  = "rediscluster-util-container"
 )
 
 // NewDeploymentForCR creates a new Deployment for the given Cluster.
-func NewDeploymentForCR(instance *redisv1alpha1.RedisClusterBackup, cluster *redisv1alpha1.DistributedRedisCluster, dpName, secretName string) *appsv1.Deployment {
-	deployment := generateDeploymentSpec(instance, cluster, dpName, secretName)
+func UtilNewDeploymentForCR(instance *redisv1alpha1.RedisClusterBackup, cluster *redisv1alpha1.DistributedRedisCluster, dpName, secretName string) *appsv1.Deployment {
+	deployment := UtilGenerateDeploymentSpec(instance, cluster, dpName, secretName)
 	return deployment
 }
 
-func generateDeploymentSpec(instance *redisv1alpha1.RedisClusterBackup, cluster *redisv1alpha1.DistributedRedisCluster, dpName, secretName string) *appsv1.Deployment {
-	replicas := int32(1)
+func UtilGenerateDeploymentSpec(instance *redisv1alpha1.RedisClusterBackup, cluster *redisv1alpha1.DistributedRedisCluster, dpName, secretName string) *appsv1.Deployment {
+	replicas := instance.Spec.UtilSpec.Replicas
 	deployment := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: instance.Namespace,
@@ -29,10 +30,11 @@ func generateDeploymentSpec(instance *redisv1alpha1.RedisClusterBackup, cluster 
 		},
 		Spec: appsv1.DeploymentSpec{
 			Replicas: &replicas,
-			Template: generatePodTemplate(instance, cluster, secretName),
+			Template: UtilGeneratePodTemplate(instance, cluster, secretName),
 			Selector: &metav1.LabelSelector{
 				MatchLabels: map[string]string{
-					"app": instance.Spec.RedisClusterName,
+					"app":       instance.Spec.RedisClusterName,
+					"container": utilContainerName,
 				},
 			},
 		},
@@ -40,27 +42,28 @@ func generateDeploymentSpec(instance *redisv1alpha1.RedisClusterBackup, cluster 
 	return deployment
 }
 
-func generatePodTemplate(instance *redisv1alpha1.RedisClusterBackup, cluster *redisv1alpha1.DistributedRedisCluster, secretName string) corev1.PodTemplateSpec {
+func UtilGeneratePodTemplate(instance *redisv1alpha1.RedisClusterBackup, cluster *redisv1alpha1.DistributedRedisCluster, secretName string) corev1.PodTemplateSpec {
 	TerminationGracePeriodSeconds := int64(300)
 	var imagePullPolicy corev1.PullPolicy
-	if instance.Spec.ImagePullPolicy == "" {
+	if instance.Spec.UtilSpec.ImagePullPolicy == "" {
 		imagePullPolicy = corev1.PullAlways
 	} else {
-		imagePullPolicy = corev1.PullPolicy(instance.Spec.ImagePullPolicy)
+		imagePullPolicy = corev1.PullPolicy(instance.Spec.UtilSpec.ImagePullPolicy)
 	}
 	podTemplate := corev1.PodTemplateSpec{
 		ObjectMeta: metav1.ObjectMeta{
 			Labels: map[string]string{
-				"app": instance.Spec.RedisClusterName,
+				"app":       instance.Spec.RedisClusterName,
+				"container": utilContainerName,
 			},
 		},
 		Spec: corev1.PodSpec{
 			Containers: []corev1.Container{
 				{
-					Name:            "rediscluster-util-container",
-					Image:           instance.Spec.Image,
+					Name:            utilContainerName,
+					Image:           instance.Spec.UtilSpec.Image,
 					ImagePullPolicy: imagePullPolicy,
-					Command:         []string{instance.Spec.StartUpCommand},
+					Command:         []string{instance.Spec.UtilSpec.StartUpCommand},
 					Env: []corev1.EnvVar{
 						{
 							Name: "REDIS_USER", // Change this to the desired environment variable name
@@ -100,6 +103,10 @@ func generatePodTemplate(instance *redisv1alpha1.RedisClusterBackup, cluster *re
 							Name:  "CLUSTER_NAME",
 							Value: instance.Spec.RedisClusterName,
 						},
+						{
+							Name:  "S3_BUCKET",
+							Value: instance.Spec.UtilSpec.S3Bucket,
+						},
 					},
 					VolumeMounts: []corev1.VolumeMount{
 						{
@@ -113,21 +120,21 @@ func generatePodTemplate(instance *redisv1alpha1.RedisClusterBackup, cluster *re
 					},
 				},
 			},
-			Volumes:                       generateConfigmapVolumeSpec(instance),
+			Volumes:                       UtilGenerateConfigmapVolumeSpec(instance),
 			TerminationGracePeriodSeconds: &TerminationGracePeriodSeconds,
 		},
 	}
 	return podTemplate
 }
 
-func generateConfigmapVolumeSpec(instance *redisv1alpha1.RedisClusterBackup) []corev1.Volume {
+func UtilGenerateConfigmapVolumeSpec(instance *redisv1alpha1.RedisClusterBackup) []corev1.Volume {
 	executeMode := int32(0755)
 	configMapVolume := corev1.Volume{
 		Name: "configmap-volume",
 		VolumeSource: corev1.VolumeSource{
 			ConfigMap: &corev1.ConfigMapVolumeSource{
 				LocalObjectReference: corev1.LocalObjectReference{
-					Name: instance.Spec.UtilConfig,
+					Name: instance.Spec.UtilSpec.UtilConfig,
 				},
 				DefaultMode: &executeMode,
 			},
