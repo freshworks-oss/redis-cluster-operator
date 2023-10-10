@@ -196,36 +196,20 @@ func (r *RedisClusterBackupReconciler) Reconcile(ctx context.Context, request ct
 		return reconcile.Result{RequeueAfter: time.Duration(60) * time.Second}, nil
 	}
 
-	// Define the secret name and key for the adminsecret
 	cluster, err := r.CrController.GetDistributedRedisCluster(instance.Namespace, instance.Spec.RedisClusterName)
 	if err != nil {
 		reqLogger.Error(err, "Unable to get cluster instance")
 		return reconcile.Result{}, err
 	}
-	var secretName string
-	if cluster.Spec.AdminSecret != nil {
-		secretName = cluster.Spec.AdminSecret.Name
-		_, err := r.SecretController.GetSecret(instance.Namespace, secretName)
-		if err != nil {
-			reqLogger.Error(err, "AdminSecret is missing in cluster secrets")
-			return reconcile.Result{RequeueAfter: time.Duration(60) * time.Second}, nil
-		}
-	} else {
-		reqLogger.Error(err, "Admin secret not present in ClusterSpec")
-		return reconcile.Result{RequeueAfter: time.Duration(60) * time.Second}, nil
+
+	//Create Util Deployment
+	err = r.startUtilDeployment(reqLogger, instance, cluster)
+	if err != nil {
+		reqLogger.Error(err, "Unable to create Util Deployment due to the above erros, Kindly fix them!")
 	}
 
-	// Check if the ConfigMap Exists
-	_, err = r.ConfigmapController.GetConfigMap(instance.Namespace, instance.Spec.UtilConfig)
-	if err != nil {
-		reqLogger.Error(err, "Configmap for Util is missing")
-		return reconcile.Result{}, nil
-	}
+	// Add the other operations of the Util Controller here...
 
-	err = r.start(reqLogger, instance, cluster, secretName)
-	if err != nil {
-		return reconcile.Result{RequeueAfter: time.Duration(60) * time.Second}, nil
-	}
 	return reconcile.Result{RequeueAfter: time.Duration(60) * time.Second}, nil
 }
 

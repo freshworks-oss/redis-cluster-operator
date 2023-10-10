@@ -20,7 +20,27 @@ import (
 // 	backupRetry   = true
 // )
 
-func (r *RedisClusterBackupReconciler) start(reqLogger logr.Logger, backup *redisv1alpha1.RedisClusterBackup, cluster *redisv1alpha1.DistributedRedisCluster, secretName string) error {
+func (r *RedisClusterBackupReconciler) startUtilDeployment(reqLogger logr.Logger, backup *redisv1alpha1.RedisClusterBackup, cluster *redisv1alpha1.DistributedRedisCluster) error {
+	var secretName string
+	if cluster.Spec.AdminSecret != nil {
+		secretName = cluster.Spec.AdminSecret.Name
+		_, err := r.SecretController.GetSecret(backup.Namespace, secretName)
+		if err != nil {
+			reqLogger.Error(err, "AdminSecret is missing in cluster secrets, Kindly Create it!")
+			return nil
+		}
+	} else {
+		reqLogger.Error(fmt.Errorf("admin secret not present in ClusterSpec"), "Pass Admin Secret in Cluster CR", "tenant", backup.Spec.RedisClusterName)
+		return nil
+	}
+
+	// Check if the ConfigMap Exists
+	_, err := r.ConfigmapController.GetConfigMap(backup.Namespace, backup.Spec.UtilConfig)
+	if err != nil {
+		reqLogger.Error(err, "Configmap for Util is missing", "tenant", backup.Spec.RedisClusterName)
+		return nil
+	}
+
 	if err := r.ValidateBackup(backup, reqLogger); err != nil {
 		reqLogger.Error(err, "Backup Validation Failed: Either Problem with CR or cluster not yet ready for backup - Retrying")
 		r.Recorder.Event(
