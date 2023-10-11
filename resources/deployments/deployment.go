@@ -15,13 +15,13 @@ const (
 	utilContainerName  = "rediscluster-util-container"
 )
 
-// NewDeploymentForCR creates a new Deployment for the given Cluster.
+// UtilNewDeploymentForCR creates a new Deployment for the given Cluster for Utility purpose.
 func UtilNewDeploymentForCR(instance *redisv1alpha1.RedisClusterBackup, cluster *redisv1alpha1.DistributedRedisCluster, dpName, secretName string) *appsv1.Deployment {
-	deployment := UtilGenerateDeploymentSpec(instance, cluster, dpName, secretName)
+	deployment := utilGenerateDeploymentSpec(instance, cluster, dpName, secretName)
 	return deployment
 }
 
-func UtilGenerateDeploymentSpec(instance *redisv1alpha1.RedisClusterBackup, cluster *redisv1alpha1.DistributedRedisCluster, dpName, secretName string) *appsv1.Deployment {
+func utilGenerateDeploymentSpec(instance *redisv1alpha1.RedisClusterBackup, cluster *redisv1alpha1.DistributedRedisCluster, dpName, secretName string) *appsv1.Deployment {
 	replicas := instance.Spec.UtilSpec.Replicas
 	deployment := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
@@ -30,7 +30,7 @@ func UtilGenerateDeploymentSpec(instance *redisv1alpha1.RedisClusterBackup, clus
 		},
 		Spec: appsv1.DeploymentSpec{
 			Replicas: &replicas,
-			Template: UtilGeneratePodTemplate(instance, cluster, secretName),
+			Template: utilGeneratePodTemplate(instance, cluster, secretName),
 			Selector: &metav1.LabelSelector{
 				MatchLabels: map[string]string{
 					"app":       instance.Spec.RedisClusterName,
@@ -42,7 +42,7 @@ func UtilGenerateDeploymentSpec(instance *redisv1alpha1.RedisClusterBackup, clus
 	return deployment
 }
 
-func UtilGeneratePodTemplate(instance *redisv1alpha1.RedisClusterBackup, cluster *redisv1alpha1.DistributedRedisCluster, secretName string) corev1.PodTemplateSpec {
+func utilGeneratePodTemplate(instance *redisv1alpha1.RedisClusterBackup, cluster *redisv1alpha1.DistributedRedisCluster, secretName string) corev1.PodTemplateSpec {
 	TerminationGracePeriodSeconds := int64(300)
 	var imagePullPolicy corev1.PullPolicy
 	if instance.Spec.UtilSpec.ImagePullPolicy == "" {
@@ -120,14 +120,14 @@ func UtilGeneratePodTemplate(instance *redisv1alpha1.RedisClusterBackup, cluster
 					},
 				},
 			},
-			Volumes:                       UtilGenerateConfigmapVolumeSpec(instance),
+			Volumes:                       utilGenerateConfigmapVolumeSpec(instance),
 			TerminationGracePeriodSeconds: &TerminationGracePeriodSeconds,
 		},
 	}
 	return podTemplate
 }
 
-func UtilGenerateConfigmapVolumeSpec(instance *redisv1alpha1.RedisClusterBackup) []corev1.Volume {
+func utilGenerateConfigmapVolumeSpec(instance *redisv1alpha1.RedisClusterBackup) []corev1.Volume {
 	executeMode := int32(0755)
 	configMapVolume := corev1.Volume{
 		Name: "configmap-volume",

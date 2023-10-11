@@ -71,7 +71,7 @@ func (r *RedisClusterBackupReconciler) reconcileUtilDeployment(reqLogger logr.Lo
 		}
 	}
 	// Validate CR Spec against the current deployment spec, call Update Deployment if there is any change
-	if validateCRcandDeploymentSpec(backup, dp, cluster) {
+	if validateUtilCRandDeploymentSpec(backup, dp, cluster) {
 		deployment := deployments.UtilNewDeploymentForCR(backup, cluster, deplName, secretName)
 		err = r.DeploymentController.UpdateDeployment(deployment)
 		if err != nil {
@@ -81,7 +81,7 @@ func (r *RedisClusterBackupReconciler) reconcileUtilDeployment(reqLogger logr.Lo
 	return nil
 }
 
-func validateCRcandDeploymentSpec(backup *redisv1alpha1.RedisClusterBackup, deployment *appsv1.Deployment, cluster *redisv1alpha1.DistributedRedisCluster) bool {
+func validateUtilCRandDeploymentSpec(backup *redisv1alpha1.RedisClusterBackup, deployment *appsv1.Deployment, cluster *redisv1alpha1.DistributedRedisCluster) bool {
 	//Currently, we are comparing only image in CR vs actual Deployment Spec.
 	deploymentUpdate := false
 	masterSize := cluster.Spec.MasterSize
