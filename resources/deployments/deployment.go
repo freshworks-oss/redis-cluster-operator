@@ -107,6 +107,10 @@ func utilGeneratePodTemplate(instance *redisv1alpha1.RedisClusterBackup, cluster
 							Name:  "S3_BUCKET",
 							Value: instance.Spec.UtilSpec.S3Bucket,
 						},
+						{
+							Name:  "CLUSTER_NAMESPACE",
+							Value: instance.ObjectMeta.Namespace,
+						},
 					},
 					VolumeMounts: []corev1.VolumeMount{
 						{

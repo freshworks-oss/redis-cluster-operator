@@ -59,7 +59,6 @@ spec:
                 - image
                 - replicas
                 - s3Bucket
-                - startupCommand
                 - utilConfig
                 type: object
             required:

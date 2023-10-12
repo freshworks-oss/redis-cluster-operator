@@ -2,31 +2,33 @@
 apiVersion: redis.kun/v1alpha1
 kind: RedisClusterBackup
 metadata:
-  name: example-redisclusterbackup
+  name: distributedrediscluster-test-cluster-1
+  namespace: test-cluster-1
   annotations:
     redis.kun/scope: cluster-scoped
 spec:
-  redisClusterName: example-distributedrediscluster
+  redisClusterName: distributedrediscluster-test-cluster-1
   utilSpec:
-    image: docker.io/sasidharan/redisclusterutil:v11
-    startupCommand: "/usr/local/bin/redisUtil"
-    s3Bucket: "test"
+    image: sasidharangopal463/redisclusterutil:v8
+    s3Bucket: "redis-logs-bucket-staging-us-east-1"
     utilConfig:  "test-config"
-    imagePullPolicy: "Never"
+    startupCommand: "/usr/local/bin/redisUtil"
+    imagePullPolicy: "Always"
     replicas: 1
 ---
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: test-config
+  namespace: test-cluster-1
 data:
   backupschedule.yaml: |
     backupEnabled: true
-    logEnabled: false
-    backupInterval: 3m
+    logEnabled: true
+    backupInterval: 59m
+    logInterval: 1
     s3retry: 6
     backupretry: 6
-    logInterval: 30
     termCheckIteration: -1
     termCheckInterval: 5
   
