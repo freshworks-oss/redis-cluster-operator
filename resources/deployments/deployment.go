@@ -27,6 +27,10 @@ func utilGenerateDeploymentSpec(instance *redisv1alpha1.RedisClusterBackup, clus
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: instance.Namespace,
 			Name:      dpName,
+			Labels: map[string]string{
+				"app":       instance.Spec.RedisClusterName,
+				"container": utilContainerName,
+			},
 		},
 		Spec: appsv1.DeploymentSpec{
 			Replicas: &replicas,
@@ -56,6 +60,11 @@ func utilGeneratePodTemplate(instance *redisv1alpha1.RedisClusterBackup, cluster
 				"app":       instance.Spec.RedisClusterName,
 				"container": utilContainerName,
 			},
+			Annotations: map[string]string{
+				"0.prometheus.io/path":   "/metrics",
+				"0.prometheus.io/port":   "9999",
+				"0.prometheus.io/scrape": "true",
+			},
 		},
 		Spec: corev1.PodSpec{
 			Containers: []corev1.Container{
@@ -64,6 +73,12 @@ func utilGeneratePodTemplate(instance *redisv1alpha1.RedisClusterBackup, cluster
 					Image:           instance.Spec.UtilSpec.Image,
 					ImagePullPolicy: imagePullPolicy,
 					Command:         []string{instance.Spec.UtilSpec.StartUpCommand},
+					Ports: []corev1.ContainerPort{
+						{
+							Name:          "metrics-0",
+							ContainerPort: 9999,
+						},
+					},
 					Env: []corev1.EnvVar{
 						{
 							Name: "REDIS_USER", // Change this to the desired environment variable name
