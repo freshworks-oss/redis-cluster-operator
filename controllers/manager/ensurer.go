@@ -18,7 +18,7 @@ import (
 )
 
 type IEnsureResource interface {
-	EnsureRedisStatefulsets(cluster *redisv1alpha1.DistributedRedisCluster, labels map[string]string) (bool, error)
+	EnsureRedisStatefulsets(cluster *redisv1alpha1.DistributedRedisCluster, labels map[string]string) error
 	EnsureRedisHeadLessSvcs(cluster *redisv1alpha1.DistributedRedisCluster, labels map[string]string) error
 	EnsureRedisSvc(cluster *redisv1alpha1.DistributedRedisCluster, labels map[string]string) error
 	EnsureRedisConfigMap(cluster *redisv1alpha1.DistributedRedisCluster, labels map[string]string) (error, bool)
@@ -48,20 +48,17 @@ func NewEnsureResource(client client.Client, logger logr.Logger) IEnsureResource
 	}
 }
 
-func (r *realEnsureResource) EnsureRedisStatefulsets(cluster *redisv1alpha1.DistributedRedisCluster, labels map[string]string) (bool, error) {
-	updated := false
+func (r *realEnsureResource) EnsureRedisStatefulsets(cluster *redisv1alpha1.DistributedRedisCluster, labels map[string]string) error {
 	for i := 0; i < int(cluster.Spec.MasterSize); i++ {
 		name := statefulsets.ClusterStatefulSetName(cluster.Name, i)
 		svcName := statefulsets.ClusterHeadlessSvcName(cluster.Spec.ServiceName, i)
 		// assign label
 		labels[redisv1alpha1.StatefulSetLabel] = name
-		if stsUpdated, err := r.ensureRedisStatefulset(cluster, name, svcName, labels); err != nil {
-			return false, err
-		} else if stsUpdated {
-			updated = stsUpdated
+		if _, err := r.ensureRedisStatefulset(cluster, name, svcName, labels); err != nil {
+			return err
 		}
 	}
-	return updated, nil
+	return nil
 }
 
 func (r *realEnsureResource) ensureRedisStatefulset(cluster *redisv1alpha1.DistributedRedisCluster, ssName, svcName string,

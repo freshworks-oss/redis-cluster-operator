@@ -45,8 +45,20 @@ const (
 	ClusterStatusRebalancing ClusterStatus = "Rebalancing"
 	// ClusterStatusRollingUpdate ClusterStatus RollingUpdate
 	ClusterStatusRollingUpdate ClusterStatus = "RollingUpdate"
+	// ClusterStatusOnDelete ClusterStatus OnDelete
+	ClusterStatusOnDelete ClusterStatus = "OnDelete"
 	// ClusterStatusResetPassword ClusterStatus ResetPassword
 	ClusterStatusResetPassword ClusterStatus = "ResetPassword"
+)
+
+// Redis Status Redis server status
+type RedisStatus string
+
+const (
+	// RedisSyncing Redis server syncing in in progress with master
+	RedisSyncing           RedisStatus = "master_sync_in_progress:1"
+	RedisMasterSillPending RedisStatus = "master_host:127.0.0.1"
+	RedisLinkUp            RedisStatus = "master_link_status:up"
 )
 
 type AclStatus string

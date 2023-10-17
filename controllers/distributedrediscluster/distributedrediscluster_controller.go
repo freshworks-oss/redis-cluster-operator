@@ -78,6 +78,7 @@ type DistributedRedisClusterReconciler struct {
 	PdbController         k8sutil.IPodDisruptionBudgetControl
 	PvcController         k8sutil.IPvcControl
 	CrController          k8sutil.ICustomResource
+	PodController         k8sutil.IPodControl
 }
 
 //+kubebuilder:rbac:groups=redis.kun,resources=distributedredisclusters,verbs=get;list;watch;create;update;patch;delete
@@ -361,6 +362,19 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 	newStatus := buildClusterStatus(newClusterInfos, syncCtx.pods, instance, reqLogger)
 	SetClusterOK(newStatus, "OK")
 	r.updateClusterIfNeed(instance, newStatus, reqLogger)
+
+	requeue, err = r.checkandUpdatePods(admin, syncCtx, context)
+	if err != nil {
+		newStatus := instance.Status.DeepCopy()
+		SetClusterFailed(newStatus, err.Error())
+		r.updateClusterIfNeed(instance, newStatus, reqLogger)
+		return reconcile.Result{}, err
+	}
+
+	if requeue {
+		return reconcile.Result{RequeueAfter: 5 * time.Second}, nil
+	}
+
 	return reconcile.Result{RequeueAfter: time.Duration(reconcileTime) * time.Second}, nil
 }
 

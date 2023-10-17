@@ -3,10 +3,12 @@ package distributedrediscluster
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/go-logr/logr"
+	v1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 
 	redisv1alpha1 "github.com/dinesh-murugiah/rediscluster-operator/api/v1alpha1"
@@ -52,23 +54,9 @@ func (r *DistributedRedisClusterReconciler) ensureCluster(ctx *syncContext) erro
 		}
 	}
 
-	if updated, err := r.Ensurer.EnsureRedisStatefulsets(cluster, labels); err != nil {
+	if err := r.Ensurer.EnsureRedisStatefulsets(cluster, labels); err != nil {
 		ctx.reqLogger.Error(err, "EnsureRedisStatefulSets")
 		return Kubernetes.Wrap(err, "EnsureRedisStatefulSets")
-	} else if updated {
-		// update cluster status = RollingUpdate immediately when cluster's image or resource or password changed
-		SetClusterUpdating(&cluster.Status, "cluster spec updated")
-		r.CrController.UpdateCRStatus(cluster)
-		waiter := &waitStatefulSetUpdating{
-			name:                  "waitStatefulSetUpdating",
-			timeout:               30 * time.Second * time.Duration(cluster.Spec.ClusterReplicas+2),
-			tick:                  5 * time.Second,
-			statefulSetController: r.StatefulSetController,
-			cluster:               cluster,
-		}
-		if err := waiting(waiter, ctx.reqLogger); err != nil {
-			return err
-		}
 	}
 	if err := r.Ensurer.EnsureRedisHeadLessSvcs(cluster, labels); err != nil {
 		return Kubernetes.Wrap(err, "EnsureRedisHeadLessSvcs")
@@ -376,4 +364,144 @@ func (r *DistributedRedisClusterReconciler) checkandUpdatePassword(admin redisut
 		*/
 	}
 	return newsecretver, nil
+}
+
+func (r *DistributedRedisClusterReconciler) checkandUpdatePods(admin redisutil.IAdmin, ctx *syncContext, context context.Context) (bool, error) {
+	var ok, updated bool = false, false
+	master_ips, slave_ips, err := r.getRedisIPsByRole(admin, ctx.reqLogger)
+	if err != nil {
+		return false, err
+	}
+	ssUR, err := r.getStatefulsetUpdatedRevision(ctx)
+	for _, slave_ip := range slave_ips {
+		ok, err = r.IsSlaveReady(slave_ip, admin, context)
+		if err != nil {
+			return false, err
+		}
+		if ok {
+			updated, err = r.updatePodIfNeeded(slave_ip, ctx.pods, ssUR, ctx.reqLogger, ctx.cluster.Namespace)
+			if err != nil {
+				return false, err
+			}
+		}
+	}
+	if updated {
+		waiter := &waitStatefulSetUpdating{
+			name:                  "waitStatefulSetUpdating",
+			timeout:               30 * time.Second * time.Duration(ctx.cluster.Spec.ClusterReplicas),
+			tick:                  5 * time.Second,
+			statefulSetController: r.StatefulSetController,
+			cluster:               ctx.cluster,
+		}
+		if err = waiting(waiter, ctx.reqLogger); err != nil {
+			return false, err
+		}
+		ctx.reqLogger.Info("Slaves are updated")
+		return true, err
+	}
+	if !updated && !ok {
+		ctx.reqLogger.Info("Slaves are not ready")
+		return true, err
+	}
+	if ok {
+		for _, master_ip := range master_ips {
+			updated, err = r.updatePodIfNeeded(master_ip, ctx.pods, ssUR, ctx.reqLogger, ctx.cluster.Namespace)
+			if updated {
+				waiter := &waitStatefulSetUpdating{
+					name:                  "waitStatefulSetUpdating",
+					timeout:               30 * time.Second * time.Duration(ctx.cluster.Spec.ClusterReplicas),
+					tick:                  5 * time.Second,
+					statefulSetController: r.StatefulSetController,
+					cluster:               ctx.cluster,
+				}
+				if err := waiting(waiter, ctx.reqLogger); err != nil {
+					ctx.reqLogger.Info("Im inside wait loop error")
+					return false, err
+				}
+				ctx.reqLogger.Info("Master is updated")
+				return true, err
+			}
+		}
+	}
+	return false, err
+}
+
+func (r *DistributedRedisClusterReconciler) IsSlaveReady(ip string, admin redisutil.IAdmin, ctx context.Context) (bool, error) {
+	c, err := admin.Connections().Get(ctx, ip)
+	if err != nil {
+		return false, err
+	}
+	info, err := c.Info(context.TODO(), "replication").Result()
+	if err != nil {
+		return false, err
+	}
+
+	ok := !strings.Contains(info, string(redisv1alpha1.RedisSyncing)) &&
+		!strings.Contains(info, string(redisv1alpha1.RedisMasterSillPending)) &&
+		strings.Contains(info, string(redisv1alpha1.RedisLinkUp))
+	return ok, nil
+}
+
+func (r *DistributedRedisClusterReconciler) updatePodIfNeeded(ip string, pods []*corev1.Pod, revision_hashes []string, log logr.Logger, namespace string) (bool, error) {
+	if index := strings.Index(ip, ":"); index > 0 {
+		ip = ip[:index]
+	}
+	for _, pod := range pods {
+		if ip == pod.Status.PodIP {
+			pod_name := strings.Split(pod.Name, "-")
+			stsIdentifier, err := strconv.Atoi(pod_name[len(pod_name)-2])
+			if err != nil {
+				return false, fmt.Errorf("unable to convert pod hash identifier to int")
+			}
+			pod_hash := strings.Split((pod.ObjectMeta.Labels[v1.ControllerRevisionHashLabelKey]), "-")
+			if len(pod_hash) < 3 {
+				return false, fmt.Errorf("pod hash is invalid")
+			}
+			if revision_hashes[stsIdentifier] != pod_hash[len(pod_hash)-1] {
+				client := k8sutil.NewPodController(r.Client)
+				err := client.DeletePodByName(namespace, pod.Name)
+				if err != nil {
+					return false, err
+				}
+				return true, err
+			} else {
+				return false, err
+			}
+		}
+	}
+	return false, fmt.Errorf("pod not found")
+}
+
+func (r *DistributedRedisClusterReconciler) getRedisIPsByRole(admin redisutil.IAdmin, log logr.Logger) ([]string, []string, error) {
+	var masterNodes, slaveNodes []string
+	for addr, c := range admin.Connections().GetAll() {
+		info, err := c.Info(context.TODO(), "Replication").Result()
+		if err != nil {
+			return nil, nil, err
+		}
+		if strings.Contains(info, "role:master") {
+			masterNodes = append(masterNodes, addr)
+		} else if strings.Contains(info, "role:slave") {
+			slaveNodes = append(slaveNodes, addr)
+		}
+	}
+	return masterNodes, slaveNodes, nil
+}
+
+func (r *DistributedRedisClusterReconciler) getStatefulsetUpdatedRevision(ctx *syncContext) ([]string, error) {
+	cluster := ctx.cluster
+	masterNum := int(cluster.Spec.MasterSize)
+	var hashes []string
+	for i := 0; i < masterNum; i++ {
+		stsName := statefulsets.ClusterStatefulSetName(cluster.Name, i)
+		sts, err := r.StatefulSetController.GetStatefulSet(cluster.Namespace, stsName)
+		if err != nil {
+			return hashes, Kubernetes.Wrap(err, "GetStatefulSet")
+		}
+		cssUR := strings.Split(sts.Status.UpdateRevision, "-")
+		if len(cssUR) > 0 {
+			hashes = append(hashes, cssUR[len(cssUR)-1])
+		}
+	}
+	return hashes, nil
 }

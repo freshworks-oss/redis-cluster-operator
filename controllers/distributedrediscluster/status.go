@@ -34,7 +34,7 @@ func SetClusterScaling(status *redisv1alpha1.DistributedRedisClusterStatus, reas
 }
 
 func SetClusterUpdating(status *redisv1alpha1.DistributedRedisClusterStatus, reason string) {
-	status.Status = redisv1alpha1.ClusterStatusRollingUpdate
+	status.Status = redisv1alpha1.ClusterStatusOnDelete
 	status.Reason = reason
 }
 
