@@ -2,16 +2,34 @@
 apiVersion: redis.kun/v1alpha1
 kind: RedisClusterBackup
 metadata:
-  name: example-redisclusterbackup
+  name: distributedrediscluster-test-cluster-1
+  namespace: test-cluster-1
   annotations:
     redis.kun/scope: cluster-scoped
 spec:
-  image: operator/redis-tools:5.0.4
-  # on same namespace
-  redisClusterName: example-distributedrediscluster
-  local:
-    mountPath: /bkp
-    emptyDir:
-      sizeLimit: 1Gi
-  backupCronEnable: true
-  backupSchedule: "*/3 * * * *"
+  redisClusterName: distributedrediscluster-test-cluster-1
+  utilSpec:
+    image: sasidharangopal463/redisclusterutil:v8
+    s3Bucket: "redis-logs-bucket-staging-us-east-1"
+    utilConfig:  "test-config"
+    startupCommand: "/usr/local/bin/redisUtil"
+    imagePullPolicy: "Always"
+    replicas: 1
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: test-config
+  namespace: test-cluster-1
+data:
+  backupschedule.yaml: |
+    backupEnabled: true
+    logEnabled: true
+    backupInterval: 59m
+    logInterval: 1
+    s3retry: 6
+    backupretry: 6
+    termCheckIteration: -1
+    termCheckInterval: 5
+  
+

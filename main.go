@@ -175,6 +175,9 @@ func main() {
 		StatefulSetController: k8sutil.NewStatefulSetController(redisclusterbackupclient),
 		DirectClient:          redisclusterbackupdrclient,
 		JobController:         k8sutil.NewJobController(redisclusterbackupdrclient),
+		DeploymentController:  k8sutil.NewDeploymentController(redisclusterbackupdrclient),
+		ConfigmapController:   k8sutil.NewConfigMapController(redisclusterbackupdrclient),
+		SecretController:      k8sutil.NewSecretController(redisclusterbackupdrclient),
 		Recorder:              mgr.GetEventRecorderFor("redis-cluster-operator-backup"),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "RedisClusterBackup")
