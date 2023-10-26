@@ -9,7 +9,7 @@ metadata:
 spec:
   redisClusterName: distributedrediscluster-test-cluster-1
   utilSpec:
-    image: sasidharangopal463/redisclusterutil:v8
+    image: sasidharangopal463/redisclusterutil:final
     s3Bucket: "redis-logs-bucket-staging-us-east-1"
     utilConfig:  "test-config"
     startupCommand: "/usr/local/bin/redisUtil"
