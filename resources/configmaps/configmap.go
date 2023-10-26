@@ -25,8 +25,6 @@ const (
 	RedisConfKey = "redis.conf"
 
 	Aclfile = "users.acl"
-
-	Utilfile = "backupschedule.yaml"
 )
 
 var ErrBadInput = errors.New("admin-secret-missing")
@@ -110,41 +108,6 @@ func NewACLConfigMap(conflog logr.Logger, client client.Client, cluster *redisv1
 		},
 	}, secretversion, nil, false
 
-}
-
-func Utilconfigmap(cluster *redisv1alpha1.DistributedRedisCluster, utilcmName string) *corev1.ConfigMap {
-
-	var buffer bytes.Buffer
-	buffer.WriteString("backupEnabled: true")
-	buffer.WriteString("\n")
-	buffer.WriteString("logEnabled: true")
-	buffer.WriteString("\n")
-	buffer.WriteString("backupInterval: 59m")
-	buffer.WriteString("\n")
-	buffer.WriteString("logInterval: 1")
-	buffer.WriteString("\n")
-	buffer.WriteString("s3retry: 6")
-	buffer.WriteString("\n")
-	buffer.WriteString("backupretry: 6")
-	buffer.WriteString("\n")
-	buffer.WriteString("termCheckIteration: -1")
-	buffer.WriteString("\n")
-	buffer.WriteString("termCheckInterval: 5")
-	buffer.WriteString("\n")
-	buffer.WriteString("compressEnabled: true")
-	buffer.WriteString("\n")
-	buffer.WriteString("compressLevel: -1")
-
-	return &corev1.ConfigMap{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:            utilcmName,
-			Namespace:       cluster.Namespace,
-			OwnerReferences: redisv1alpha1.DefaultOwnerReferences(cluster),
-		},
-		Data: map[string]string{
-			Utilfile: buffer.String(),
-		},
-	}
 }
 
 func Getsecretversions(conflog logr.Logger, client client.Client, cluster *redisv1alpha1.DistributedRedisCluster) (map[string]string, error) {
