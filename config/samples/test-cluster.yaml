@@ -51,8 +51,23 @@ stringData:
   password: samuel@123
   username: samuel
 ---
-
-
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: util-config
+data:
+  backupschedule.yaml: |
+    backupEnabled: true
+    logEnabled: true
+    backupInterval: 59m
+    logInterval: 1
+    s3retry: 6
+    backupretry: 6
+    termCheckIteration: -1
+    termCheckInterval: 5
+    compressEnabled: true
+    compressLevel: -1
+---
 apiVersion: redis.kun/v1alpha1
 kind: DistributedRedisCluster
 metadata:
@@ -79,6 +94,7 @@ spec:
     notify-keyspace-events: ""
   defaultUser:
     name: dbaas-redis--test-cluster--test-cluster-1--default
+  utilConfig: "util-config"
   image: 582763096612.dkr.ecr.us-east-1.amazonaws.com/dbaas-redis/redis:6.2.13-alpine
   initContainers:
   - name: initialize
@@ -93,7 +109,9 @@ spec:
       value: "redis-logs-bucket-staging-us-east-1"
     volumeMounts:
     - mountPath: /config
-      name: configmap-volume
+      name: utilconf
+    - mountPath: /data
+      name: redis-data
   masterSize: 3
   monitor:
     image: 582763096612.dkr.ecr.us-east-1.amazonaws.com/dbaas-redis/redis-exporter:v1.45.0

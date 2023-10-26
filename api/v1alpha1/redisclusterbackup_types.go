@@ -42,7 +42,6 @@ type UtilSpec struct {
 	Image           string `json:"image"`
 	StartUpCommand  string `json:"startupCommand,omitempty"`
 	S3Bucket        string `json:"s3Bucket"`
-	UtilConfig      string `json:"utilConfig"`
 	ImagePullPolicy string `json:"imagePullPolicy,omitempty"`
 	Replicas        int32  `json:"replicas"`
 }

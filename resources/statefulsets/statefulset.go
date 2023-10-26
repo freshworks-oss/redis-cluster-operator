@@ -28,8 +28,9 @@ const (
 
 	graceTime = 30
 
-	configMapVolumeName = "conf"
-	aclConfigMapVolName = "acl"
+	configMapVolumeName  = "conf"
+	aclConfigMapVolName  = "acl"
+	utilConfigMapVolName = "utilconf"
 )
 
 // NewStatefulSetForCR creates a new StatefulSet for the given Cluster.
@@ -359,7 +360,7 @@ func redisExporterContainer(cluster *redisv1alpha1.DistributedRedisCluster, pass
 
 func redisRestoreInitContainer(cluster *redisv1alpha1.DistributedRedisCluster, password *corev1.EnvVar) (corev1.Container, error) {
 	//Dinesh Todo This flow Needs FIX ####, commented out below to fix status fileds
-	err := fmt.Errorf("Restore Not supported yet")
+	err := fmt.Errorf("restore Not supported yet")
 	return corev1.Container{}, err
 	/*
 		backup := cluster.Status.Restore.Backup
@@ -485,6 +486,10 @@ func volumeMounts() []corev1.VolumeMount {
 			Name:      aclConfigMapVolName,
 			MountPath: "/acl",
 		},
+		{
+			Name:      utilConfigMapVolName,
+			MountPath: "/config",
+		},
 	}
 }
 
@@ -526,6 +531,17 @@ func redisVolumes(cluster *redisv1alpha1.DistributedRedisCluster) []corev1.Volum
 				ConfigMap: &corev1.ConfigMapVolumeSource{
 					LocalObjectReference: corev1.LocalObjectReference{
 						Name: configmaps.AclConfigMapName(cluster.Name),
+					},
+					DefaultMode: &executeMode,
+				},
+			},
+		},
+		{
+			Name: utilConfigMapVolName,
+			VolumeSource: corev1.VolumeSource{
+				ConfigMap: &corev1.ConfigMapVolumeSource{
+					LocalObjectReference: corev1.LocalObjectReference{
+						Name: cluster.Spec.UtilConfig,
 					},
 					DefaultMode: &executeMode,
 				},

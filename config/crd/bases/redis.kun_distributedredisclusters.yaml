@@ -3175,6 +3175,10 @@ spec:
                       type: string
                   type: object
                 type: array
+              utilConfig:
+                type: string
+            required:
+            - utilConfig
             type: object
           status:
             description: DistributedRedisClusterStatus defines the observed state
