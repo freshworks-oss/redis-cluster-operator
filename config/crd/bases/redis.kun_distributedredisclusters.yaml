@@ -3136,6 +3136,9 @@ spec:
                 - size
                 - type
                 type: object
+              terminationGracePeriod:
+                format: int64
+                type: integer
               toleRations:
                 items:
                   description: The pod this Toleration is attached to tolerates any

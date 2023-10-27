@@ -46,6 +46,12 @@ func NewStatefulSetForCR(cluster *redisv1alpha1.DistributedRedisCluster, ssName,
 	} else {
 		password = redisPassword(cluster)
 	}
+	terminationGracePeriodSeconds := cluster.Spec.TerminationGracePeriod
+	if *cluster.Spec.TerminationGracePeriod > int64(0) {
+		terminationGracePeriodSeconds = cluster.Spec.TerminationGracePeriod
+	} else {
+		*terminationGracePeriodSeconds = int64(30) //take default if not provided
+	}
 
 	ss := &appsv1.StatefulSet{
 		ObjectMeta: metav1.ObjectMeta{
@@ -77,7 +83,8 @@ func NewStatefulSetForCR(cluster *redisv1alpha1.DistributedRedisCluster, ssName,
 					Containers: []corev1.Container{
 						redisServerContainer(cluster, password),
 					},
-					Volumes: volumes,
+					Volumes:                       volumes,
+					TerminationGracePeriodSeconds: terminationGracePeriodSeconds,
 				},
 			},
 		},

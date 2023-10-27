@@ -57,6 +57,7 @@ type DistributedRedisClusterSpec struct {
 	UtilConfig               string                        `json:"utilConfig"`
 	Monitor                  *AgentSpec                    `json:"monitor,omitempty"`
 	Restore                  *RestoreSpec                  `json:"restoreContainer,omitempty"`
+	TerminationGracePeriod   *int64                        `json:"terminationGracePeriod,omitempty"`
 }
 type AgentSpec struct {
 	Image      string          `json:"image,omitempty"`

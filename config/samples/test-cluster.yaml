@@ -113,6 +113,7 @@ spec:
     - mountPath: /data
       name: redis-data
   masterSize: 3
+  terminationGracePeriod: 100
   monitor:
     image: 582763096612.dkr.ecr.us-east-1.amazonaws.com/dbaas-redis/redis-exporter:v1.45.0
     prometheus:
