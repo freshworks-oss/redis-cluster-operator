@@ -24,7 +24,6 @@ stringData:
   password: testpwd@123
   username: default
 ---
-
 apiVersion: v1
 kind: Secret
 metadata:
@@ -52,6 +51,19 @@ stringData:
   username: samuel
 ---
 apiVersion: v1
+kind: Secret
+metadata:
+  annotations:
+    # if your operator run as cluster-scoped, add this annotations
+    redis.kun/scope: cluster-scoped
+  name: dbaas-redis--dbaas-redis--test-cluster--pinger
+type: Opaque
+stringData:
+  acl: ~opqrstuvwredability &* -@all +ping +info +incr
+  password: pingpass
+  username: pinger
+---
+apiVersion: v1
 kind: ConfigMap
 metadata:
   name: util-config
@@ -68,6 +80,24 @@ data:
     compressEnabled: true
     compressLevel: -1
 ---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: liveness-data
+data:
+  liveness.sh: |
+    #!/bin/sh
+    redis-cli -h $HOSTNAME --user pinger --pass pingpass --no-auth-warning ping | grep -q PONG
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: readiness-data
+data:
+  readiness.sh: |
+    #!/bin/sh
+    redis-cli -h $HOSTNAME --user pinger --pass pingpass --no-auth-warning ping | grep -q PONG
+---
 apiVersion: redis.kun/v1alpha1
 kind: DistributedRedisCluster
 metadata:
@@ -78,6 +108,7 @@ metadata:
 spec:
   additionalUsers:
   - name: dbaas-redis--test-cluster--test-cluster-1--dinesh
+  - name: dbaas-redis--dbaas-redis--test-cluster--pinger
   adminUser:
     name: dbaas-redis--test-cluster--test-cluster-1--admin
   annotations:
@@ -114,6 +145,28 @@ spec:
       name: redis-data
   masterSize: 3
   terminationGracePeriod: 100
+  customLivenessProbe:
+    exec:
+      command:
+      - /bin/sh
+      - -c
+      - /liveprobe/liveness.sh
+    failureThreshold: 60
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    successThreshold: 1
+    timeoutSeconds: 5
+  readinessProbe:
+    exec:
+      command:
+      - /bin/sh
+      - -c
+      - /readyprobe/readiness.sh
+    failureThreshold: 3
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    successThreshold: 1
+    timeoutSeconds: 5
   monitor:
     image: 582763096612.dkr.ecr.us-east-1.amazonaws.com/dbaas-redis/redis-exporter:v1.45.0
     prometheus:
