@@ -54,6 +54,7 @@ type DistributedRedisClusterSpec struct {
 	AdminSecret              *corev1.LocalObjectReference  `json:"adminUser,omitempty"`
 	DefaultSecret            *corev1.LocalObjectReference  `json:"defaultUser,omitempty"`
 	AdditionalSecret         []corev1.LocalObjectReference `json:"additionalUsers,omitempty"`
+	UtilConfig               string                        `json:"utilConfig"`
 	Monitor                  *AgentSpec                    `json:"monitor,omitempty"`
 	Restore                  *RestoreSpec                  `json:"restoreContainer,omitempty"`
 }

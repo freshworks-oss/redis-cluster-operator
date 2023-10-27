@@ -214,7 +214,7 @@ func (r *realEnsureResource) EnsureRedisConfigMap(cluster *redisv1alpha1.Distrib
 	aclcmName := configmaps.AclConfigMapName(cluster.Name)
 	_, err2 := r.configMapClient.GetConfigMap(cluster.Namespace, aclcmName)
 	if err2 != nil {
-		if errors.IsNotFound(err) {
+		if errors.IsNotFound(err2) {
 			r.logger.WithValues("ConfigMap.Namespace", cluster.Namespace, "ConfigMap.Name", cmName).
 				Info("creating a new ACL configMap")
 			aclcm, _, conferr, abortcr := configmaps.NewACLConfigMap(r.logger, r.client, cluster, labels)

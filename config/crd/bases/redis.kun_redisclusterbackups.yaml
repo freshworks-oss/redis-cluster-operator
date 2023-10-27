@@ -53,13 +53,10 @@ spec:
                     type: string
                   startupCommand:
                     type: string
-                  utilConfig:
-                    type: string
                 required:
                 - image
                 - replicas
                 - s3Bucket
-                - utilConfig
                 type: object
             required:
             - redisClusterName

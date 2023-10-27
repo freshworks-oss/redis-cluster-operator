@@ -34,13 +34,6 @@ func (r *RedisClusterBackupReconciler) reconcileUtilDeployment(reqLogger logr.Lo
 		return nil
 	}
 
-	// Check if the ConfigMap Exists
-	_, err := r.ConfigmapController.GetConfigMap(backup.Namespace, backup.Spec.UtilSpec.UtilConfig)
-	if err != nil {
-		reqLogger.Error(err, "Configmap for Util is missing", "tenant", backup.Spec.RedisClusterName)
-		return nil
-	}
-
 	if err := r.ValidateBackup(backup, reqLogger); err != nil {
 		reqLogger.Error(err, "Backup Validation Failed: Either Problem with CR or cluster not yet ready for backup - Retrying")
 		r.Recorder.Event(

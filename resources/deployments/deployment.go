@@ -139,21 +139,21 @@ func utilGeneratePodTemplate(instance *redisv1alpha1.RedisClusterBackup, cluster
 					},
 				},
 			},
-			Volumes:                       utilGenerateConfigmapVolumeSpec(instance),
+			Volumes:                       utilGenerateConfigmapVolumeSpec(cluster),
 			TerminationGracePeriodSeconds: &TerminationGracePeriodSeconds,
 		},
 	}
 	return podTemplate
 }
 
-func utilGenerateConfigmapVolumeSpec(instance *redisv1alpha1.RedisClusterBackup) []corev1.Volume {
+func utilGenerateConfigmapVolumeSpec(cluster *redisv1alpha1.DistributedRedisCluster) []corev1.Volume {
 	executeMode := int32(0755)
 	configMapVolume := corev1.Volume{
 		Name: "configmap-volume",
 		VolumeSource: corev1.VolumeSource{
 			ConfigMap: &corev1.ConfigMapVolumeSource{
 				LocalObjectReference: corev1.LocalObjectReference{
-					Name: instance.Spec.UtilSpec.UtilConfig,
+					Name: cluster.Spec.UtilConfig,
 				},
 				DefaultMode: &executeMode,
 			},

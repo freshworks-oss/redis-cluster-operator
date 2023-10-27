@@ -4,7 +4,7 @@ metadata:
   annotations:
     # if your operator run as cluster-scoped, add this annotations
     redis.kun/scope: cluster-scoped
-  name: dbaas-redis--dbaas-redis--test-cluster--admin
+  name: dbaas-redis--test-cluster--test-cluster-1--admin
 type: Opaque
 stringData:
   acl: ~* +@all
@@ -17,7 +17,7 @@ metadata:
   annotations:
     # if your operator run as cluster-scoped, add this annotations
     redis.kun/scope: cluster-scoped
-  name: dbaas-redis--dbaas-redis--test-cluster--default
+  name: dbaas-redis--test-cluster--test-cluster-1--default
 type: Opaque
 stringData:
   acl: ~* +@all
@@ -31,7 +31,7 @@ metadata:
   annotations:
     # if your operator run as cluster-scoped, add this annotations
     redis.kun/scope: cluster-scoped
-  name: dbaas-redis--dbaas-redis--test-cluster--dinesh
+  name: dbaas-redis--test-cluster--test-cluster-1--dinesh
 type: Opaque
 stringData:
   acl: ~* +@all
@@ -51,47 +51,88 @@ stringData:
   password: samuel@123
   username: samuel
 ---
-
-
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: util-config
+data:
+  backupschedule.yaml: |
+    backupEnabled: true
+    logEnabled: true
+    backupInterval: 59m
+    logInterval: 1
+    s3retry: 6
+    backupretry: 6
+    termCheckIteration: -1
+    termCheckInterval: 5
+    compressEnabled: true
+    compressLevel: -1
+---
 apiVersion: redis.kun/v1alpha1
 kind: DistributedRedisCluster
 metadata:
   annotations:
     # if your operator run as cluster-scoped, add this annotations
     redis.kun/scope: cluster-scoped
-  name: example-distributedrediscluster
+  name: distributedrediscluster-test-cluster-1
 spec:
+  additionalUsers:
+  - name: dbaas-redis--test-cluster--test-cluster-1--dinesh
+  adminUser:
+    name: dbaas-redis--test-cluster--test-cluster-1--admin
+  annotations:
+    prometheus.io/path: /metrics
+    prometheus.io/port: "9100"
+    prometheus.io/scrape: "true"
+  clusterReplicas: 1
+  config:
+    activerehashing: "yes"
+    appendonly: "no"
+    maxmemory: "734003200"
+    maxmemory-policy: noeviction
+    maxmemory-samples: "30"
+    notify-keyspace-events: ""
+  defaultUser:
+    name: dbaas-redis--test-cluster--test-cluster-1--default
+  utilConfig: "util-config"
+  image: 582763096612.dkr.ecr.us-east-1.amazonaws.com/dbaas-redis/redis:6.2.13-alpine
   initContainers:
   - name: initialize
-    image: hello-world:latest
-    imagePullPolicy: IfNotPresent
+    image: sasidharangopal463/restoreclusterutil:v2
+    imagePullPolicy: Always
+    command:
+    - "/usr/local/bin/restoreclusterutil"
+    env:
+    - name: "CLUSTER_NAME"
+      value: "distributedrediscluster-test-cluster-1"
+    - name: "S3_BUCKET"
+      value: "redis-logs-bucket-staging-us-east-1"
+    volumeMounts:
+    - mountPath: /config
+      name: utilconf
+    - mountPath: /data
+      name: redis-data
   masterSize: 3
-  clusterReplicas: 1
   monitor:
-    image: oliver006/redis_exporter
+    image: 582763096612.dkr.ecr.us-east-1.amazonaws.com/dbaas-redis/redis-exporter:v1.45.0
+    prometheus:
+      port: 9100
     resources:
-      requests:
-        cpu: 300m
-        memory: 600Mi
       limits:
         cpu: 400m
-        memory: 1000Mi
-  adminUser:
-    name: dbaas-redis--dbaas-redis--test-cluster--admin
-  defaultUser:
-    name: dbaas-redis--dbaas-redis--test-cluster--default
-  additionalUsers:
-    - name: dbaas-redis--dbaas-redis--test-cluster--dinesh
-    - name: dbaas-redis--dbaas-redis--test-cluster--samuel
-  image: redis:6.2.12
+        memory: 300Mi
+      requests:
+        cpu: 300m
+        memory: 200Mi
   resources:
     limits:
-      cpu: 400m
-      memory: 1000Mi
+      cpu: 200m
+      memory: 500Mi
     requests:
-      cpu: 300m
-      memory: 600Mi
+      cpu: 100m
+      memory: 300Mi
+  serviceName: distributedrediscluster-test-cluster-1
   storage:
-    type: ephemeral
-    size: 1Gi
     class: ""
+    size: 1Gi
+    type: ephemeral
