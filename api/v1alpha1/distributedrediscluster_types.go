@@ -58,6 +58,8 @@ type DistributedRedisClusterSpec struct {
 	Monitor                  *AgentSpec                    `json:"monitor,omitempty"`
 	Restore                  *RestoreSpec                  `json:"restoreContainer,omitempty"`
 	TerminationGracePeriod   *int64                        `json:"terminationGracePeriod,omitempty"`
+	CustomLivenessProbe      corev1.Probe                  `json:"customLivenessProbe"`
+	ReadinessProbe           corev1.Probe                  `json:"readinessProbe"`
 }
 type AgentSpec struct {
 	Image      string          `json:"image,omitempty"`
