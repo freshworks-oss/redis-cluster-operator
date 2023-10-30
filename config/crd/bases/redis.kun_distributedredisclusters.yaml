@@ -4379,12 +4379,9 @@ spec:
                       type: string
                   type: object
                 type: array
-              utilConfig:
-                type: string
             required:
             - customLivenessProbe
             - readinessProbe
-            - utilConfig
             type: object
           status:
             description: DistributedRedisClusterStatus defines the observed state

@@ -55,11 +55,6 @@ type DistributedRedisClusterSpec struct {
 	AdminSecret              *corev1.LocalObjectReference  `json:"adminUser,omitempty"`
 	DefaultSecret            *corev1.LocalObjectReference  `json:"defaultUser,omitempty"`
 	AdditionalSecret         []corev1.LocalObjectReference `json:"additionalUsers,omitempty"`
-<<<<<<< Updated upstream
-	UtilConfig               string                        `json:"utilConfig"`
-	Monitor                  *AgentSpec                    `json:"monitor,omitempty"`
-=======
->>>>>>> Stashed changes
 	Restore                  *RestoreSpec                  `json:"restoreContainer,omitempty"`
 	TerminationGracePeriod   *int64                        `json:"terminationGracePeriod,omitempty"`
 	CustomLivenessProbe      corev1.Probe                  `json:"customLivenessProbe"`
