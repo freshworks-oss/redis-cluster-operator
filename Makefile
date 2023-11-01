@@ -71,8 +71,11 @@ BIN_DIR=bin/operator
 DEVREPO=$(REPO)
 
 
+
 BINARY_VERSION=v0.0.2-arm64
+BINARY_VERSION_DEV=v0.0.2-arm64-pratheep
 ECR_REPO=redis-cluster-operator
+ECR__DEV_REPO=redis-cluster-operator-dev
 ECR_URI=582763096612.dkr.ecr.us-east-1.amazonaws.com
 
 # Setting SHELL to bash allows bash commands to be executed by recipes.
@@ -142,7 +145,7 @@ run: manifests generate fmt vet ## Run a controller from your host.
 # More info: https://docs.docker.com/develop/develop-images/build_enhancements/
 .PHONY: docker-build-kind
 docker-build-kind:  ## Build docker image with the manager.
-	DOCKER_BUILDKIT=1 docker build --build-arg VERSION=$(VERSION) --build-arg GIT_SHA=$(GIT_SHA) -t $(DEVREPO):$(VERSION) . --load
+	DOCKER_BUILDKIT=1 docker build --build-arg VERSION=$(VERSION) --build-arg GIT_SHA=$(GIT_SHA) -t $(DEVREPO):$(VERSION) .
 	docker tag $(DEVREPO):$(VERSION) $(DEVREPO):latest
 
 DEPLOYPLATFORMS ?= linux/arm64
@@ -150,6 +153,19 @@ DEPLOYPLATFORMS ?= linux/arm64
 image-release:
 	aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin $(ECR_URI) 
 	docker buildx build --push --platform=$(DEPLOYPLATFORMS) --tag $(ECR_URI)/$(ECR_REPO):$(BINARY_VERSION) .
+
+.PHONY: build-tools
+build-tools:
+	bash hack/docker/redis-tools/make.sh build
+
+.PHONY: docker-push
+docker-push: ## Push docker image with the manager.
+	docker push ${IMG}
+
+.PHONY: image-release-dev
+image-release-dev:
+	aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin $(ECR_URI) 
+	docker buildx build --push --platform=$(DEPLOYPLATFORMS) --tag $(ECR_URI)/$(ECR__DEV_REPO):$(BINARY_VERSION_DEV) .
 
 .PHONY: build-tools
 build-tools:

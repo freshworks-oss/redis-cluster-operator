@@ -145,29 +145,29 @@ spec:
       name: redis-data
   masterSize: 3
   terminationGracePeriod: 100
-  customLivenessProbe:
-    exec:
-      command:
-      - /bin/sh
-      - -c
-      - /liveprobe/liveness.sh
-    failureThreshold: 60
-    initialDelaySeconds: 30
-    periodSeconds: 10
-    successThreshold: 1
-    timeoutSeconds: 5
-  readinessProbe:
-    exec:
-      command:
-      - /bin/sh
-      - -c
-      - /readyprobe/readiness.sh
-    failureThreshold: 3
-    initialDelaySeconds: 30
-    periodSeconds: 10
-    successThreshold: 1
-    timeoutSeconds: 5
-  monitor:
+  # customLivenessProbe:
+  #   exec:
+  #     command:
+  #     - /bin/sh
+  #     - -c
+  #     - /liveprobe/liveness.sh
+  #   failureThreshold: 60
+  #   initialDelaySeconds: 30
+  #   periodSeconds: 10
+  #   successThreshold: 1
+  #   timeoutSeconds: 5
+  # readinessProbe:
+  #   exec:
+  #     command:
+  #     - /bin/sh
+  #     - -c
+  #     - /readyprobe/readiness.sh
+  #   failureThreshold: 3
+  #   initialDelaySeconds: 30
+  #   periodSeconds: 10
+  #   successThreshold: 1
+  #   timeoutSeconds: 5
+  extraContainers:
     image: 582763096612.dkr.ecr.us-east-1.amazonaws.com/dbaas-redis/redis-exporter:v1.45.0
     prometheus:
       port: 9100
