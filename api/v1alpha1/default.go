@@ -45,32 +45,6 @@ func (in *DistributedRedisCluster) DefaultSpec(log logr.Logger) bool {
 		update = true
 	}
 
-	// mon := in.Spec.Monitor
-	// for _, spec := range mon {
-	// 	if mon != nil {
-	// 		if spec.Image == "" {
-	// 			spec.Image = defaultMonitorImage
-	// 			update = true
-	// 		}
-
-	// 		if spec.Prometheus == nil {
-	// 			spec.Prometheus = &PrometheusSpec{}
-	// 			update = true
-	// 		}
-	// 		if spec.Prometheus.Port == 0 {
-	// 			spec.Prometheus.Port = PrometheusExporterPortNumber
-	// 			update = true
-	// 		}
-	// 		if in.Spec.Annotations == nil {
-	// 			in.Spec.Annotations = make(map[string]string)
-	// 			update = true
-	// 		}
-
-	// 		in.Spec.Annotations["prometheus.io/scrape"] = "true"
-	// 		in.Spec.Annotations["prometheus.io/path"] = PrometheusExporterTelemetryPath
-	// 		in.Spec.Annotations["prometheus.io/port"] = fmt.Sprintf("%d", spec.Prometheus.Port)
-	// 	}
-	// }
 	return update
 }
 

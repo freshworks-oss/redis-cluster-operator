@@ -145,7 +145,7 @@ run: manifests generate fmt vet ## Run a controller from your host.
 # More info: https://docs.docker.com/develop/develop-images/build_enhancements/
 .PHONY: docker-build-kind
 docker-build-kind:  ## Build docker image with the manager.
-	DOCKER_BUILDKIT=1 docker build --build-arg VERSION=$(VERSION) --build-arg GIT_SHA=$(GIT_SHA) -t $(DEVREPO):$(VERSION) .
+	DOCKER_BUILDKIT=1 docker build --build-arg VERSION=$(VERSION) --build-arg GIT_SHA=$(GIT_SHA) -t $(DEVREPO):$(VERSION) . --load
 	docker tag $(DEVREPO):$(VERSION) $(DEVREPO):latest
 
 DEPLOYPLATFORMS ?= linux/arm64
