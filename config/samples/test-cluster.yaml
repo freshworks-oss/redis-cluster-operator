@@ -167,26 +167,31 @@ spec:
     periodSeconds: 10
     successThreshold: 1
     timeoutSeconds: 5
-  extraContainers:
-    image: 582763096612.dkr.ecr.us-east-1.amazonaws.com/dbaas-redis/redis-exporter:v1.45.0
-    prometheus:
-      port: 9100
-    resources:
-      limits:
-        cpu: 400m
-        memory: 300Mi
-      requests:
-        cpu: 300m
-        memory: 200Mi
-  resources:
-    limits:
-      cpu: 200m
-      memory: 500Mi
-    requests:
-      cpu: 100m
-      memory: 300Mi
-  serviceName: distributedrediscluster-test-cluster-1
-  storage:
-    class: ""
-    size: 1Gi
-    type: ephemeral
+  # extraContainers:
+  # - name: node-exporter
+  #   image: 582763096612.dkr.ecr.us-east-1.amazonaws.com/dbaas-redis/redis-exporter:v1.45.0.p1
+  #   imagePullPolicy: IfNotPresent
+  #   ports:
+  #   - containerPort: 9100
+  #     name: metrics-1
+  #   args:
+  #   - --web.listen-address=:9100
+  #   - --web.telemetry-path=/metrics
+  #   #  # env:
+  #   #  # - name: REDIS_PASSWORD
+  #   #  #   valueFrom:
+  #   #  #     secretKeyRef:
+  #   #  #       key: password
+  #   #  #       name: dbaas-redis--dbaas-redis--test-cluster--admin
+  #   resources:
+  #     limits:
+  #       cpu: 400m
+  #       memory: 300Mi
+  #     requests:
+  #       cpu: 300m
+  #       memory: 100Mi
+  #   securityContext:
+  #     allowPrivilegeEscalation: false
+  #     readOnlyRootFilesystem: true
+  #     runAsGroup: 65534
+  #     runAsUser: 65534
