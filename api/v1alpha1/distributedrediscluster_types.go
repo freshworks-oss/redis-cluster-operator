@@ -32,6 +32,7 @@ type DistributedRedisClusterSpec struct {
 
 	// Foo is an example field of DistributedRedisCluster. Edit distributedrediscluster_types.go to remove/update
 	InitContainers   []corev1.Container            `json:"initContainers,omitempty"`
+	ExtraContainers  []corev1.Container            `json:"extraContainers,omitempty"`
 	Image            string                        `json:"image,omitempty"`
 	ImagePullPolicy  corev1.PullPolicy             `json:"imagePullPolicy,omitempty"`
 	ImagePullSecrets []corev1.LocalObjectReference `json:"imagePullSecrets,omitempty"`
@@ -55,56 +56,10 @@ type DistributedRedisClusterSpec struct {
 	DefaultSecret            *corev1.LocalObjectReference  `json:"defaultUser,omitempty"`
 	AdditionalSecret         []corev1.LocalObjectReference `json:"additionalUsers,omitempty"`
 	UtilConfig               string                        `json:"utilConfig"`
-	Monitor                  *AgentSpec                    `json:"monitor,omitempty"`
 	Restore                  *RestoreSpec                  `json:"restoreContainer,omitempty"`
 	TerminationGracePeriod   *int64                        `json:"terminationGracePeriod,omitempty"`
 	CustomLivenessProbe      corev1.Probe                  `json:"customLivenessProbe"`
 	ReadinessProbe           corev1.Probe                  `json:"readinessProbe"`
-}
-type AgentSpec struct {
-	Image      string          `json:"image,omitempty"`
-	Prometheus *PrometheusSpec `json:"prometheus,omitempty"`
-	// Arguments to the entrypoint.
-	// The docker image's CMD is used if this is not provided.
-	// Variable references $(VAR_NAME) are expanded using the container's environment. If a variable
-	// cannot be resolved, the reference in the input string will be unchanged. The $(VAR_NAME) syntax
-	// can be escaped with a double $$, ie: $$(VAR_NAME). Escaped references will never be expanded,
-	// regardless of whether the variable exists or not.
-	// Cannot be updated.
-	// More info: https://kubernetes.io/docs/tasks/inject-data-application/define-command-argument-container/#running-a-command-in-a-shell
-	// +optional
-	Args []string `json:"args,omitempty"`
-	// List of environment variables to set in the container.
-	// Cannot be updated.
-	// +optional
-	// +patchMergeKey=name
-	// +patchStrategy=merge
-	Env []corev1.EnvVar `json:"env,omitempty" patchStrategy:"merge" patchMergeKey:"name"`
-	// Compute Resources required by exporter container.
-	// Cannot be updated.
-	// More info: https://kubernetes.io/docs/concepts/configuration/manage-compute-resources-container/
-	// +optional
-	Resources corev1.ResourceRequirements `json:"resources,omitempty"`
-	// Security options the pod should run with.
-	// More info: https://kubernetes.io/docs/concepts/policy/security-context/
-	// More info: https://kubernetes.io/docs/tasks/configure-pod-container/security-context/
-	// +optional
-	SecurityContext *corev1.SecurityContext `json:"securityContext,omitempty"`
-}
-
-type PrometheusSpec struct {
-	// Port number for the exporter side car.
-	Port int32 `json:"port,omitempty"`
-
-	// Namespace of Prometheus. Service monitors will be created in this namespace.
-	Namespace string `json:"namespace,omitempty"`
-	// Labels are key value pairs that is used to select Prometheus instance via ServiceMonitor labels.
-	// +optional
-	Labels map[string]string `json:"labels,omitempty"`
-
-	// Interval at which metrics should be scraped
-	Interval string `json:"interval,omitempty"`
-	//Annotations map[string]string `json:"annotations,omitempty"`
 }
 
 type RestoreSpec struct {

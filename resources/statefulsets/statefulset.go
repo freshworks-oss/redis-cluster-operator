@@ -101,8 +101,8 @@ func NewStatefulSetForCR(cluster *redisv1alpha1.DistributedRedisCluster, ssName,
 			ss.Spec.VolumeClaimTemplates[0].OwnerReferences = redisv1alpha1.DefaultOwnerReferences(cluster)
 		}
 	}
-	if spec.Monitor != nil {
-		ss.Spec.Template.Spec.Containers = append(ss.Spec.Template.Spec.Containers, redisExporterContainer(cluster, password))
+	if spec.ExtraContainers != nil {
+		ss.Spec.Template.Spec.Containers = append(ss.Spec.Template.Spec.Containers, spec.ExtraContainers...)
 	}
 
 	if spec.InitContainers != nil {
@@ -303,35 +303,6 @@ func redisServerContainer(cluster *redisv1alpha1.DistributedRedisCluster, passwo
 		},
 	}
 
-	if password != nil {
-		container.Env = append(container.Env, *password)
-	}
-
-	container.Env = customContainerEnv(container.Env, cluster.Spec.Env)
-
-	return container
-}
-
-func redisExporterContainer(cluster *redisv1alpha1.DistributedRedisCluster, password *corev1.EnvVar) corev1.Container {
-	container := corev1.Container{
-		Name: ExporterContainerName,
-		Args: append([]string{
-			fmt.Sprintf("--web.listen-address=:%v", cluster.Spec.Monitor.Prometheus.Port),
-			fmt.Sprintf("--web.telemetry-path=%v", redisv1alpha1.PrometheusExporterTelemetryPath),
-		}, cluster.Spec.Monitor.Args...),
-		Image:           cluster.Spec.Monitor.Image,
-		ImagePullPolicy: corev1.PullAlways,
-		Ports: []corev1.ContainerPort{
-			{
-				Name:          "prom-http",
-				Protocol:      corev1.ProtocolTCP,
-				ContainerPort: cluster.Spec.Monitor.Prometheus.Port,
-			},
-		},
-		Env:             cluster.Spec.Monitor.Env,
-		Resources:       cluster.Spec.Monitor.Resources,
-		SecurityContext: cluster.Spec.Monitor.SecurityContext,
-	}
 	if password != nil {
 		container.Env = append(container.Env, *password)
 	}
