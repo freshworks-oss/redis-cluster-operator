@@ -9,8 +9,8 @@ metadata:
 spec:
   redisClusterName: distributedrediscluster-test-cluster-1
   utilSpec:
-    image: sasidharangopal463/redisclusterutil:final
+    image: 582763096612.dkr.ecr.us-east-1.amazonaws.com/redisclusterutil:v0.1-multiarch
     s3Bucket: "redis-logs-bucket-staging-us-east-1"
-    startupCommand: "/usr/local/bin/redisUtil"
+    startupCommand: "/usr/local/bin/redisclusterutil"
     imagePullPolicy: "Always"
     replicas: 1

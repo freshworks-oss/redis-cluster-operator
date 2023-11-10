@@ -98,6 +98,15 @@ data:
     #!/bin/sh
     redis-cli -h $HOSTNAME --user pinger --pass pingpass --no-auth-warning ping | grep -q PONG
 ---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: startup-data
+data:
+  readiness.sh: |
+    #!/bin/sh
+    redis-cli -h $HOSTNAME --user pinger --pass pingpass --no-auth-warning ping | grep -q PONG
+---
 apiVersion: redis.kun/v1alpha1
 kind: DistributedRedisCluster
 metadata:
@@ -129,7 +138,7 @@ spec:
   image: 582763096612.dkr.ecr.us-east-1.amazonaws.com/dbaas-redis/redis:6.2.13-alpine
   initContainers:
   - name: initialize
-    image: sasidharangopal463/restoreclusterutil:v2
+    image: 582763096612.dkr.ecr.us-east-1.amazonaws.com/restoreclusterutil:v0.1-multiarch
     imagePullPolicy: Always
     command:
     - "/usr/local/bin/restoreclusterutil"
@@ -156,12 +165,23 @@ spec:
     periodSeconds: 10
     successThreshold: 1
     timeoutSeconds: 5
-  readinessProbe:
+  customReadinessProbe:
     exec:
       command:
       - /bin/sh
       - -c
       - /readyprobe/readiness.sh
+    failureThreshold: 3
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    successThreshold: 1
+    timeoutSeconds: 5
+  customStartupProbe:
+    exec:
+      command:
+      - /bin/sh
+      - -c
+      - /startupprobe/readiness.sh
     failureThreshold: 3
     initialDelaySeconds: 30
     periodSeconds: 10

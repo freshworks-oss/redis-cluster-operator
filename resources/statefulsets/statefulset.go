@@ -33,6 +33,7 @@ const (
 	utilConfigMapVolName      = "utilconf"
 	readinessConfigmapVolName = "readyconf"
 	livenessConfgimapVolName  = "liveconf"
+	startupConfgimapVolName   = "startupconf"
 )
 
 // NewStatefulSetForCR creates a new StatefulSet for the given Cluster.
@@ -276,7 +277,8 @@ func redisServerContainer(cluster *redisv1alpha1.DistributedRedisCluster, passwo
 		VolumeMounts:   volumeMounts(),
 		Command:        getRedisCommand(cluster, password),
 		LivenessProbe:  &cluster.Spec.CustomLivenessProbe,
-		ReadinessProbe: &cluster.Spec.ReadinessProbe,
+		ReadinessProbe: &cluster.Spec.CustomReadinessProbe,
+		StartupProbe:   &cluster.Spec.CustomStartupProbe,
 		Env: []corev1.EnvVar{
 			{
 				Name: "POD_IP",
@@ -452,6 +454,10 @@ func volumeMounts() []corev1.VolumeMount {
 			Name:      readinessConfigmapVolName,
 			MountPath: "/readyprobe",
 		},
+		{
+			Name:      startupConfgimapVolName,
+			MountPath: "/startupprobe",
+		},
 	}
 }
 
@@ -526,6 +532,17 @@ func redisVolumes(cluster *redisv1alpha1.DistributedRedisCluster) []corev1.Volum
 				ConfigMap: &corev1.ConfigMapVolumeSource{
 					LocalObjectReference: corev1.LocalObjectReference{
 						Name: "liveness-data",
+					},
+					DefaultMode: &executeMode,
+				},
+			},
+		},
+		{
+			Name: startupConfgimapVolName,
+			VolumeSource: corev1.VolumeSource{
+				ConfigMap: &corev1.ConfigMapVolumeSource{
+					LocalObjectReference: corev1.LocalObjectReference{
+						Name: "startup-data",
 					},
 					DefaultMode: &executeMode,
 				},

@@ -72,7 +72,7 @@ DEVREPO=$(REPO)
 
 
 
-BINARY_VERSION=v0.0.2-arm64
+BINARY_VERSION=v0.0.3-multiarch
 BINARY_VERSION_DEV=v0.0.2-arm64-pratheep
 ECR_REPO=redis-cluster-operator
 ECR__DEV_REPO=redis-cluster-operator-dev
@@ -152,7 +152,7 @@ DEPLOYPLATFORMS ?= linux/arm64
 .PHONY: image-release
 image-release:
 	aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin $(ECR_URI) 
-	docker buildx build --push --platform=$(DEPLOYPLATFORMS) --tag $(ECR_URI)/$(ECR_REPO):$(BINARY_VERSION) .
+	docker buildx build --no-cache --push --platform=$(DEPLOYPLATFORMS) --tag $(ECR_URI)/$(ECR_REPO):$(BINARY_VERSION) .
 
 .PHONY: build-tools
 build-tools:
@@ -165,7 +165,7 @@ docker-push: ## Push docker image with the manager.
 .PHONY: image-release-dev
 image-release-dev:
 	aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin $(ECR_URI) 
-	docker buildx build --push --platform=$(DEPLOYPLATFORMS) --tag $(ECR_URI)/$(ECR__DEV_REPO):$(BINARY_VERSION_DEV) .
+	docker buildx build --push --platform=$(DEPLOYPLATFORMS) --tag $(ECR_URI)/$(ECR__DEV_REPO):$(BINARY_VERSION) .
 
 .PHONY: build-tools
 build-tools:

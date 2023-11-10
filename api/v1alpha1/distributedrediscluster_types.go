@@ -59,7 +59,8 @@ type DistributedRedisClusterSpec struct {
 	Restore                  *RestoreSpec                  `json:"restoreContainer,omitempty"`
 	TerminationGracePeriod   *int64                        `json:"terminationGracePeriod,omitempty"`
 	CustomLivenessProbe      corev1.Probe                  `json:"customLivenessProbe"`
-	ReadinessProbe           corev1.Probe                  `json:"readinessProbe"`
+	CustomReadinessProbe     corev1.Probe                  `json:"customReadinessProbe"`
+	CustomStartupProbe       corev1.Probe                  `json:"customStartupProbe"`
 }
 
 type RestoreSpec struct {
