@@ -72,7 +72,7 @@ DEVREPO=$(REPO)
 
 
 
-BINARY_VERSION=v0.0.3-multiarch
+BINARY_VERSION=v0.0.4-multiarch
 BINARY_VERSION_DEV=v0.0.2-arm64-pratheep
 ECR_REPO=redis-cluster-operator
 ECR__DEV_REPO=redis-cluster-operator-dev

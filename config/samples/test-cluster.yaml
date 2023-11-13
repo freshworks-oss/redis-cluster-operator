@@ -239,7 +239,7 @@ spec:
   env:
     - name: "REDIS_PORT"
       value: "6379"
-    - name: TERMINATION_GRACE_PERIOD
+    - name: "TERMINATION_GRACE_PERIOD"
       value: "300"
     - name: "S3_BUCKET"
       value: "redis-logs-bucket-staging-us-east-1"
