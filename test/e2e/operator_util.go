@@ -93,12 +93,6 @@ func NewDistributedRedisCluster(name, namespace, image, passwordName string, mas
 				Class:       storageClassName,
 				DeleteClaim: true,
 			},
-			Monitor: &redisv1alpha1.AgentSpec{
-				Image: exporterImage,
-				Prometheus: &redisv1alpha1.PrometheusSpec{
-					Port: 9121,
-				},
-			},
 			Annotations: map[string]string{
 				"prometheus.io/app-metrics":      "true",
 				"prometheus.io/app-metrics-path": "/metrics",
@@ -277,7 +271,6 @@ func RestoreDRC(drc *redisv1alpha1.DistributedRedisCluster, drcb *redisv1alpha1.
 			AdminSecret:     drc.Spec.AdminSecret,
 			Resources:       drc.Spec.Resources,
 			Storage:         drc.Spec.Storage,
-			Monitor:         drc.Spec.Monitor,
 			Annotations:     drc.Spec.Annotations,
 			Restore: &redisv1alpha1.RestoreSpec{BackupSource: &redisv1alpha1.BackupSourceSpec{
 				Namespace: drcb.Namespace,

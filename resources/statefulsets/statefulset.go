@@ -32,8 +32,9 @@ const (
 	aclConfigMapVolName       = "acl"
 	utilConfigMapVolName      = "utilconf"
 	readinessConfigmapVolName = "readyconf"
-	livenessConfgimapVolName  = "liveconf"
-	startupConfgimapVolName   = "startupconf"
+	livenessConfigmapVolName  = "liveconf"
+	startupConfigmapVolName   = "startupconf"
+	shutdownConfigmapVolName  = "shutdownconf"
 )
 
 // NewStatefulSetForCR creates a new StatefulSet for the given Cluster.
@@ -299,7 +300,7 @@ func redisServerContainer(cluster *redisv1alpha1.DistributedRedisCluster, passwo
 			},
 			PreStop: &corev1.LifecycleHandler{
 				Exec: &corev1.ExecAction{
-					Command: []string{"/bin/sh", "/conf/shutdown.sh"},
+					Command: []string{"/bin/sh", "/shutdown/shutdown.sh"},
 				},
 			},
 		},
@@ -447,7 +448,7 @@ func volumeMounts() []corev1.VolumeMount {
 			MountPath: "/config",
 		},
 		{
-			Name:      livenessConfgimapVolName,
+			Name:      livenessConfigmapVolName,
 			MountPath: "/liveprobe",
 		},
 		{
@@ -455,8 +456,12 @@ func volumeMounts() []corev1.VolumeMount {
 			MountPath: "/readyprobe",
 		},
 		{
-			Name:      startupConfgimapVolName,
+			Name:      startupConfigmapVolName,
 			MountPath: "/startupprobe",
+		},
+		{
+			Name:      shutdownConfigmapVolName,
+			MountPath: "/shutdown",
 		},
 	}
 }
@@ -527,7 +532,7 @@ func redisVolumes(cluster *redisv1alpha1.DistributedRedisCluster) []corev1.Volum
 			},
 		},
 		{
-			Name: livenessConfgimapVolName,
+			Name: livenessConfigmapVolName,
 			VolumeSource: corev1.VolumeSource{
 				ConfigMap: &corev1.ConfigMapVolumeSource{
 					LocalObjectReference: corev1.LocalObjectReference{
@@ -538,11 +543,22 @@ func redisVolumes(cluster *redisv1alpha1.DistributedRedisCluster) []corev1.Volum
 			},
 		},
 		{
-			Name: startupConfgimapVolName,
+			Name: startupConfigmapVolName,
 			VolumeSource: corev1.VolumeSource{
 				ConfigMap: &corev1.ConfigMapVolumeSource{
 					LocalObjectReference: corev1.LocalObjectReference{
 						Name: "startup-data",
+					},
+					DefaultMode: &executeMode,
+				},
+			},
+		},
+		{
+			Name: shutdownConfigmapVolName,
+			VolumeSource: corev1.VolumeSource{
+				ConfigMap: &corev1.ConfigMapVolumeSource{
+					LocalObjectReference: corev1.LocalObjectReference{
+						Name: "shutdown-data",
 					},
 					DefaultMode: &executeMode,
 				},
