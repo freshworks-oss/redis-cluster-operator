@@ -28,7 +28,7 @@ spec:
       containers:
         - name: redis-cluster-operator
           # Replace this with the built image name
-          image: 582763096612.dkr.ecr.us-east-1.amazonaws.com/redis-cluster-operator:v0.0.3-arm64
+          image: 582763096612.dkr.ecr.us-east-1.amazonaws.com/redis-cluster-operator:v0.0.4-arm64
           command:
           - rediscluster-operator
           args:
@@ -60,9 +60,7 @@ metadata:
   namespace: system
 data:
   redis.conf: |-
-    rename-command BGSAVE pp14qluk
     rename-command DEBUG 8a4insyv
     rename-command SAVE 6on30p6z
-    rename-command SHUTDOWN dvui0opr
     rename-command SLAVEOF xwxvcw36
     rename-command BGREWRITEAOF www07fko
