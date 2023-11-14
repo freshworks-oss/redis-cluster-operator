@@ -58,10 +58,10 @@ func (r *DistributedRedisClusterReconciler) ensureCluster(ctx *syncContext) erro
 		ctx.reqLogger.Error(err, "EnsureRedisStatefulSets")
 		return Kubernetes.Wrap(err, "EnsureRedisStatefulSets")
 	}
-	if err := r.Ensurer.EnsureRedisHeadLessSvcs(cluster, labels); err != nil {
+	if err := r.Ensurer.EnsureClusterShardsHeadLessSvcs(cluster, labels); err != nil {
 		return Kubernetes.Wrap(err, "EnsureRedisHeadLessSvcs")
 	}
-	if err := r.Ensurer.EnsureRedisSvc(cluster, labels); err != nil {
+	if err := r.Ensurer.EnsureClusterHeadLessSvc(cluster, labels); err != nil {
 		return Kubernetes.Wrap(err, "EnsureRedisSvc")
 	}
 	if err := r.Ensurer.EnsureRedisRCloneSecret(cluster, labels); err != nil {

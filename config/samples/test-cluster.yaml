@@ -69,7 +69,7 @@ metadata:
   name: util-config
 data:
   backupschedule.yaml: |
-    backupEnabled: true
+    backupEnabled: false
     logEnabled: true
     backupInterval: 59m
     logInterval: 1
