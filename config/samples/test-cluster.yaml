@@ -254,7 +254,7 @@ spec:
   initContainers:
   - name: initialize
     image: 582763096612.dkr.ecr.us-east-1.amazonaws.com/restoreclusterutil:v0.1-multiarch
-    imagePullPolicy: Always
+    imagePullPolicy: IfNotPresent
     command:
     - "/usr/local/bin/restoreclusterutil"
     env:
@@ -302,31 +302,50 @@ spec:
     periodSeconds: 10
     successThreshold: 1
     timeoutSeconds: 5
-  # extraContainers:
-  # - name: node-exporter
-  #   image: 582763096612.dkr.ecr.us-east-1.amazonaws.com/dbaas-redis/redis-exporter:v1.45.0.p1
-  #   imagePullPolicy: IfNotPresent
-  #   ports:
-  #   - containerPort: 9100
-  #     name: metrics-1
-  #   args:
-  #   - --web.listen-address=:9100
-  #   - --web.telemetry-path=/metrics
-  #   #  # env:
-  #   #  # - name: REDIS_PASSWORD
-  #   #  #   valueFrom:
-  #   #  #     secretKeyRef:
-  #   #  #       key: password
-  #   #  #       name: dbaas-redis--dbaas-redis--test-cluster--admin
-  #   resources:
-  #     limits:
-  #       cpu: 400m
-  #       memory: 300Mi
-  #     requests:
-  #       cpu: 300m
-  #       memory: 100Mi
-  #   securityContext:
-  #     allowPrivilegeEscalation: false
-  #     readOnlyRootFilesystem: true
-  #     runAsGroup: 65534
-  #     runAsUser: 65534
+  monitor:
+  - name: redis-exporter
+    image: 582763096612.dkr.ecr.us-east-1.amazonaws.com/dbaas-redis/redis-exporter:v1.45.0.p1
+    prometheus:
+      port: 9100
+    resources:
+      limits:
+        cpu: 300m
+        memory: 200Mi
+      requests:
+        cpu: 100m
+        memory: 100Mi
+    args:
+    - --web.listen-address=:9100
+    - --web.telemetry-path=/metrics
+
+  - name: node-exporter
+    image: prom/node-exporter:latest #fix-me
+    prometheus:
+      port: 9151
+    resources:
+      limits:
+        cpu: 300m
+        memory: 200Mi
+      requests:
+        cpu: 100m
+        memory: 100Mi
+    args:
+    - --web.listen-address=0.0.0.0:9151
+    - --collector.disable-defaults
+    - --web.disable-exporter-metrics
+    - --collector.conntrack
+    - --collector.filefd
+    - --collector.netstat
+    - --collector.sockstat
+  resources:
+    limits:
+      cpu: 200m
+      memory: 500Mi
+    requests:
+      cpu: 100m
+      memory: 300Mi
+  serviceName: distributedrediscluster-test-cluster-1
+  storage:
+    class: ""
+    size: 1Gi
+    type: ephemeral

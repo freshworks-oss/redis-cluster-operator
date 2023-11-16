@@ -103,8 +103,8 @@ func NewStatefulSetForCR(cluster *redisv1alpha1.DistributedRedisCluster, ssName,
 			ss.Spec.VolumeClaimTemplates[0].OwnerReferences = redisv1alpha1.DefaultOwnerReferences(cluster)
 		}
 	}
-	if spec.ExtraContainers != nil {
-		ss.Spec.Template.Spec.Containers = append(ss.Spec.Template.Spec.Containers, spec.ExtraContainers...)
+	if spec.Monitor != nil {
+		ss.Spec.Template.Spec.Containers = append(ss.Spec.Template.Spec.Containers, redisMonitorContainers(cluster, password)...)
 	}
 
 	if spec.InitContainers != nil {
@@ -313,6 +313,37 @@ func redisServerContainer(cluster *redisv1alpha1.DistributedRedisCluster, passwo
 	container.Env = customContainerEnv(container.Env, cluster.Spec.Env)
 
 	return container
+}
+
+func redisMonitorContainers(cluster *redisv1alpha1.DistributedRedisCluster, password *corev1.EnvVar) []corev1.Container {
+	var containers []corev1.Container
+	for _, c := range *cluster.Spec.Monitor {
+		container := corev1.Container{
+			Name:            c.Name,
+			Args:            c.Args,
+			Image:           c.Image,
+			Command:         c.Command,
+			ImagePullPolicy: corev1.PullIfNotPresent,
+			Ports: []corev1.ContainerPort{
+				{
+					Name:          "prom-http",
+					Protocol:      corev1.ProtocolTCP,
+					ContainerPort: c.Prometheus.Port,
+				},
+			},
+			Env:             c.Env,
+			Resources:       c.Resources,
+			SecurityContext: c.SecurityContext,
+		}
+		if password != nil {
+			container.Env = append(container.Env, *password)
+		}
+
+		container.Env = customContainerEnv(container.Env, cluster.Spec.Env)
+		containers = append(containers, container)
+	}
+
+	return containers
 }
 
 func redisRestoreInitContainer(cluster *redisv1alpha1.DistributedRedisCluster, password *corev1.EnvVar) (corev1.Container, error) {

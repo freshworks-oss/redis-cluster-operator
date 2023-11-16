@@ -2,6 +2,8 @@ package manager
 
 import (
 	"fmt"
+	"reflect"
+	"sort"
 	"strings"
 
 	"github.com/go-logr/logr"
@@ -70,7 +72,7 @@ func (r *realEnsureResource) ensureRedisStatefulset(cluster *redisv1alpha1.Distr
 	*/
 	ss, err := r.statefulSetClient.GetStatefulSet(cluster.Namespace, ssName)
 	if err == nil {
-		if shouldUpdateRedis(cluster, ss) {
+		if shouldUpdateRedis(cluster, ss) || shouldUpdateMonitor(cluster, ss) {
 			r.logger.WithValues("StatefulSet.Namespace", cluster.Namespace, "StatefulSet.Name", ssName).
 				Info("updating statefulSet")
 			newSS, err := statefulsets.NewStatefulSetForCR(cluster, ssName, svcName, labels)
@@ -116,6 +118,42 @@ func shouldUpdateRedis(cluster *redisv1alpha1.DistributedRedisCluster, sts *apps
 	}
 	if result := expectResource.Limits.Cpu().Cmp(*currentResource.Limits.Cpu()); result != 0 {
 		return true
+	}
+	return false
+}
+
+func shouldUpdateMonitor(cluster *redisv1alpha1.DistributedRedisCluster, sts *appsv1.StatefulSet) bool {
+	for _, crspec := range *cluster.Spec.Monitor {
+		for _, cspec := range sts.Spec.Template.Spec.Containers {
+			if crspec.Name == cspec.Name {
+				if crspec.Image != cspec.Image {
+					return true
+				}
+
+				//compare arguments
+				sort.Strings(crspec.Args)
+				sort.Strings(cspec.Args)
+				if !reflect.DeepEqual(crspec.Args, cspec.Args) {
+					return true
+				}
+
+				// Checking resources
+				expectedResource := crspec.Resources
+				currentResource := cspec.Resources
+				if result := expectedResource.Requests.Memory().Cmp(*currentResource.Requests.Memory()); result != 0 {
+					return true
+				}
+				if result := expectedResource.Requests.Cpu().Cmp(*currentResource.Requests.Cpu()); result != 0 {
+					return true
+				}
+				if result := expectedResource.Limits.Memory().Cmp(*currentResource.Limits.Memory()); result != 0 {
+					return true
+				}
+				if result := expectedResource.Limits.Cpu().Cmp(*currentResource.Limits.Cpu()); result != 0 {
+					return true
+				}
+			}
+		}
 	}
 	return false
 }

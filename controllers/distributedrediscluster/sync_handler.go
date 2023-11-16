@@ -88,9 +88,17 @@ func (r *DistributedRedisClusterReconciler) validateAndSetDefault(cluster *redis
 	var update bool
 	var err error
 
+	// TODO: DR-1173 Move this to validation webhook
+	for _, container := range *cluster.Spec.Monitor {
+		if container.Image == "" || container.Prometheus == nil || container.Prometheus.Port == 0 {
+			err = fmt.Errorf("required fields missing for monitor")
+			return err
+		}
+	}
+
 	if cluster.IsRestoreFromBackup() && cluster.ShouldInitRestorePhase() {
 		//Dinesh Todo This flow Needs FIX ####, commented out below to fix status fileds
-		err = fmt.Errorf("Restore Not supported yet")
+		err = fmt.Errorf("restore Not supported yet")
 		return err
 		/*
 			reqLogger.Error("force appendonly = no when do restore")
