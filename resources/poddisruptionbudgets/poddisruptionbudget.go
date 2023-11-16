@@ -9,7 +9,8 @@ import (
 )
 
 func NewPodDisruptionBudgetForCR(cluster *redisv1alpha1.DistributedRedisCluster, name string, labels map[string]string) *policyv1beta1.PodDisruptionBudget {
-	maxUnavailable := intstr.FromInt(1)
+	//maxUnavailable := intstr.FromInt(1)
+	minUnavailable := intstr.FromInt(int(cluster.Spec.ClusterReplicas)) //Always master is 1 for a sts so, formula is (clusterreplicas + master - 1) which is clusterreplicas
 
 	return &policyv1beta1.PodDisruptionBudget{
 		ObjectMeta: metav1.ObjectMeta{
@@ -19,7 +20,7 @@ func NewPodDisruptionBudgetForCR(cluster *redisv1alpha1.DistributedRedisCluster,
 			OwnerReferences: redisv1alpha1.DefaultOwnerReferences(cluster),
 		},
 		Spec: policyv1beta1.PodDisruptionBudgetSpec{
-			MaxUnavailable: &maxUnavailable,
+			MinAvailable: &minUnavailable,
 			Selector: &metav1.LabelSelector{
 				MatchLabels: labels,
 			},

@@ -3321,6 +3321,8 @@ spec:
                 additionalProperties:
                   type: string
                 type: object
+              pdbEnabled:
+                type: boolean
               requiredAntiAffinity:
                 description: Set RequiredAntiAffinity to force the master-slave node
                   anti-affinity.
@@ -3631,6 +3633,7 @@ spec:
             - customLivenessProbe
             - customReadinessProbe
             - customStartupProbe
+            - pdbEnabled
             - utilConfig
             type: object
           status:

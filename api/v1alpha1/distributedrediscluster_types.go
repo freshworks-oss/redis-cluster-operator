@@ -61,6 +61,7 @@ type DistributedRedisClusterSpec struct {
 	CustomLivenessProbe      corev1.Probe                  `json:"customLivenessProbe"`
 	CustomReadinessProbe     corev1.Probe                  `json:"customReadinessProbe"`
 	CustomStartupProbe       corev1.Probe                  `json:"customStartupProbe"`
+	PdbEnabled               bool                          `json:"pdbEnabled"`
 }
 
 type AgentSpec struct {
