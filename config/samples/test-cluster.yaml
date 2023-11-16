@@ -268,7 +268,7 @@ spec:
     - mountPath: /data
       name: redis-data
   masterSize: 3
-  terminationGracePeriod: 300
+  terminationGracePeriod: 200
   customLivenessProbe:
     exec:
       command:

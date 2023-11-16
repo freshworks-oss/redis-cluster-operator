@@ -60,6 +60,7 @@ spec:
                 - image
                 - replicas
                 - s3Bucket
+                - terminationGracePeriod
                 type: object
             required:
             - redisClusterName

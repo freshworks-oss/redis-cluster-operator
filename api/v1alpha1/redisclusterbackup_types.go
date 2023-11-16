@@ -44,7 +44,7 @@ type UtilSpec struct {
 	S3Bucket               string `json:"s3Bucket"`
 	ImagePullPolicy        string `json:"imagePullPolicy,omitempty"`
 	Replicas               int32  `json:"replicas"`
-	TerminationGracePeriod *int64 `json:"terminationGracePeriod,omitempty"`
+	TerminationGracePeriod *int64 `json:"terminationGracePeriod"`
 }
 
 type PodSpec struct {
