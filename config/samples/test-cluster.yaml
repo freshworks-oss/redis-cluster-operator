@@ -223,6 +223,7 @@ metadata:
     redis.kun/scope: cluster-scoped
   name: distributedrediscluster-test-cluster-1
 spec:
+  pdbEnabled: True
   additionalUsers:
   - name: dbaas-redis--test-cluster--test-cluster-1--dinesh
   - name: dbaas-redis--test-cluster--test-cluster-1--pinger
@@ -250,25 +251,23 @@ spec:
     - name: "S3_BUCKET"
       value: "redis-logs-bucket-staging-us-east-1"
   utilConfig: "util-config"
-  image: 582763096612.dkr.ecr.us-east-1.amazonaws.com/dbaas-redis/redis:6.2.13-alpine
+  image: redis:6.2.13
   initContainers:
   - name: initialize
-    image: 582763096612.dkr.ecr.us-east-1.amazonaws.com/restoreclusterutil:v0.1-multiarch
+    image: ubuntu:latest
     imagePullPolicy: IfNotPresent
-    command:
-    - "/usr/local/bin/restoreclusterutil"
+    command: ["/bin/echo"] #change later - "/usr/local/bin/restoreclusterutil"
+    args: ["Starting Redis cluster node"]
     env:
     - name: "CLUSTER_NAME"
       value: "distributedrediscluster-test-cluster-1"
-    - name: "S3_BUCKET"
-      value: "redis-logs-bucket-staging-us-east-1"
     volumeMounts:
     - mountPath: /config
       name: utilconf
     - mountPath: /data
       name: redis-data
   masterSize: 3
-  terminationGracePeriod: 200
+  terminationGracePeriod: 30
   customLivenessProbe:
     exec:
       command:
@@ -304,7 +303,7 @@ spec:
     timeoutSeconds: 5
   monitor:
   - name: redis-exporter
-    image: 582763096612.dkr.ecr.us-east-1.amazonaws.com/dbaas-redis/redis-exporter:v1.45.0.p1
+    image: oliver006/redis_exporter:latest
     prometheus:
       port: 9100
     resources:

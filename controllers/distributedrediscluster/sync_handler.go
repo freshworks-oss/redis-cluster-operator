@@ -295,11 +295,11 @@ func (r *DistributedRedisClusterReconciler) scalingDown(ctx *syncContext, curren
 		if err := r.ServiceController.DeleteServiceByName(cluster.Namespace, svcName); err != nil {
 			ctx.reqLogger.Error(err, "DeleteServiceByName", "service", svcName)
 		}
-		/*
-			if err := r.pdbController.DeletePodDisruptionBudgetByName(cluster.Namespace, stsName); err != nil {
-				ctx.reqLogger.Error(err, "DeletePodDisruptionBudgetByName", "pdb", stsName)
-			}
-		*/
+
+		if err := r.PdbController.DeletePodDisruptionBudgetByName(cluster.Namespace, stsName); err != nil {
+			ctx.reqLogger.Error(err, "DeletePodDisruptionBudgetByName", "pdb", stsName)
+		}
+
 		if err := r.PvcController.DeletePvcByLabels(cluster.Namespace, sts.Labels); err != nil {
 			ctx.reqLogger.Error(err, "DeletePvcByLabels", "labels", sts.Labels)
 		}

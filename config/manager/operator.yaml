@@ -28,14 +28,14 @@ spec:
       containers:
         - name: redis-cluster-operator
           # Replace this with the built image name
-          image: 582763096612.dkr.ecr.us-east-1.amazonaws.com/redis-cluster-operator:v0.0.4-arm64
+          image: cluster-dev/rediscluster-operator:latest
           command:
           - rediscluster-operator
           args:
           - --zap-log-level=debug
           - --rename-command-path=/etc/redisconf
           - --rename-command-file=redis.conf
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Never
           env:
             - name: WATCH_NAMESPACE
               value: ""
