@@ -39,11 +39,12 @@ type RedisClusterBackupSpec struct {
 }
 
 type UtilSpec struct {
-	Image           string `json:"image"`
-	StartUpCommand  string `json:"startupCommand,omitempty"`
-	S3Bucket        string `json:"s3Bucket"`
-	ImagePullPolicy string `json:"imagePullPolicy,omitempty"`
-	Replicas        int32  `json:"replicas"`
+	Image                  string `json:"image"`
+	StartUpCommand         string `json:"startupCommand,omitempty"`
+	S3Bucket               string `json:"s3Bucket"`
+	ImagePullPolicy        string `json:"imagePullPolicy,omitempty"`
+	Replicas               int32  `json:"replicas"`
+	TerminationGracePeriod *int64 `json:"terminationGracePeriod,omitempty"`
 }
 
 type PodSpec struct {

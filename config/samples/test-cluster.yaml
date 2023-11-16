@@ -152,7 +152,7 @@ data:
         run_redis_command CLIENT KILL TYPE normal
         # Sleep 1s and do a bgsave on red
         sleep 1
-        run_redis_command pp14qluk #BGSAVE
+        run_redis_command BGSAVE
         #Record start time
         bgsave_time_started=$(date +%s)
         echo "Do CLUSTER FAILOVER"
@@ -160,13 +160,21 @@ data:
       echo "Master: ${masterID}"
       slave=$(cat ${CLUSTER_CONFIG} | grep ${masterID} | grep "slave" | awk 'NR==1{print $2}' | sed 's/:6379@16379//')
       echo "Slave: ${slave}"
-      redis-cli -h ${slave} --user admin -a "${REDIS_PASSWORD}" CLUSTER FAILOVER
+      redis-cli -h ${slave} -p ${REDIS_PORT} --user admin -a "${REDIS_PASSWORD}" CLUSTER FAILOVER
+      #verify if cluster failover is complete by checking self redis role. If not successful, do cluster failover force
+      sleep 10 #wait for failover timeout and 5 seconds extra
+      if is_master; then #failover unsuccessful 
+        echo "Failover unsuccessful"
+        #do cluster failover force
+        redis-cli -h ${slave} -p ${REDIS_PORT} --user admin -a "${REDIS_PASSWORD}" CLUSTER FAILOVER FORCE
+      else
+        echo "Failover Success, proceed further..."
+      fi
       #HAVE LOGIC TO VERIFY IF dump.rdb is created and upload it to S3.
       #Construct S3 PATH.
       #Ex Tenant - drc-distributedrediscluster-test-cluster-1-0-1
       shard_num=$(echo "$HOSTNAME" | awk -F'-' '{print $(NF-1)}')
       tenant=$(echo "$HOSTNAME" | sed 's/^drc-distributedrediscluster-\(.*\)-[0-9]-[0-9]$/\1/')
-      echo $tenant
       current_date=$(date +'%Y/%m/%d')
       s3_tenant_path="s3://$S3_BUCKET/rediscluster/rdb/distributedrediscluster-$tenant/$shard_num/$current_date/"
       # Check if the file dump.rdb has been created since the bgsave started
@@ -197,17 +205,15 @@ data:
             echo "File $file_path compressed and renamed to $zipped_file"
             # AWS S3 copy command 
           aws s3 cp $zipped_file $s3_tenant_path
-          sleep 100
         else
           echo "Failed SANITY Check, Exiting"
           exit 0
         fi
       fi
-        run_redis_command dvui0opr #SHUTDOWN
+        run_redis_command SHUTDOWN
     else
         exit 0
     fi
-
 ---
 apiVersion: redis.kun/v1alpha1
 kind: DistributedRedisCluster

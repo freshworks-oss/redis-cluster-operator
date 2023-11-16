@@ -47,12 +47,17 @@ func utilGenerateDeploymentSpec(instance *redisv1alpha1.RedisClusterBackup, clus
 }
 
 func utilGeneratePodTemplate(instance *redisv1alpha1.RedisClusterBackup, cluster *redisv1alpha1.DistributedRedisCluster, secretName string) corev1.PodTemplateSpec {
-	TerminationGracePeriodSeconds := int64(300)
+	var TerminationGracePeriodSeconds int64
 	var imagePullPolicy corev1.PullPolicy
 	if instance.Spec.UtilSpec.ImagePullPolicy == "" {
 		imagePullPolicy = corev1.PullAlways
 	} else {
 		imagePullPolicy = corev1.PullPolicy(instance.Spec.UtilSpec.ImagePullPolicy)
+	}
+	if *instance.Spec.UtilSpec.TerminationGracePeriod == int64(0) {
+		TerminationGracePeriodSeconds = 30
+	} else {
+		TerminationGracePeriodSeconds = *instance.Spec.UtilSpec.TerminationGracePeriod
 	}
 	podTemplate := corev1.PodTemplateSpec{
 		ObjectMeta: metav1.ObjectMeta{
