@@ -326,7 +326,7 @@ func redisMonitorContainers(cluster *redisv1alpha1.DistributedRedisCluster, pass
 			ImagePullPolicy: corev1.PullIfNotPresent,
 			Ports: []corev1.ContainerPort{
 				{
-					Name:          "prom-http",
+					Name:          c.Prometheus.Name,
 					Protocol:      corev1.ProtocolTCP,
 					ContainerPort: c.Prometheus.Port,
 				},

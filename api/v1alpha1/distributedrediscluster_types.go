@@ -100,6 +100,9 @@ type PrometheusSpec struct {
 	// Port number for the exporter side car.
 	Port int32 `json:"port,omitempty"`
 
+	// Metrics name for the exporter side car
+	Name string `json:"name,omitempty"`
+
 	// Namespace of Prometheus. Service monitors will be created in this namespace.
 	Namespace string `json:"namespace,omitempty"`
 	// Labels are key value pairs that is used to select Prometheus instance via ServiceMonitor labels.

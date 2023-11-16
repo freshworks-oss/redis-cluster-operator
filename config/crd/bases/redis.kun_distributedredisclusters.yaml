@@ -3085,6 +3085,9 @@ spec:
                           description: Labels are key value pairs that is used to
                             select Prometheus instance via ServiceMonitor labels.
                           type: object
+                        name:
+                          description: Metrics name for the exporter side car
+                          type: string
                         namespace:
                           description: Namespace of Prometheus. Service monitors will
                             be created in this namespace.
