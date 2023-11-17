@@ -66,12 +66,10 @@ func (r *realEnsureResource) EnsureRedisStatefulsets(cluster *redisv1alpha1.Dist
 func (r *realEnsureResource) ensureRedisStatefulset(cluster *redisv1alpha1.DistributedRedisCluster, ssName, svcName string,
 	labels map[string]string) (bool, error) {
 	if cluster.Spec.PdbEnabled {
-		r.logger.Info("Checking PDB if needed", "PDBENabled", cluster.Spec.PdbEnabled)
 		if err := r.ensureRedisPDB(cluster, ssName, labels); err != nil {
 			return false, err
 		}
 	}
-	r.logger.Info("Checking PDB if needed", "PDBENabled", cluster.Spec.PdbEnabled)
 	ss, err := r.statefulSetClient.GetStatefulSet(cluster.Namespace, ssName)
 	if err == nil {
 		if shouldUpdateRedis(cluster, ss) || shouldUpdateMonitor(cluster, ss) {
