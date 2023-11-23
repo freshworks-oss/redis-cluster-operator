@@ -56,6 +56,7 @@ func (r *realEnsureResource) EnsureRedisStatefulsets(cluster *redisv1alpha1.Dist
 		svcName := statefulsets.ClusterHeadlessSvcName(cluster.Spec.ServiceName, i)
 		// assign label
 		labels[redisv1alpha1.StatefulSetLabel] = name
+		labels[redisv1alpha1.ShardLabel] = name
 		if _, err := r.ensureRedisStatefulset(cluster, name, svcName, labels); err != nil {
 			return err
 		}
@@ -175,6 +176,7 @@ func (r *realEnsureResource) EnsureClusterShardsHeadLessSvcs(cluster *redisv1alp
 		name := statefulsets.ClusterStatefulSetName(cluster.Name, i)
 		// assign label
 		labels[redisv1alpha1.StatefulSetLabel] = name
+		labels[redisv1alpha1.ShardLabel] = name
 		if err := r.ensureRedisHeadLessSvc(cluster, svcName, labels); err != nil {
 			return err
 		}

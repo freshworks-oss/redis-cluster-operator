@@ -12,6 +12,7 @@ const (
 	LabelManagedByKey = "managed-by"
 	LabelNameKey      = "distributed-redis-cluster"
 	StatefulSetLabel  = "statefulSet"
+	ShardLabel        = "shard"
 	PasswordENV       = "REDIS_PASSWORD"
 )
 
