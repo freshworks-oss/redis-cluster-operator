@@ -339,6 +339,7 @@ func (r *realEnsureResource) UpdateRedisStatefulsets(cluster *redisv1alpha1.Dist
 		svcName := statefulsets.ClusterHeadlessSvcName(cluster.Spec.ServiceName, i)
 		// assign label
 		labels[redisv1alpha1.StatefulSetLabel] = name
+		labels[redisv1alpha1.ShardLabel] = name
 		if err := r.updateRedisStatefulset(cluster, name, svcName, labels); err != nil {
 			return err
 		}
