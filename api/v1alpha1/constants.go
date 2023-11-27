@@ -27,7 +27,6 @@ const (
 	RedisClusterNodeRoleSlave RedisRole = "Slave"
 	// RedisClusterNodeRoleNone None node role
 	RedisClusterNodeRoleNone RedisRole = "None"
-	// RedisRoleLabelKey RedisCluster Role Label Key
 )
 
 // ClusterStatus Redis Cluster status

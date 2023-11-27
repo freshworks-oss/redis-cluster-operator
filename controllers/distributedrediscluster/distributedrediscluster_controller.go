@@ -362,6 +362,7 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 	newStatus := buildClusterStatus(newClusterInfos, syncCtx.pods, instance, reqLogger)
 	SetClusterOK(newStatus, "OK")
 	r.updateClusterIfNeed(instance, newStatus, reqLogger)
+
 	requeue, err = r.checkandUpdatePods(admin, syncCtx, context)
 	if err != nil {
 		newStatus := instance.Status.DeepCopy()
