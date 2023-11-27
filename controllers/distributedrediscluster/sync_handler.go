@@ -387,7 +387,7 @@ func (r *DistributedRedisClusterReconciler) checkandUpdatePods(admin redisutil.I
 			return false, err
 		}
 		if ok {
-			updated, err = r.updatePodIfNeeded(slave_ip, ctx.pods, ssUR, ctx.reqLogger, ctx.cluster.Namespace)
+			updated, err = r.updatePodIfNeeded(slave_ip, ctx.pods, ssUR, ctx.reqLogger, ctx.cluster.Namespace, string(redisv1alpha1.RedisClusterNodeRoleSlave))
 			if err != nil {
 				return false, err
 			}
@@ -413,7 +413,7 @@ func (r *DistributedRedisClusterReconciler) checkandUpdatePods(admin redisutil.I
 	}
 	if ok {
 		for _, master_ip := range master_ips {
-			updated, err = r.updatePodIfNeeded(master_ip, ctx.pods, ssUR, ctx.reqLogger, ctx.cluster.Namespace)
+			updated, err = r.updatePodIfNeeded(master_ip, ctx.pods, ssUR, ctx.reqLogger, ctx.cluster.Namespace, string(redisv1alpha1.RedisClusterNodeRoleMaster))
 			if updated {
 				waiter := &waitStatefulSetUpdating{
 					name:                  "waitStatefulSetUpdating",
@@ -450,7 +450,7 @@ func (r *DistributedRedisClusterReconciler) IsSlaveReady(ip string, admin redisu
 	return ok, nil
 }
 
-func (r *DistributedRedisClusterReconciler) updatePodIfNeeded(ip string, pods []*corev1.Pod, revision_hashes []string, log logr.Logger, namespace string) (bool, error) {
+func (r *DistributedRedisClusterReconciler) updatePodIfNeeded(ip string, pods []*corev1.Pod, revision_hashes []string, log logr.Logger, namespace string, role string) (bool, error) {
 	if index := strings.Index(ip, ":"); index > 0 {
 		ip = ip[:index]
 	}
@@ -465,19 +465,29 @@ func (r *DistributedRedisClusterReconciler) updatePodIfNeeded(ip string, pods []
 			if len(pod_hash) < 3 {
 				return false, fmt.Errorf("pod hash is invalid")
 			}
+			client := k8sutil.NewPodController(r.Client)
 			if revision_hashes[stsIdentifier] != pod_hash[len(pod_hash)-1] {
-				client := k8sutil.NewPodController(r.Client)
 				err := client.DeletePodByName(namespace, pod.Name)
 				if err != nil {
 					return false, err
 				}
 				return true, err
 			} else {
+				r.setRoleLabelIfNeeded(ip, pod, role, namespace, client)
 				return false, err
 			}
 		}
 	}
 	return false, fmt.Errorf("pod not found")
+}
+
+func (r *DistributedRedisClusterReconciler) setRoleLabelIfNeeded(ip string, pod *corev1.Pod, role string, namespace string, client k8sutil.IPodControl) error {
+	for labelKey, labelValue := range pod.ObjectMeta.Labels {
+		if labelKey == redisv1alpha1.RedisRoleLabelKey && labelValue == role {
+			return nil
+		}
+	}
+	return client.UpdatePodLabels(pod, redisv1alpha1.RedisRoleLabelKey, role)
 }
 
 func (r *DistributedRedisClusterReconciler) getRedisIPsByRole(admin redisutil.IAdmin, log logr.Logger) ([]string, []string, error) {
