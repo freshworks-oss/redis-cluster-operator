@@ -63,8 +63,7 @@ func (p *PodController) UpdatePodLabels(pod *corev1.Pod, labelKey string, labelV
 		pod.Labels = make(map[string]string)
 	}
 	pod.Labels[labelKey] = labelValue
-	err := p.UpdatePod(pod)
-	return err
+	return p.UpdatePod(pod)
 }
 
 // GetPod implement the IPodControl.Interface.

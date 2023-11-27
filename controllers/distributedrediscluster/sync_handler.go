@@ -473,7 +473,7 @@ func (r *DistributedRedisClusterReconciler) updatePodIfNeeded(ip string, pods []
 				}
 				return true, err
 			} else {
-				r.setRoleLabelIfNeeded(ip, pod, role, namespace, client)
+				err := r.setRoleLabelIfNeeded(ip, pod, role, namespace, client)
 				return false, err
 			}
 		}
