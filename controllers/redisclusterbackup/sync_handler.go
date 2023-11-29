@@ -333,7 +333,7 @@ func (r *RedisClusterBackupReconciler) ValidateBackup(backup *redisv1alpha1.Redi
 	cluster, err := r.CrController.GetDistributedRedisCluster(backup.Namespace, backup.Spec.RedisClusterName)
 
 	if err != nil {
-		reqLogger.Error(err, "ValidateBackup unable to get cluster instance")
+		reqLogger.Info("ValidateBackup unable to get cluster instance")
 		return err
 	}
 	for i := 0; i < int(cluster.Spec.MasterSize); i++ {
@@ -341,11 +341,11 @@ func (r *RedisClusterBackupReconciler) ValidateBackup(backup *redisv1alpha1.Redi
 		//reqLogger.Info("ValidateBackup:", "STS name:", name)
 		ss, serr := r.StatefulSetController.GetStatefulSet(cluster.Namespace, name)
 		if serr != nil {
-			reqLogger.Error(err, "ValidateBackup Failed getting statefulsets")
+			reqLogger.Info("ValidateBackup Failed getting statefulsets")
 			return serr
 		}
 		if ss.Status.CurrentReplicas != (cluster.Spec.ClusterReplicas + 1) {
-			reqLogger.Error(err, "ValidateBackup Failed ", "Replicas Expected in STS:", (cluster.Spec.ClusterReplicas + 1), "Current:", ss.Status.CurrentReplicas)
+			reqLogger.Info("ValidateBackup Failed ", "Replicas Expected in STS:", (cluster.Spec.ClusterReplicas + 1), "Current:", ss.Status.CurrentReplicas)
 			return fmt.Errorf("cluster STS not yet ready")
 		}
 		//reqLogger.Info("ValidateBackup:", "STS name:", name, "Replica Count:", ss.Status.CurrentReplicas)
