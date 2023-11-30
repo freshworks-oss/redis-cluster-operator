@@ -14,6 +14,7 @@ const (
 	StatefulSetLabel  = "statefulSet"
 	ShardLabel        = "shard"
 	PasswordENV       = "REDIS_PASSWORD"
+	RedisRoleLabelKey = "role"
 )
 
 // RedisRole RedisCluster Node Role type
