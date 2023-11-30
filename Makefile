@@ -71,7 +71,6 @@ BIN_DIR=bin/operator
 DEVREPO=$(REPO)
 
 
-
 BINARY_VERSION=v0.0.11-multiarch
 BINARY_VERSION_DEV=v0.0.2-arm64-devonly
 ECR_REPO=redis-cluster-operator

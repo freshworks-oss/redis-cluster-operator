@@ -78,6 +78,7 @@ func utilGeneratePodTemplate(instance *redisv1alpha1.RedisClusterBackup, cluster
 					Image:           instance.Spec.UtilSpec.Image,
 					ImagePullPolicy: imagePullPolicy,
 					Command:         []string{instance.Spec.UtilSpec.StartUpCommand},
+					Resources:       *instance.Spec.UtilSpec.Resources,
 					Ports: []corev1.ContainerPort{
 						{
 							Name:          "metrics-0",

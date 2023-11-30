@@ -12,7 +12,6 @@ import (
 	redisv1alpha1 "github.com/dinesh-murugiah/rediscluster-operator/api/v1alpha1"
 	"github.com/dinesh-murugiah/rediscluster-operator/resources/deployments"
 	"github.com/dinesh-murugiah/rediscluster-operator/resources/statefulsets"
-	"github.com/dinesh-murugiah/rediscluster-operator/utils/event"
 )
 
 // const (
@@ -35,13 +34,13 @@ func (r *RedisClusterBackupReconciler) reconcileUtilDeployment(reqLogger logr.Lo
 	}
 
 	if err := r.ValidateBackup(backup, reqLogger); err != nil {
-		reqLogger.Error(err, "Backup Validation Failed: Either Problem with CR or cluster not yet ready for backup - Retrying")
-		r.Recorder.Event(
-			backup,
-			corev1.EventTypeWarning,
-			event.BackupError,
-			err.Error(),
-		)
+		// reqLogger.Error(err, "Backup Validation Failed: Either Problem with CR or cluster not yet ready for backup - Retrying")
+		// r.Recorder.Event(
+		// 	backup,
+		// 	corev1.EventTypeWarning,
+		// 	event.BackupError,
+		// 	err.Error(),
+		// )
 		reqLogger.Info("Validation Failed Retrying")
 		return nil
 	}
@@ -80,6 +79,7 @@ func validateUtilCRandDeploymentSpec(backup *redisv1alpha1.RedisClusterBackup, d
 	masterSize := cluster.Spec.MasterSize
 	clusterReplicas := cluster.Spec.ClusterReplicas
 	var envs []corev1.EnvVar
+	expectedResources := backup.Spec.UtilSpec.Resources
 	for _, container := range deployment.Spec.Template.Spec.Containers {
 		if container.Name == "rediscluster-util-container" {
 			envs = container.Env
@@ -87,8 +87,25 @@ func validateUtilCRandDeploymentSpec(backup *redisv1alpha1.RedisClusterBackup, d
 				deploymentUpdate = true
 				break
 			}
+			if result := expectedResources.Requests.Memory().Cmp(*container.Resources.Requests.Memory()); result != 0 {
+				deploymentUpdate = true
+				break
+			}
+			if result := expectedResources.Requests.Cpu().Cmp(*container.Resources.Requests.Cpu()); result != 0 {
+				deploymentUpdate = true
+				break
+			}
+			if result := expectedResources.Limits.Memory().Cmp(*container.Resources.Limits.Memory()); result != 0 {
+				deploymentUpdate = true
+				break
+			}
+			if result := expectedResources.Limits.Cpu().Cmp(*container.Resources.Limits.Cpu()); result != 0 {
+				deploymentUpdate = true
+				break
+			}
 		}
 	}
+
 	// This part to ensure master size and cluster replicas are same as the actual cluster. When cluster scaled up or down, same should be reflected in Util Deployment.
 	// Hence this check for the below env's.
 	for _, env := range envs {
@@ -316,7 +333,7 @@ func (r *RedisClusterBackupReconciler) ValidateBackup(backup *redisv1alpha1.Redi
 	cluster, err := r.CrController.GetDistributedRedisCluster(backup.Namespace, backup.Spec.RedisClusterName)
 
 	if err != nil {
-		reqLogger.Error(err, "ValidateBackup unable to get cluster instance")
+		reqLogger.Info("ValidateBackup unable to get cluster instance")
 		return err
 	}
 	for i := 0; i < int(cluster.Spec.MasterSize); i++ {
@@ -324,11 +341,11 @@ func (r *RedisClusterBackupReconciler) ValidateBackup(backup *redisv1alpha1.Redi
 		//reqLogger.Info("ValidateBackup:", "STS name:", name)
 		ss, serr := r.StatefulSetController.GetStatefulSet(cluster.Namespace, name)
 		if serr != nil {
-			reqLogger.Error(err, "ValidateBackup Failed getting statefulsets")
+			reqLogger.Info("ValidateBackup Failed getting statefulsets")
 			return serr
 		}
 		if ss.Status.CurrentReplicas != (cluster.Spec.ClusterReplicas + 1) {
-			reqLogger.Error(err, "ValidateBackup Failed ", "Replicas Expected in STS:", (cluster.Spec.ClusterReplicas + 1), "Current:", ss.Status.CurrentReplicas)
+			reqLogger.Info("ValidateBackup Failed ", "Replicas Expected in STS:", (cluster.Spec.ClusterReplicas + 1), "Current:", ss.Status.CurrentReplicas)
 			return fmt.Errorf("cluster STS not yet ready")
 		}
 		//reqLogger.Info("ValidateBackup:", "STS name:", name, "Replica Count:", ss.Status.CurrentReplicas)
