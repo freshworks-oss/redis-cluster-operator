@@ -23,6 +23,7 @@ const (
 	redisStorageVolumeName      = "redis-data"
 	redisRestoreLocalVolumeName = "redis-local"
 	redisServerName             = "redis"
+	zonenameTopologyKey         = "topology.kubernetes.io/zone"
 	hostnameTopologyKey         = "kubernetes.io/hostname"
 	ExporterContainerName       = "exporter"
 
@@ -79,11 +80,12 @@ func NewStatefulSetForCR(cluster *redisv1alpha1.DistributedRedisCluster, ssName,
 					Annotations: cluster.Spec.Annotations,
 				},
 				Spec: corev1.PodSpec{
-					ImagePullSecrets: cluster.Spec.ImagePullSecrets,
-					Affinity:         getAffinity(cluster, labels),
-					Tolerations:      spec.ToleRations,
-					SecurityContext:  spec.SecurityContext,
-					NodeSelector:     cluster.Spec.NodeSelector,
+					ImagePullSecrets:          cluster.Spec.ImagePullSecrets,
+					Affinity:                  getAffinity(cluster, labels),
+					Tolerations:               spec.ToleRations,
+					SecurityContext:           spec.SecurityContext,
+					NodeSelector:              cluster.Spec.NodeSelector,
+					TopologySpreadConstraints: getTopolgyspreadConstraints(cluster, ssName),
 					Containers: []corev1.Container{
 						redisServerContainer(cluster, password),
 					},
@@ -128,12 +130,33 @@ func NewStatefulSetForCR(cluster *redisv1alpha1.DistributedRedisCluster, ssName,
 	return ss, nil
 }
 
+func getTopolgyspreadConstraints(cluster *redisv1alpha1.DistributedRedisCluster, ssname string) []corev1.TopologySpreadConstraint {
+	return []corev1.TopologySpreadConstraint{
+		{
+			MaxSkew:           1,
+			TopologyKey:       zonenameTopologyKey,
+			WhenUnsatisfiable: corev1.DoNotSchedule,
+			LabelSelector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{"statefulSet": ssname},
+			},
+		},
+		{
+			MaxSkew:           1,
+			TopologyKey:       hostnameTopologyKey,
+			WhenUnsatisfiable: corev1.DoNotSchedule,
+			LabelSelector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{"statefulSet": ssname},
+			},
+		},
+	}
+}
+
 func getAffinity(cluster *redisv1alpha1.DistributedRedisCluster, labels map[string]string) *corev1.Affinity {
 	affinity := cluster.Spec.Affinity
 	if affinity != nil {
 		return affinity
 	}
-
+	// pod  anti affinity for every pod in a redis cluster on node level (preferred weighted anti-affinity for every pod, mandatady on STS level)
 	if cluster.Spec.RequiredAntiAffinity {
 		return &corev1.Affinity{
 			PodAntiAffinity: &corev1.PodAntiAffinity{
@@ -159,17 +182,14 @@ func getAffinity(cluster *redisv1alpha1.DistributedRedisCluster, labels map[stri
 			},
 		}
 	}
-	// return a SOFT anti-affinity by default
+	// return pod  anti-affinity on node level per STS by default
 	return &corev1.Affinity{
 		PodAntiAffinity: &corev1.PodAntiAffinity{
-			PreferredDuringSchedulingIgnoredDuringExecution: []corev1.WeightedPodAffinityTerm{
+			RequiredDuringSchedulingIgnoredDuringExecution: []corev1.PodAffinityTerm{
 				{
-					Weight: 100,
-					PodAffinityTerm: corev1.PodAffinityTerm{
-						TopologyKey: hostnameTopologyKey,
-						LabelSelector: &metav1.LabelSelector{
-							MatchLabels: map[string]string{redisv1alpha1.LabelClusterName: cluster.Name},
-						},
+					TopologyKey: hostnameTopologyKey,
+					LabelSelector: &metav1.LabelSelector{
+						MatchLabels: labels,
 					},
 				},
 			},
