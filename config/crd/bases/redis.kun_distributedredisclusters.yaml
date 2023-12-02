@@ -3643,6 +3643,8 @@ spec:
             description: DistributedRedisClusterStatus defines the observed state
               of DistributedRedisCluster
             properties:
+              haStatus:
+                type: string
               maxReplicationFactor:
                 format: int32
                 type: integer
@@ -3674,6 +3676,8 @@ spec:
                       type: array
                     statefulSet:
                       type: string
+                    zonename:
+                      type: string
                   required:
                   - id
                   - ip
@@ -3682,6 +3686,7 @@ spec:
                   - port
                   - role
                   - statefulSet
+                  - zonename
                   type: object
                 type: array
               numberOfMaster:
@@ -3706,6 +3711,7 @@ spec:
                   this file'
                 type: string
             required:
+            - haStatus
             - nodes
             - secretstatus
             - secretverisons

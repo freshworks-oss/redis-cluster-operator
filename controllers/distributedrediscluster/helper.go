@@ -55,7 +55,7 @@ func newRedisAdmin(pods []*corev1.Pod, password string, cfg *config.Redis, reqLo
 	return redisutil.NewAdmin(nodesAddrs, &adminConfig, reqLogger, ctx), nil
 }
 
-func newRedisCluster(infos *redisutil.ClusterInfos, cluster *redisv1alpha1.DistributedRedisCluster) (*redisutil.Cluster, redisutil.Nodes, error) {
+func newRedisCluster(infos *redisutil.ClusterInfos, cluster *redisv1alpha1.DistributedRedisCluster, reqLogger logr.Logger) (*redisutil.Cluster, redisutil.Nodes, error) {
 	// now we can trigger the rebalance
 	nodes := infos.GetNodes()
 
@@ -75,6 +75,13 @@ func newRedisCluster(infos *redisutil.ClusterInfos, cluster *redisv1alpha1.Distr
 			rNode.PodName = node.PodName
 			rNode.NodeName = node.NodeName
 			rNode.StatefulSet = node.StatefulSet
+			if node.Zonename != "unknown" {
+				rNode.Zonename = node.Zonename
+			} else {
+				err1 := fmt.Errorf("Zone label not found in node %s", node.NodeName)
+				reqLogger.Error(err1, "Unable to find Zone label", err1)
+				return nil, nil, err1
+			}
 		}
 	}
 

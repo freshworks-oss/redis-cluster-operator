@@ -139,6 +139,7 @@ type DistributedRedisClusterStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 	Status               ClusterStatus      `json:"status"`
+	HAStatus             string             `json:"haStatus"`
 	SecretStatus         string             `json:"secretstatus"`
 	SecretsVer           map[string]string  `json:"secretverisons"`
 	Reason               string             `json:"reason,omitempty"`
@@ -165,6 +166,7 @@ type RedisClusterNode struct {
 	MasterRef   string    `json:"masterRef,omitempty"`
 	PodName     string    `json:"podName"`
 	NodeName    string    `json:"nodeName"`
+	Zonename    string    `json:"zonename"`
 	StatefulSet string    `json:"statefulSet"`
 }
 

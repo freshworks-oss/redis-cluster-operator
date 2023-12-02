@@ -32,13 +32,13 @@ type syncContext struct {
 	reqLogger    logr.Logger
 }
 
-func (r *DistributedRedisClusterReconciler) ensureCluster(ctx *syncContext) error {
+func (r *DistributedRedisClusterReconciler) ensureCluster(ctx *syncContext) (bool, error) {
 	cluster := ctx.cluster
 	if err := r.validateAndSetDefault(cluster, ctx.reqLogger); err != nil {
 		if k8sutil.IsRequestRetryable(err) {
-			return Kubernetes.Wrap(err, "Validate")
+			return false, Kubernetes.Wrap(err, "Validate")
 		}
-		return StopRetry.Wrap(err, "stop retry")
+		return false, StopRetry.Wrap(err, "stop retry")
 	}
 
 	// Redis only load db from append only file when AOF ON, because of
@@ -48,29 +48,30 @@ func (r *DistributedRedisClusterReconciler) ensureCluster(ctx *syncContext) erro
 	labels := getLabels(cluster)
 	if err, crdeferr := r.Ensurer.EnsureRedisConfigMap(cluster, labels); err != nil {
 		if crdeferr {
-			return StopRetry.Wrap(err, "AdminSecretMissing")
+			return false, StopRetry.Wrap(err, "AdminSecretMissing")
 		} else {
-			return Kubernetes.Wrap(err, "EnsureRedisConfigMap")
+			return false, Kubernetes.Wrap(err, "EnsureRedisConfigMap")
 		}
 	}
 
-	if err := r.Ensurer.EnsureRedisStatefulsets(cluster, labels); err != nil {
+	isSTScreated, err := r.Ensurer.EnsureRedisStatefulsets(cluster, labels)
+	if err != nil {
 		ctx.reqLogger.Error(err, "EnsureRedisStatefulSets")
-		return Kubernetes.Wrap(err, "EnsureRedisStatefulSets")
+		return false, Kubernetes.Wrap(err, "EnsureRedisStatefulSets")
 	}
-	if err := r.Ensurer.EnsureClusterShardsHeadLessSvcs(cluster, labels); err != nil {
-		return Kubernetes.Wrap(err, "EnsureRedisHeadLessSvcs")
+	if err1 := r.Ensurer.EnsureClusterShardsHeadLessSvcs(cluster, labels); err1 != nil {
+		return isSTScreated, Kubernetes.Wrap(err, "EnsureRedisHeadLessSvcs")
 	}
-	if err := r.Ensurer.EnsureClusterHeadLessSvc(cluster, labels); err != nil {
-		return Kubernetes.Wrap(err, "EnsureRedisSvc")
+	if err2 := r.Ensurer.EnsureClusterHeadLessSvc(cluster, labels); err2 != nil {
+		return isSTScreated, Kubernetes.Wrap(err, "EnsureRedisSvc")
 	}
-	if err := r.Ensurer.EnsureRedisRCloneSecret(cluster, labels); err != nil {
+	if err3 := r.Ensurer.EnsureRedisRCloneSecret(cluster, labels); err3 != nil {
 		if k8sutil.IsRequestRetryable(err) {
-			return Kubernetes.Wrap(err, "EnsureRedisRCloneSecret")
+			return isSTScreated, Kubernetes.Wrap(err, "EnsureRedisRCloneSecret")
 		}
-		return StopRetry.Wrap(err, "stop retry")
+		return isSTScreated, StopRetry.Wrap(err, "stop retry")
 	}
-	return nil
+	return isSTScreated, nil
 }
 
 func (r *DistributedRedisClusterReconciler) waitPodReady(ctx *syncContext) error {
@@ -197,7 +198,7 @@ func (r *DistributedRedisClusterReconciler) syncCluster(ctx *syncContext, contex
 	admin := ctx.admin
 	clusterInfos := ctx.clusterInfos
 	expectMasterNum := cluster.Spec.MasterSize
-	rCluster, nodes, err := newRedisCluster(clusterInfos, cluster)
+	rCluster, nodes, err := newRedisCluster(clusterInfos, cluster, ctx.reqLogger)
 	if err != nil {
 		return Cluster.Wrap(err, "newRedisCluster")
 	}

@@ -7,9 +7,11 @@ import (
 
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	redisv1alpha1 "github.com/dinesh-murugiah/rediscluster-operator/api/v1alpha1"
 	utils "github.com/dinesh-murugiah/rediscluster-operator/utils/commonutils"
+	"github.com/dinesh-murugiah/rediscluster-operator/utils/k8sutil"
 	"github.com/dinesh-murugiah/rediscluster-operator/utils/redisutil"
 )
 
@@ -42,13 +44,17 @@ func SetSecretStatus(status *redisv1alpha1.DistributedRedisClusterStatus, secret
 	status.SecretStatus = secretstate
 }
 
+func SetHAStatus(status *redisv1alpha1.DistributedRedisClusterStatus, HAstate string) {
+	status.HAStatus = HAstate
+}
+
 func SetClusterResetPassword(status *redisv1alpha1.DistributedRedisClusterStatus, reason string) {
 	status.Status = redisv1alpha1.ClusterStatusResetPassword
 	status.Reason = reason
 }
 
 func buildClusterStatus(clusterInfos *redisutil.ClusterInfos, pods []*corev1.Pod,
-	cluster *redisv1alpha1.DistributedRedisCluster, reqLogger logr.Logger) *redisv1alpha1.DistributedRedisClusterStatus {
+	cluster *redisv1alpha1.DistributedRedisCluster, reqLogger logr.Logger, Client client.Client) *redisv1alpha1.DistributedRedisClusterStatus {
 	oldStatus := cluster.Status
 	status := &redisv1alpha1.DistributedRedisClusterStatus{
 		Status:       oldStatus.Status,
@@ -56,7 +62,9 @@ func buildClusterStatus(clusterInfos *redisutil.ClusterInfos, pods []*corev1.Pod
 		SecretStatus: oldStatus.SecretStatus,
 		SecretsVer:   oldStatus.SecretsVer,
 		Restore:      oldStatus.Restore,
+		HAStatus:     oldStatus.HAStatus,
 	}
+	nodectrl := k8sutil.NewNodeController(Client)
 
 	nbMaster := int32(0)
 	nbSlaveByMaster := map[string]int{}
@@ -67,6 +75,14 @@ func buildClusterStatus(clusterInfos *redisutil.ClusterInfos, pods []*corev1.Pod
 			NodeName: pod.Spec.NodeName,
 			IP:       pod.Status.PodIP,
 			Slots:    []string{},
+		}
+		znode, err := nodectrl.GetNode(pod.Spec.NodeName)
+		if err == nil {
+			newNode.Zonename = nodectrl.GetZoneLabel(znode)
+			//reqLogger.Info("buildClusterStatus", "Zone label found", newNode.Zonename)
+		} else {
+			reqLogger.Error(err, "GetNode Returned Error", "context", "buildClusterStatus", "action", "setting zonename to unknown")
+			newNode.Zonename = "unknown"
 		}
 		if len(pod.OwnerReferences) > 0 {
 			if pod.OwnerReferences[0].Kind == "StatefulSet" {

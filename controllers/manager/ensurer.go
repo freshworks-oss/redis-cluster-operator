@@ -20,7 +20,7 @@ import (
 )
 
 type IEnsureResource interface {
-	EnsureRedisStatefulsets(cluster *redisv1alpha1.DistributedRedisCluster, labels map[string]string) error
+	EnsureRedisStatefulsets(cluster *redisv1alpha1.DistributedRedisCluster, labels map[string]string) (bool, error)
 	EnsureClusterShardsHeadLessSvcs(cluster *redisv1alpha1.DistributedRedisCluster, labels map[string]string) error
 	EnsureClusterHeadLessSvc(cluster *redisv1alpha1.DistributedRedisCluster, labels map[string]string) error
 	EnsureRedisConfigMap(cluster *redisv1alpha1.DistributedRedisCluster, labels map[string]string) (error, bool)
@@ -50,18 +50,30 @@ func NewEnsureResource(client client.Client, logger logr.Logger) IEnsureResource
 	}
 }
 
-func (r *realEnsureResource) EnsureRedisStatefulsets(cluster *redisv1alpha1.DistributedRedisCluster, labels map[string]string) error {
+func (r *realEnsureResource) EnsureRedisStatefulsets(cluster *redisv1alpha1.DistributedRedisCluster, labels map[string]string) (bool, error) {
+	var StsCreatedcount int = 0
+	var isSTScreated bool = false
 	for i := 0; i < int(cluster.Spec.MasterSize); i++ {
 		name := statefulsets.ClusterStatefulSetName(cluster.Name, i)
 		svcName := statefulsets.ClusterHeadlessSvcName(cluster.Spec.ServiceName, i)
 		// assign label
 		labels[redisv1alpha1.StatefulSetLabel] = name
 		labels[redisv1alpha1.ShardLabel] = name
-		if _, err := r.ensureRedisStatefulset(cluster, name, svcName, labels); err != nil {
-			return err
+		stsStatus, err := r.ensureRedisStatefulset(cluster, name, svcName, labels)
+		if err != nil {
+			return isSTScreated, err
+		}
+		if err == nil && !stsStatus {
+			StsCreatedcount++
+			isSTScreated = true
 		}
 	}
-	return nil
+	if StsCreatedcount > 0 {
+		return isSTScreated, nil
+	} else {
+		return isSTScreated, nil
+	}
+
 }
 
 func (r *realEnsureResource) ensureRedisStatefulset(cluster *redisv1alpha1.DistributedRedisCluster, ssName, svcName string,
