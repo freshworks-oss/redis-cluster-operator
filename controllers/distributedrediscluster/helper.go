@@ -64,6 +64,7 @@ func newRedisCluster(infos *redisutil.ClusterInfos, cluster *redisv1alpha1.Distr
 		Name:      cluster.Name,
 		Namespace: cluster.Namespace,
 		Nodes:     make(map[string]*redisutil.Node),
+		HaStatus:  cluster.Status.HAStatus,
 	}
 
 	for _, node := range nodes {
@@ -75,7 +76,7 @@ func newRedisCluster(infos *redisutil.ClusterInfos, cluster *redisv1alpha1.Distr
 			rNode.PodName = node.PodName
 			rNode.NodeName = node.NodeName
 			rNode.StatefulSet = node.StatefulSet
-			if node.Zonename != "unknown" {
+			if node.Zonename != "" && node.Zonename != "unknown" {
 				rNode.Zonename = node.Zonename
 			} else {
 				err1 := fmt.Errorf("Zone label not found in node %s", node.NodeName)

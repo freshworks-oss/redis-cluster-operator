@@ -90,6 +90,20 @@ func (r *DistributedRedisClusterReconciler) validateAndSetDefault(cluster *redis
 	var err error
 
 	// TODO: DR-1173 Move this to validation webhook
+	if cluster.Spec.HaConfig == nil {
+		err = fmt.Errorf("ha config expected missing")
+		return err
+
+	} else {
+		if cluster.Spec.HaConfig.HaEnabled {
+			if cluster.Spec.HaConfig.ZonesInfo == nil || (len(cluster.Spec.HaConfig.ZonesInfo) < 1 || len(cluster.Spec.HaConfig.ZonesInfo) < 3) {
+				err = fmt.Errorf("haspec missing zone info")
+				return err
+			}
+		}
+	}
+
+	// TODO: DR-1173 Move this to validation webhook
 	for _, container := range *cluster.Spec.Monitor {
 		if container.Image == "" || container.Prometheus == nil || container.Prometheus.Port == 0 {
 			err = fmt.Errorf("required fields missing for monitor")
@@ -202,7 +216,7 @@ func (r *DistributedRedisClusterReconciler) syncCluster(ctx *syncContext, contex
 	if err != nil {
 		return Cluster.Wrap(err, "newRedisCluster")
 	}
-	clusterCtx := clustering.NewCtx(rCluster, nodes, cluster.Spec.MasterSize, cluster.Name, ctx.reqLogger)
+	clusterCtx := clustering.NewCtx(cluster.Spec.HaConfig, rCluster, nodes, cluster.Spec.MasterSize, cluster.Name, ctx.reqLogger)
 	if err := clusterCtx.DispatchMasters(); err != nil {
 		return Cluster.Wrap(err, "DispatchMasters")
 	}

@@ -4,6 +4,9 @@ import (
 	"fmt"
 	"math"
 	"reflect"
+	"sort"
+	"strconv"
+	"strings"
 
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
@@ -44,13 +47,103 @@ func SetSecretStatus(status *redisv1alpha1.DistributedRedisClusterStatus, secret
 	status.SecretStatus = secretstate
 }
 
-func SetHAStatus(status *redisv1alpha1.DistributedRedisClusterStatus, HAstate string) {
+func SetHAStatus(status *redisv1alpha1.DistributedRedisClusterStatus, HAstate redisv1alpha1.HaStatus) {
 	status.HAStatus = HAstate
 }
 
 func SetClusterResetPassword(status *redisv1alpha1.DistributedRedisClusterStatus, reason string) {
 	status.Status = redisv1alpha1.ClusterStatusResetPassword
 	status.Reason = reason
+}
+
+func buildHAStatus(clusterInfos *redisutil.ClusterInfos, pods []*corev1.Pod, cluster *redisv1alpha1.DistributedRedisCluster, reqLogger logr.Logger, Client client.Client) (redisv1alpha1.HaStatus, error) {
+
+	var numMastersHAPlaced int32 = 0
+	var misplacemasters redisutil.Nodes = make([]*redisutil.Node, 0)
+	nodectrl := k8sutil.NewNodeController(Client)
+
+	zones := make([]string, 0, len(cluster.Spec.HaConfig.ZonesInfo))
+	for zone := range cluster.Spec.HaConfig.ZonesInfo {
+		zones = append(zones, zone)
+	}
+	sort.Strings(zones)
+
+	masterNodes, err := clusterInfos.GetNodes().GetNodesByFunc(func(node *redisutil.Node) bool {
+		return node.Role == redisutil.RedisMasterRole
+	})
+
+	if err != nil || len(masterNodes) != int(cluster.Spec.MasterSize) {
+		reqLogger.Error(err, fmt.Sprintf("unable to retrieve sufficient redis node with the role master"))
+		return redisv1alpha1.HaStatusFailed, err
+	}
+
+	for _, node := range masterNodes {
+
+		for _, pod := range pods {
+			if pod.Status.PodIP == node.IP {
+				node.PodName = pod.Name
+				node.NodeName = pod.Spec.NodeName
+				if len(pod.OwnerReferences) > 0 {
+					if pod.OwnerReferences[0].Kind == "StatefulSet" {
+						node.StatefulSet = pod.OwnerReferences[0].Name
+					}
+				}
+				znode, err := nodectrl.GetNode(pod.Spec.NodeName)
+				if err == nil {
+					node.Zonename = nodectrl.GetZoneLabel(znode)
+					//reqLogger.Info("buildClusterStatus", "Zone label found", newNode.Zonename)
+				} else {
+					reqLogger.Error(err, "GetNode Returned Error", "context", "buildClusterStatus", "action", "setting zonename to unknown")
+					node.Zonename = "unknown"
+				}
+				break
+			}
+		}
+		//reqLogger.Info("buildHAStatus", "stsname", node.StatefulSet, "zone", node.Zonename)
+		stsindex, err := getSTSindex(node.StatefulSet)
+		if err != nil {
+			reqLogger.Error(err, fmt.Sprintf("unable to retrieve sufficient redis node with the role master"))
+			return redisv1alpha1.HaStatusFailed, err
+		}
+		zoneoffset := (stsindex % len(cluster.Spec.HaConfig.ZonesInfo))
+		zonename := zones[zoneoffset]
+		if node.Zonename == zonename {
+			numMastersHAPlaced++
+		} else {
+			misplacemasters = append(misplacemasters, node)
+		}
+
+	}
+
+	if numMastersHAPlaced != cluster.Spec.MasterSize {
+		err := fmt.Errorf("master placement not suitable for cluster ha")
+		for _, node := range misplacemasters {
+			reqLogger.Info("buildHAStatus", "misplaced master", node.PodName, "misplaced zone", node.Zonename)
+		}
+		return redisv1alpha1.HaStatusRedistribute, err
+	}
+	return redisv1alpha1.HaStatusHealthy, nil
+
+}
+
+func getSTSindex(stsName string) (int, error) {
+	// Find the last index of '-'
+	lastIndex := strings.LastIndex(stsName, "-")
+	if lastIndex == -1 {
+		err := fmt.Errorf("Unable to find the last index of '-' in %s", stsName)
+		return -1, err
+	}
+
+	// Extract the substring after the last '-'
+	stsindexstr := stsName[lastIndex+1:]
+
+	// Check if the substring is a number and return the sts index
+	if stsindex, err := strconv.Atoi(stsindexstr); err == nil {
+		return stsindex, nil
+	} else {
+		err := fmt.Errorf("invalid statefulset index in %s", stsName)
+		return -1, err
+	}
 }
 
 func buildClusterStatus(clusterInfos *redisutil.ClusterInfos, pods []*corev1.Pod,

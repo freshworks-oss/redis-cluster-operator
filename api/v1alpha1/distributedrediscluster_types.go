@@ -42,6 +42,7 @@ type DistributedRedisClusterSpec struct {
 	ServiceName      string                        `json:"serviceName,omitempty"`
 	Config           map[string]string             `json:"config,omitempty"`
 	// Set RequiredAntiAffinity to force the master-slave node anti-affinity.
+	HaConfig                 *HAspec                       `json:"haConfig,omitempty"`
 	RequiredAntiAffinity     bool                          `json:"requiredAntiAffinity,omitempty"`
 	Affinity                 *corev1.Affinity              `json:"affinity,omitempty"`
 	NodeSelector             map[string]string             `json:"nodeSelector,omitempty"`
@@ -62,6 +63,11 @@ type DistributedRedisClusterSpec struct {
 	CustomReadinessProbe     corev1.Probe                  `json:"customReadinessProbe"`
 	CustomStartupProbe       corev1.Probe                  `json:"customStartupProbe"`
 	PdbEnabled               bool                          `json:"pdbEnabled"`
+}
+
+type HAspec struct {
+	HaEnabled bool              `json:"haEnabled"`
+	ZonesInfo map[string]string `json:"zonesInfo"`
 }
 
 type AgentSpec struct {
@@ -139,7 +145,7 @@ type DistributedRedisClusterStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 	Status               ClusterStatus      `json:"status"`
-	HAStatus             string             `json:"haStatus"`
+	HAStatus             HaStatus           `json:"haStatus"`
 	SecretStatus         string             `json:"secretstatus"`
 	SecretsVer           map[string]string  `json:"secretverisons"`
 	Reason               string             `json:"reason,omitempty"`

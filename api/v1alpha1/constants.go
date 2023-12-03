@@ -31,6 +31,7 @@ const (
 
 // ClusterStatus Redis Cluster status
 type ClusterStatus string
+type HaStatus string
 
 const (
 	// ClusterStatusOK ClusterStatus OK
@@ -51,6 +52,13 @@ const (
 	ClusterStatusOnDelete ClusterStatus = "OnDelete"
 	// ClusterStatusResetPassword ClusterStatus ResetPassword
 	ClusterStatusResetPassword ClusterStatus = "ResetPassword"
+)
+
+const (
+	HaStatusCreating     HaStatus = "hacreating"
+	HaStatusHealthy      HaStatus = "hahealthy"
+	HaStatusRedistribute HaStatus = "haredistribute"
+	HaStatusFailed       HaStatus = "hafailed"
 )
 
 // Redis Status Redis server status

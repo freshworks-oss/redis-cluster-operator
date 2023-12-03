@@ -1626,6 +1626,20 @@ spec:
                   - name
                   type: object
                 type: array
+              haConfig:
+                description: Set RequiredAntiAffinity to force the master-slave node
+                  anti-affinity.
+                properties:
+                  haEnabled:
+                    type: boolean
+                  zonesInfo:
+                    additionalProperties:
+                      type: string
+                    type: object
+                required:
+                - haEnabled
+                - zonesInfo
+                type: object
               image:
                 type: string
               imagePullPolicy:
@@ -3327,8 +3341,6 @@ spec:
               pdbEnabled:
                 type: boolean
               requiredAntiAffinity:
-                description: Set RequiredAntiAffinity to force the master-slave node
-                  anti-affinity.
                 type: boolean
               resources:
                 description: ResourceRequirements describes the compute resource requirements.

@@ -173,7 +173,7 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 		reqLogger.WithValues("err", err).Info("ensureCluster")
 		newStatus := instance.Status.DeepCopy()
 		if instance.Status.HAStatus == "" || isStsCreated {
-			SetHAStatus(newStatus, "hacreating")
+			SetHAStatus(newStatus, rediskunv1alpha1.HaStatusCreating)
 		}
 		SetClusterScaling(newStatus, err.Error())
 		r.updateClusterIfNeed(instance, newStatus, reqLogger)
@@ -339,6 +339,7 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 		return reconcile.Result{}, Redis.Wrap(err, "SetConfigIfNeed")
 	}
 
+	// Un optimial calling of buildClusterStatus , Donot remove this from here as its used for cluster creation process
 	status := buildClusterStatus(clusterInfos, syncCtx.pods, instance, reqLogger, r.Client)
 	if is := r.isScalingDown(instance, reqLogger); is {
 		SetClusterRebalancing(status, "scaling down")
@@ -365,6 +366,8 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 		}
 	}
 	newStatus := buildClusterStatus(newClusterInfos, syncCtx.pods, instance, reqLogger, r.Client)
+	haStatus, _ := buildHAStatus(newClusterInfos, syncCtx.pods, instance, reqLogger, r.Client)
+	SetHAStatus(newStatus, haStatus)
 	SetClusterOK(newStatus, "OK")
 	r.updateClusterIfNeed(instance, newStatus, reqLogger)
 
