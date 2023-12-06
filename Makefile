@@ -71,8 +71,8 @@ BIN_DIR=bin/operator
 DEVREPO=$(REPO)
 
 
-BINARY_VERSION=v0.0.17-multiarch
-BINARY_VERSION_DEV=v0.0.19-arm64-devonly
+BINARY_VERSION=v0.0.18-multiarch
+BINARY_VERSION_DEV=v0.0.20-arm64-devonly
 ECR_REPO=redis-cluster-operator
 ECR__DEV_REPO=redis-cluster-operator-dev
 ECR_URI=582763096612.dkr.ecr.us-east-1.amazonaws.com

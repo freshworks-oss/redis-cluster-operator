@@ -340,7 +340,7 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 	}
 
 	// Un optimial calling of buildClusterStatus , Donot remove this from here as its used for cluster creation process
-	status := buildClusterStatus(clusterInfos, syncCtx.pods, instance, reqLogger, r.Client)
+	status := buildClusterStatus(clusterInfos, syncCtx.pods, instance, reqLogger, r.Client, true)
 	if is := r.isScalingDown(instance, reqLogger); is {
 		SetClusterRebalancing(status, "scaling down")
 	}
@@ -363,9 +363,15 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 	if err != nil {
 		if clusterInfos.Status == redisutil.ClusterInfosPartial {
 			return reconcile.Result{}, Redis.Wrap(err, "GetClusterInfos")
+		} else if clusterInfos.Status == redisutil.ClusterInfosInconsistent {
+			reqLogger.Info("after syncCluster clusterInfos inconsistent resync after 10 seconds")
+			newStatus := instance.Status.DeepCopy()
+			SetClusterScaling(newStatus, err.Error())
+			r.updateClusterIfNeed(instance, newStatus, reqLogger)
+			return reconcile.Result{RequeueAfter: 10 * time.Second}, nil
 		}
 	}
-	newStatus := buildClusterStatus(newClusterInfos, syncCtx.pods, instance, reqLogger, r.Client)
+	newStatus := buildClusterStatus(newClusterInfos, syncCtx.pods, instance, reqLogger, r.Client, true)
 	haStatus, _ := buildHAStatus(newClusterInfos, syncCtx.pods, instance, reqLogger, r.Client)
 	SetHAStatus(newStatus, haStatus)
 	SetClusterOK(newStatus, "OK")

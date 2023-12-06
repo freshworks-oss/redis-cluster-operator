@@ -69,23 +69,13 @@ func newRedisCluster(infos *redisutil.ClusterInfos, cluster *redisv1alpha1.Distr
 
 	for _, node := range nodes {
 		rCluster.Nodes[node.ID] = node
-	}
-
-	for _, node := range cluster.Status.Nodes {
-		if rNode, ok := rCluster.Nodes[node.ID]; ok {
-			rNode.PodName = node.PodName
-			rNode.NodeName = node.NodeName
-			rNode.StatefulSet = node.StatefulSet
-			if node.Zonename != "" && node.Zonename != "unknown" {
-				rNode.Zonename = node.Zonename
-			} else {
-				err1 := fmt.Errorf("Zone label not found in node %s", node.NodeName)
-				reqLogger.Error(err1, "Unable to find Zone label", err1)
-				return nil, nil, err1
-			}
+		//reqLogger.Info("newRedisCluster", "STS", node.StatefulSet, "NodeName", node.NodeName, "Zone", node.Zonename)
+		if node.Zonename == "" || node.Zonename == "unknown" {
+			err1 := fmt.Errorf("Zone label not found in node %s", node.NodeName)
+			reqLogger.Error(err1, "Unable to find Zone label", err1)
+			return nil, nil, err1
 		}
 	}
-
 	return rCluster, nodes, nil
 }
 
