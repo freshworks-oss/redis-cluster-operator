@@ -60,7 +60,7 @@ func buildHAStatus(clusterInfos *redisutil.ClusterInfos, pods []*corev1.Pod, clu
 
 	var numMastersHAPlaced int32 = 0
 	var misplacemasters redisutil.Nodes = make([]*redisutil.Node, 0)
-	nodectrl := k8sutil.NewNodeController(Client)
+	//nodectrl := k8sutil.NewNodeController(Client)
 
 	zones := make([]string, 0, len(cluster.Spec.HaConfig.ZonesInfo))
 	for zone := range cluster.Spec.HaConfig.ZonesInfo {
@@ -78,28 +78,7 @@ func buildHAStatus(clusterInfos *redisutil.ClusterInfos, pods []*corev1.Pod, clu
 	}
 
 	for _, node := range masterNodes {
-
-		for _, pod := range pods {
-			if pod.Status.PodIP == node.IP {
-				node.PodName = pod.Name
-				node.NodeName = pod.Spec.NodeName
-				if len(pod.OwnerReferences) > 0 {
-					if pod.OwnerReferences[0].Kind == "StatefulSet" {
-						node.StatefulSet = pod.OwnerReferences[0].Name
-					}
-				}
-				znode, err := nodectrl.GetNode(pod.Spec.NodeName)
-				if err == nil {
-					node.Zonename = nodectrl.GetZoneLabel(znode)
-					//reqLogger.Info("buildClusterStatus", "Zone label found", newNode.Zonename)
-				} else {
-					reqLogger.Error(err, "GetNode Returned Error", "context", "buildClusterStatus", "action", "setting zonename to unknown")
-					node.Zonename = "unknown"
-				}
-				break
-			}
-		}
-		//reqLogger.Info("buildHAStatus", "stsname", node.StatefulSet, "zone", node.Zonename)
+		reqLogger.Info("buildHAStatus", "stsname", node.StatefulSet, "zone", node.Zonename)
 		stsindex, err := getSTSindex(node.StatefulSet)
 		if err != nil {
 			reqLogger.Error(err, fmt.Sprintf("unable to retrieve sufficient redis node with the role master"))
@@ -147,7 +126,7 @@ func getSTSindex(stsName string) (int, error) {
 }
 
 func buildClusterStatus(clusterInfos *redisutil.ClusterInfos, pods []*corev1.Pod,
-	cluster *redisv1alpha1.DistributedRedisCluster, reqLogger logr.Logger, Client client.Client) *redisv1alpha1.DistributedRedisClusterStatus {
+	cluster *redisv1alpha1.DistributedRedisCluster, reqLogger logr.Logger, Client client.Client, updateClusterInfo bool) *redisv1alpha1.DistributedRedisClusterStatus {
 	oldStatus := cluster.Status
 	status := &redisv1alpha1.DistributedRedisClusterStatus{
 		Status:       oldStatus.Status,
@@ -163,25 +142,6 @@ func buildClusterStatus(clusterInfos *redisutil.ClusterInfos, pods []*corev1.Pod
 	nbSlaveByMaster := map[string]int{}
 
 	for _, pod := range pods {
-		newNode := redisv1alpha1.RedisClusterNode{
-			PodName:  pod.Name,
-			NodeName: pod.Spec.NodeName,
-			IP:       pod.Status.PodIP,
-			Slots:    []string{},
-		}
-		znode, err := nodectrl.GetNode(pod.Spec.NodeName)
-		if err == nil {
-			newNode.Zonename = nodectrl.GetZoneLabel(znode)
-			//reqLogger.Info("buildClusterStatus", "Zone label found", newNode.Zonename)
-		} else {
-			reqLogger.Error(err, "GetNode Returned Error", "context", "buildClusterStatus", "action", "setting zonename to unknown")
-			newNode.Zonename = "unknown"
-		}
-		if len(pod.OwnerReferences) > 0 {
-			if pod.OwnerReferences[0].Kind == "StatefulSet" {
-				newNode.StatefulSet = pod.OwnerReferences[0].Name
-			}
-		}
 		redisNodes, err := clusterInfos.GetNodes().GetNodesByFunc(func(node *redisutil.Node) bool {
 			return node.IP == pod.Status.PodIP
 		})
@@ -191,6 +151,32 @@ func buildClusterStatus(clusterInfos *redisutil.ClusterInfos, pods []*corev1.Pod
 		}
 		if len(redisNodes) == 1 {
 			redisNode := redisNodes[0]
+
+			newNode := redisv1alpha1.RedisClusterNode{
+				PodName:  pod.Name,
+				NodeName: pod.Spec.NodeName,
+				IP:       pod.Status.PodIP,
+				Slots:    []string{},
+			}
+			znode, err := nodectrl.GetNode(pod.Spec.NodeName)
+			if err == nil {
+				newNode.Zonename = nodectrl.GetZoneLabel(znode)
+				//reqLogger.Info("buildClusterStatus", "Zone label found", newNode.Zonename)
+			} else {
+				reqLogger.Error(err, "GetNode Returned Error", "context", "buildClusterStatus", "action", "setting zonename to unknown")
+				newNode.Zonename = "unknown"
+			}
+			if len(pod.OwnerReferences) > 0 {
+				if pod.OwnerReferences[0].Kind == "StatefulSet" {
+					newNode.StatefulSet = pod.OwnerReferences[0].Name
+				}
+			}
+			if updateClusterInfo {
+				redisNode.NodeName = newNode.NodeName
+				redisNode.PodName = newNode.PodName
+				redisNode.Zonename = newNode.Zonename
+				redisNode.StatefulSet = newNode.StatefulSet
+			}
 			if redisutil.IsMasterWithSlot(redisNode) {
 				if _, ok := nbSlaveByMaster[redisNode.ID]; !ok {
 					nbSlaveByMaster[redisNode.ID] = 0
@@ -212,8 +198,12 @@ func buildClusterStatus(clusterInfos *redisutil.ClusterInfos, pods []*corev1.Pod
 					newNode.Slots = append(newNode.Slots, slot.String())
 				}
 			}
+			status.Nodes = append(status.Nodes, newNode)
+		} else {
+			err1 := fmt.Errorf("multiple nodes with same podip")
+			reqLogger.Error(err1, fmt.Sprintf("multiple nodes in cluster info has same podip:%s", pod.Status.PodIP))
+			continue
 		}
-		status.Nodes = append(status.Nodes, newNode)
 	}
 	status.NumberOfMaster = nbMaster
 
