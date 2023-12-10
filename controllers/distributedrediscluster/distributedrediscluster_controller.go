@@ -267,6 +267,13 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 			return reconcile.Result{}, Redis.Wrap(err, "GetClusterInfos")
 		}
 	}
+	/*
+		if clusterInfos.ClusterState == "NOK" && len(clusterInfos.ClusterNokReason) > 0 {
+			for key, value := range clusterInfos.ClusterNokReason {
+				reqLogger.Info("clusterInfos - cluster not healthy", "NodeIP", key, "Reason", value)
+			}
+		}
+	*/
 
 	requeue, err := syncCtx.healer.Heal(instance, clusterInfos, admin, context)
 	if err != nil {
@@ -387,6 +394,12 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 
 	if requeue {
 		return reconcile.Result{RequeueAfter: 5 * time.Second}, nil
+	}
+	if newClusterInfos.ClusterState == "NOK" && len(newClusterInfos.ClusterNokReason) > 0 {
+		for key, value := range newClusterInfos.ClusterNokReason {
+			reqLogger.Info("newClusterInfos - cluster not healthy", "NodeIP", key, "Reason", value)
+		}
+		return reconcile.Result{RequeueAfter: 30 * time.Second}, nil
 	}
 
 	return reconcile.Result{RequeueAfter: time.Duration(reconcileTime) * time.Second}, nil
