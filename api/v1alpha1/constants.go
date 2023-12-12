@@ -36,6 +36,8 @@ type HaStatus string
 const (
 	// ClusterStatusOK ClusterStatus OK
 	ClusterStatusOK ClusterStatus = "Healthy"
+
+	ClusterStatusNOK ClusterStatus = "NotHealthy"
 	// ClusterStatusKO ClusterStatus KO
 	ClusterStatusKO ClusterStatus = "Failed"
 	// ClusterStatusCreating ClusterStatus Creating

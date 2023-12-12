@@ -12,6 +12,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	rediskunv1alpha1 "github.com/dinesh-murugiah/rediscluster-operator/api/v1alpha1"
 	redisv1alpha1 "github.com/dinesh-murugiah/rediscluster-operator/api/v1alpha1"
 	utils "github.com/dinesh-murugiah/rediscluster-operator/utils/commonutils"
 	"github.com/dinesh-murugiah/rediscluster-operator/utils/k8sutil"
@@ -25,6 +26,11 @@ func SetClusterFailed(status *redisv1alpha1.DistributedRedisClusterStatus, reaso
 
 func SetClusterOK(status *redisv1alpha1.DistributedRedisClusterStatus, reason string) {
 	status.Status = redisv1alpha1.ClusterStatusOK
+	status.Reason = reason
+}
+
+func SetClusterNOK(status *redisv1alpha1.DistributedRedisClusterStatus, reason string) {
+	status.Status = redisv1alpha1.ClusterStatusNOK
 	status.Reason = reason
 }
 
@@ -56,6 +62,45 @@ func SetClusterResetPassword(status *redisv1alpha1.DistributedRedisClusterStatus
 	status.Reason = reason
 }
 
+func CheackandUpdateClusterHealth(clusterStatus *rediskunv1alpha1.DistributedRedisClusterStatus, clusterInfos *redisutil.ClusterInfos, cluster *rediskunv1alpha1.DistributedRedisCluster, reqLogger logr.Logger) bool {
+
+	var failreason []string
+	var foundReason bool = false
+
+	if clusterInfos.Status == redisutil.ClusterInfosInconsistent {
+		SetClusterNOK(clusterStatus, "Cluster view is inconsistent")
+		return false
+	}
+
+	if clusterStatus.MinReplicationFactor < cluster.Spec.ClusterReplicas {
+		SetClusterNOK(clusterStatus, "Cluster Replication Factor is not met")
+		return false
+	}
+
+	if clusterInfos.ClusterState == "NOK" && len(clusterInfos.ClusterNokReason) > 0 {
+		for key, value := range clusterInfos.ClusterNokReason {
+			reqLogger.Info("newClusterInfos - cluster not healthy", "NodeIP", key, "Reason", value)
+			if len(failreason) == 0 {
+				failreason = append(failreason, value[strings.LastIndex(value, "-")+1:])
+			} else {
+				foundReason = false
+				for _, reason := range failreason {
+					if reason == value[strings.LastIndex(value, "-")+1:] {
+						foundReason = true
+					}
+				}
+				if !foundReason {
+					failreason = append(failreason, value[strings.LastIndex(value, "-")+1:])
+				}
+			}
+		}
+		SetClusterNOK(clusterStatus, strings.Join(failreason, ","))
+		return false
+	}
+	SetClusterOK(clusterStatus, "Cluster is healthy")
+	return true
+}
+
 func buildHAStatus(clusterInfos *redisutil.ClusterInfos, pods []*corev1.Pod, cluster *redisv1alpha1.DistributedRedisCluster, reqLogger logr.Logger, Client client.Client) (redisv1alpha1.HaStatus, error) {
 
 	var numMastersHAPlaced int32 = 0
@@ -81,7 +126,7 @@ func buildHAStatus(clusterInfos *redisutil.ClusterInfos, pods []*corev1.Pod, clu
 		reqLogger.Info("buildHAStatus", "stsname", node.StatefulSet, "zone", node.Zonename)
 		stsindex, err := getSTSindex(node.StatefulSet)
 		if err != nil {
-			reqLogger.Error(err, fmt.Sprintf("unable to retrieve sufficient redis node with the role master"))
+			reqLogger.Error(err, fmt.Sprintf("unable to retrieve STS index for master %s", node.StatefulSet))
 			return redisv1alpha1.HaStatusFailed, err
 		}
 		zoneoffset := (stsindex % len(cluster.Spec.HaConfig.ZonesInfo))

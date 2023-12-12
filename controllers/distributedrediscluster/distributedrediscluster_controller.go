@@ -18,6 +18,7 @@ package distributedrediscluster
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	rediskunv1alpha1 "github.com/dinesh-murugiah/rediscluster-operator/api/v1alpha1"
@@ -368,38 +369,54 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 
 	newClusterInfos, err := admin.GetClusterInfos(context)
 	if err != nil {
+		reqLogger.Info("GetClusterInfos", "clusterInfos.Status", clusterInfos.Status)
 		if clusterInfos.Status == redisutil.ClusterInfosPartial {
-			return reconcile.Result{}, Redis.Wrap(err, "GetClusterInfos")
-		} else if clusterInfos.Status == redisutil.ClusterInfosInconsistent {
-			reqLogger.Info("after syncCluster clusterInfos inconsistent resync after 10 seconds")
-			newStatus := instance.Status.DeepCopy()
-			SetClusterScaling(newStatus, err.Error())
-			r.updateClusterIfNeed(instance, newStatus, reqLogger)
 			return reconcile.Result{RequeueAfter: 10 * time.Second}, nil
 		}
 	}
 	newStatus := buildClusterStatus(newClusterInfos, syncCtx.pods, instance, reqLogger, r.Client, true)
 	haStatus, _ := buildHAStatus(newClusterInfos, syncCtx.pods, instance, reqLogger, r.Client)
 	SetHAStatus(newStatus, haStatus)
-	SetClusterOK(newStatus, "OK")
+	clusterHealthOk := CheackandUpdateClusterHealth(newStatus, newClusterInfos, instance, reqLogger)
 	r.updateClusterIfNeed(instance, newStatus, reqLogger)
-
-	requeue, err = r.checkandUpdatePods(admin, syncCtx, context)
-	if err != nil {
-		newStatus := instance.Status.DeepCopy()
-		SetClusterFailed(newStatus, err.Error())
-		r.updateClusterIfNeed(instance, newStatus, reqLogger)
-		return reconcile.Result{}, err
-	}
-
-	if requeue {
-		return reconcile.Result{RequeueAfter: 5 * time.Second}, nil
-	}
-	if newClusterInfos.ClusterState == "NOK" && len(newClusterInfos.ClusterNokReason) > 0 {
-		for key, value := range newClusterInfos.ClusterNokReason {
-			reqLogger.Info("newClusterInfos - cluster not healthy", "NodeIP", key, "Reason", value)
+	// This part of code is very un optimally called , First need to optimise checkandUpdatePods, the above
+	// buildClusterStatus has to be called only once , that data needs to be used for calling both checkandUpdatePods and updateLabels
+	// and cluster Haheal
+	if clusterHealthOk {
+		requeue, err = r.checkandUpdatePods(admin, syncCtx, context)
+		if err != nil {
+			newStatus := instance.Status.DeepCopy()
+			SetClusterFailed(newStatus, err.Error())
+			r.updateClusterIfNeed(instance, newStatus, reqLogger)
+			return reconcile.Result{RequeueAfter: time.Duration(reconcileTime) * time.Second}, nil
 		}
-		return reconcile.Result{RequeueAfter: 30 * time.Second}, nil
+
+		if requeue {
+			if newStatus.Status != rediskunv1alpha1.ClusterStatusOnDelete {
+				newStatusUpadte := instance.Status.DeepCopy()
+				SetClusterUpdating(newStatusUpadte, "Cluster Upgrade in Progress")
+				r.updateClusterIfNeed(instance, newStatusUpadte, reqLogger)
+			}
+			return reconcile.Result{RequeueAfter: 10 * time.Second}, nil
+		}
+	} else {
+		reqLogger.Info("Cluster Health", "NOK", newStatus.Reason)
+		return reconcile.Result{RequeueAfter: 20 * time.Second}, nil
+	}
+
+	// Ha Healing functionality
+	// 1. First check the Ha Status to see if ha needs healing
+	//2. check if annotations for ha healing is present and is set to true
+	//3. check if all availability zones are present
+
+	if haStatus == rediskunv1alpha1.HaStatusFailed {
+		err := fmt.Errorf("Unexpected Error - HaStatusFailed")
+		reqLogger.Error(err, "HaStatusFailed")
+		// 2. If ha needs healing , then check if the cluster is in a stable state
+	} else if haStatus == rediskunv1alpha1.HaStatusRedistribute {
+
+	} else {
+		reqLogger.Info("HAhealing not required", "haStatus", haStatus)
 	}
 
 	return reconcile.Result{RequeueAfter: time.Duration(reconcileTime) * time.Second}, nil

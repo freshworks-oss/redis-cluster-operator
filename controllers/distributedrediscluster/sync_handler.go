@@ -100,7 +100,12 @@ func (r *DistributedRedisClusterReconciler) validateAndSetDefault(cluster *redis
 				err = fmt.Errorf("haspec missing zone info")
 				return err
 			}
+			if cluster.Spec.ClusterReplicas != int32(len(cluster.Spec.HaConfig.ZonesInfo)-1) {
+				err = fmt.Errorf("cluster replicas should be equal to availabilty zones")
+				return err
+			}
 		}
+
 	}
 
 	// TODO: DR-1173 Move this to validation webhook

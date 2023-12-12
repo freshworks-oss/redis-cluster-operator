@@ -249,7 +249,7 @@ func CheckandUpdateClusterState(cinfos *ClusterInfos, cs clusterstate, fromip st
 	if cinfos.ClusterState == ClusterStateUnknown {
 		cinfos.ClusterState = cs
 		if cs == ClusterStateNOK {
-			cinfos.ClusterNokReason[fromip] = nip + "- " + string(reason)
+			cinfos.ClusterNokReason[fromip] = nip + "-" + string(reason)
 		}
 		return nil
 	}
