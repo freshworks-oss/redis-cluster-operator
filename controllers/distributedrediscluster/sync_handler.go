@@ -500,6 +500,7 @@ func (r *DistributedRedisClusterReconciler) updatePodIfNeeded(ip string, pods []
 				if err1 := r.setPodAnnotationIfNeeded(role, pod, client); err1 != nil {
 					return false, err1
 				}
+				return false, nil
 			}
 		}
 	}
