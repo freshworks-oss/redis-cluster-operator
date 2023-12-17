@@ -27,6 +27,13 @@ const (
 
 // Redis Status Redis server status
 type RedisReplStatus string
+type RedisFailover string
+
+const (
+	RedisFailoverForce    RedisFailover = "FORCE"
+	RedisFailoverTakeover RedisFailover = "TAKEOVER"
+	RedisFailoverDefault  RedisFailover = ""
+)
 
 const (
 	// RedisSyncing Redis server syncing in in progress with master
@@ -99,6 +106,8 @@ type IAdmin interface {
 	GetHashMaxSlot() Slot
 	// ResetPassword reset redis node masterauth and requirepass.
 	ResetPassword(ctx context.Context, newPassword string) error
+
+	FailoverSlaveToMaster(ctx context.Context, slave *Node, option RedisFailover) error
 }
 
 // AdminOptions optional options for redis admin
@@ -284,6 +293,30 @@ func (a *Admin) clusterGetStatus(ctx context.Context, client *redis.Client, addr
 		return "", fmt.Errorf("cluster_state not found")
 
 	}
+}
+
+// FailoverSlaveToMaster manual failover of a slave node to master node
+func (a *Admin) FailoverSlaveToMaster(ctx context.Context, slave *Node, option RedisFailover) error {
+	c, err := a.Connections().Get(ctx, slave.IPPort())
+	if err != nil {
+		return err
+	}
+	var resp *redis.Cmd
+	if option != RedisFailoverDefault {
+		resp = c.Do(ctx, "CLUSTER", "FAILOVER", option)
+	} else {
+		resp = c.Do(ctx, "CLUSTER", "FAILOVER")
+	}
+	if err := a.Connections().ValidateResp(ctx, resp, slave.IPPort(), "unable to run command REPLICATE"); err != nil {
+		return err
+	}
+	if resp.Err() != nil {
+		return err
+	}
+	slave.SetReferentMaster("")
+	slave.SetRole(RedisMasterRole)
+
+	return nil
 }
 
 // AttachSlaveToMaster attach a slave to a master node

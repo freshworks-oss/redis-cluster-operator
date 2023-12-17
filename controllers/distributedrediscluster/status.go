@@ -100,8 +100,27 @@ func CheackandUpdateClusterHealth(clusterStatus *rediskunv1alpha1.DistributedRed
 	SetClusterOK(clusterStatus, "Cluster is healthy")
 	return true
 }
+func CheckallZonesActive(cluster *redisv1alpha1.DistributedRedisCluster, reqLogger logr.Logger, Client client.Client) (bool, int32, error) {
 
-func buildHAStatus(clusterInfos *redisutil.ClusterInfos, pods []*corev1.Pod, cluster *redisv1alpha1.DistributedRedisCluster, reqLogger logr.Logger, Client client.Client) (redisv1alpha1.HaStatus, error) {
+	var activeZones int32 = 0
+	nodectrl := k8sutil.NewNodeController(Client)
+	for _, zone := range cluster.Spec.HaConfig.ZonesInfo {
+		zoneactive, err := nodectrl.CheckZoneAvailable(zone)
+		if err != nil {
+			reqLogger.Error(err, fmt.Sprintf("unable to check zone availability for zone %s", zone))
+			return false, 0, err
+		}
+		if zoneactive {
+			activeZones += 1
+		}
+	}
+	if activeZones == int32(len(cluster.Spec.HaConfig.ZonesInfo)) {
+		return true, activeZones, nil
+	} else {
+		return false, activeZones, nil
+	}
+}
+func buildHAStatus(clusterInfos *redisutil.ClusterInfos, pods []*corev1.Pod, cluster *redisv1alpha1.DistributedRedisCluster, reqLogger logr.Logger, Client client.Client) (redisv1alpha1.HaStatus, redisutil.Nodes, error) {
 
 	var numMastersHAPlaced int32 = 0
 	var misplacemasters redisutil.Nodes = make([]*redisutil.Node, 0)
@@ -119,7 +138,7 @@ func buildHAStatus(clusterInfos *redisutil.ClusterInfos, pods []*corev1.Pod, clu
 
 	if err != nil || len(masterNodes) != int(cluster.Spec.MasterSize) {
 		reqLogger.Error(err, fmt.Sprintf("unable to retrieve sufficient redis node with the role master"))
-		return redisv1alpha1.HaStatusFailed, err
+		return redisv1alpha1.HaStatusFailed, nil, err
 	}
 
 	for _, node := range masterNodes {
@@ -127,7 +146,7 @@ func buildHAStatus(clusterInfos *redisutil.ClusterInfos, pods []*corev1.Pod, clu
 		stsindex, err := getSTSindex(node.StatefulSet)
 		if err != nil {
 			reqLogger.Error(err, fmt.Sprintf("unable to retrieve STS index for master %s", node.StatefulSet))
-			return redisv1alpha1.HaStatusFailed, err
+			return redisv1alpha1.HaStatusFailed, nil, err
 		}
 		zoneoffset := (stsindex % len(cluster.Spec.HaConfig.ZonesInfo))
 		zonename := zones[zoneoffset]
@@ -144,9 +163,9 @@ func buildHAStatus(clusterInfos *redisutil.ClusterInfos, pods []*corev1.Pod, clu
 		for _, node := range misplacemasters {
 			reqLogger.Info("buildHAStatus", "misplaced master", node.PodName, "misplaced zone", node.Zonename)
 		}
-		return redisv1alpha1.HaStatusRedistribute, err
+		return redisv1alpha1.HaStatusRedistribute, misplacemasters, err
 	}
-	return redisv1alpha1.HaStatusHealthy, nil
+	return redisv1alpha1.HaStatusHealthy, nil, nil
 
 }
 

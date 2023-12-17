@@ -63,6 +63,10 @@ const (
 	HaStatusFailed       HaStatus = "hafailed"
 )
 
+const (
+	PodEvictAnnotation string = "cluster-autoscaler.kubernetes.io/safe-to-evict"
+)
+
 // Redis Status Redis server status
 type RedisStatus string
 
