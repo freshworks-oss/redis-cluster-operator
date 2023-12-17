@@ -104,12 +104,13 @@ func CheckallZonesActive(cluster *redisv1alpha1.DistributedRedisCluster, reqLogg
 
 	var activeZones int32 = 0
 	nodectrl := k8sutil.NewNodeController(Client)
-	for _, zone := range cluster.Spec.HaConfig.ZonesInfo {
+	for zone, _ := range cluster.Spec.HaConfig.ZonesInfo {
 		zoneactive, err := nodectrl.CheckZoneAvailable(zone)
 		if err != nil {
 			reqLogger.Error(err, fmt.Sprintf("unable to check zone availability for zone %s", zone))
 			return false, 0, err
 		}
+		reqLogger.Info("CheckallZonesActive", "zone", zone, "zoneactive", zoneactive)
 		if zoneactive {
 			activeZones += 1
 		}
