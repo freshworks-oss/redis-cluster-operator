@@ -67,17 +67,17 @@ func GenerateAclcommands(log logr.Logger, client client.Client, cluster *redisv1
 	//First add the set of usersnewly added if any and list of users for which acl rules changed
 	for key := range newsecretver {
 		//Sample value dbaas-redis--test-cluster--test-cluster-1--admin
-		acluserget := strings.Split(key, "--")
+		aclSecretName := strings.Split(key, "--")
 		// Get the last element from the resulting slice
-		acluser := acluserget[len(acluserget)-1]
+		aclUser := aclSecretName[len(aclSecretName)-1]
 		if _, ok := existingsecretver[key]; !ok {
 			log.Info("diffAclConfigs", "New User found in latest secret", key)
-			aclcommands[key] = fmt.Sprintf("acl setuser %s", newacldata[acluser])
+			aclcommands[key] = fmt.Sprintf("acl setuser %s", newacldata[aclUser])
 		} else if map1Value, ok := existingsecretver[key]; ok {
 			map2Value := newsecretver[key]
 			if !reflect.DeepEqual(map1Value, map2Value) {
-				log.Info("diffAclConfigs", "update in acl data found for user/secret", key, "command:", newacldata[acluser])
-				aclcommands[key] = fmt.Sprintf("acl setuser %s", newacldata[acluser])
+				log.Info("diffAclConfigs", "update in acl data found for user/secret", key, "command:", newacldata[aclUser])
+				aclcommands[key] = fmt.Sprintf("acl setuser %s", newacldata[aclUser])
 			}
 		}
 	}
@@ -85,12 +85,12 @@ func GenerateAclcommands(log logr.Logger, client client.Client, cluster *redisv1
 	// Give deluser for the users which are to be removed
 	for key := range existingsecretver {
 		//Sample value dbaas-redis--test-cluster--test-cluster-1--admin
-		acluserget := strings.Split(key, "--")
+		aclSecretName := strings.Split(key, "--")
 		// Get the last element from the resulting slice
-		acluser := acluserget[len(acluserget)-1]
+		aclUser := aclSecretName[len(aclSecretName)-1]
 		if _, ok := newsecretver[key]; !ok {
 			log.Info("diffAclConfigs", "User not found in latest secret, possibly deleted", key)
-			aclcommands[key] = fmt.Sprintf("acl deluser %s", acluser)
+			aclcommands[key] = fmt.Sprintf("acl deluser %s", aclUser)
 		}
 	}
 
