@@ -346,7 +346,7 @@ func (r *DistributedRedisClusterReconciler) checkandUpdatePassword(admin redisut
 		ctx.reqLogger.Info("No changes in acl secrets, Proceeding..")
 		return nil, nil
 	}
-	ctx.reqLogger.Info("Difference in ACL found, trying to update password")
+	ctx.reqLogger.Info("Difference in ACL found, trying to update..")
 	SetClusterResetPassword(&ctx.cluster.Status, "Updating ACL's")
 	r.CrController.UpdateCRStatus(ctx.cluster)
 
