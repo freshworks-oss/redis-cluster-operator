@@ -344,11 +344,10 @@ func (r *RedisClusterBackupReconciler) ValidateBackup(backup *redisv1alpha1.Redi
 			reqLogger.Info("ValidateBackup Failed getting statefulsets")
 			return serr
 		}
-		if ss.Status.CurrentReplicas != (cluster.Spec.ClusterReplicas + 1) {
-			reqLogger.Info("ValidateBackup Failed ", "Replicas Expected in STS:", (cluster.Spec.ClusterReplicas + 1), "Current:", ss.Status.CurrentReplicas)
+		if ss.Status.ReadyReplicas != (cluster.Spec.ClusterReplicas + 1) {
+			reqLogger.Info("ValidateBackup Failed ", "Replicas Expected in STS:", (cluster.Spec.ClusterReplicas + 1), "Current:", ss.Status.ReadyReplicas)
 			return fmt.Errorf("cluster STS not yet ready")
 		}
-		//reqLogger.Info("ValidateBackup:", "STS name:", name, "Replica Count:", ss.Status.CurrentReplicas)
 	}
 	return nil
 }

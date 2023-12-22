@@ -179,8 +179,8 @@ func redisbackupcontrollerPredfunction() predicate.Funcs {
 func (r *RedisClusterBackupReconciler) Reconcile(ctx context.Context, request ctrl.Request) (ctrl.Result, error) {
 	_ = log.FromContext(ctx)
 
-	reqLogger := logl.WithValues("Request.Namespace", request.Namespace, "Request.Name", request.Name)
-	reqLogger.Info("Reconciling RedisClusterBackup")
+	logl.WithValues("Request.Namespace", request.Namespace, "Request.Name", request.Name)
+	logl.Info("Reconciling RedisClusterBackup", "Request.Namespace", request.Namespace, "Request.Name", request.Name)
 
 	// Fetch the RedisClusterBackup instance
 	instance := &redisv1alpha1.RedisClusterBackup{}
@@ -198,14 +198,14 @@ func (r *RedisClusterBackupReconciler) Reconcile(ctx context.Context, request ct
 
 	cluster, err := r.CrController.GetDistributedRedisCluster(instance.Namespace, instance.Spec.RedisClusterName)
 	if err != nil {
-		reqLogger.Error(err, "Unable to get cluster instance")
+		logl.Error(err, "Unable to get cluster instance")
 		return reconcile.Result{RequeueAfter: time.Duration(60) * time.Second}, nil
 	}
 
 	//Create Util Deployment
-	err = r.reconcileUtilDeployment(reqLogger, instance, cluster)
+	err = r.reconcileUtilDeployment(logl, instance, cluster)
 	if err != nil {
-		reqLogger.Error(err, "Unable to create Util Deployment due to the above erros, Kindly fix them!")
+		logl.Error(err, "Unable to create Util Deployment due to the above erros, Kindly fix them!")
 	}
 
 	// Add the other operations of the Util Controller here...
@@ -221,23 +221,23 @@ func (r *RedisClusterBackupReconciler) SetupWithManager(mgr ctrl.Manager) error 
 		Complete(r)
 }
 
-// func (r *RedisClusterBackupReconciler) finalizeBackup(reqLogger logr.Logger, b *redisv1alpha1.RedisClusterBackup) error {
+// func (r *RedisClusterBackupReconciler) finalizeBackup(b *redisv1alpha1.RedisClusterBackup) error {
 // 	// TODO(user): Add the cleanup steps that the operator
 // 	// needs to do before the CR can be deleted. Examples
 // 	// of finalizers include performing backups and deleting
 // 	// resources that are not owned by this CR, like a PVC.
-// 	reqLogger.Info("Successfully finalized RedisClusterBackup")
+// 	logl.Info("Successfully finalized RedisClusterBackup")
 // 	return nil
 // }
 
-// func (r *RedisClusterBackupReconciler) addFinalizer(reqLogger logr.Logger, b *redisv1alpha1.RedisClusterBackup) error {
-// 	reqLogger.Info("Adding Finalizer for the backup")
+// func (r *RedisClusterBackupReconciler) addFinalizer(b *redisv1alpha1.RedisClusterBackup) error {
+// 	logl.Info("Adding Finalizer for the backup")
 // 	b.SetFinalizers(append(b.GetFinalizers(), backupFinalizer))
 
 // 	// Update CR
 // 	err := r.Client.Update(context.TODO(), b)
 // 	if err != nil {
-// 		reqLogger.Error(err, "Failed to update RedisClusterBackup with finalizer")
+// 		logl.Error(err, "Failed to update RedisClusterBackup with finalizer")
 // 		return err
 // 	}
 // 	return nil
