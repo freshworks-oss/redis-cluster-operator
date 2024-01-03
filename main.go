@@ -33,9 +33,11 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+	"sigs.k8s.io/controller-runtime/pkg/manager"
 
 	rediskunv1alpha1 "github.com/dinesh-murugiah/rediscluster-operator/api/v1alpha1"
 	"github.com/dinesh-murugiah/rediscluster-operator/controllers/distributedrediscluster"
@@ -109,14 +111,15 @@ func main() {
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 	printVersion()
 
-	utils.SetClusterScoped("")
+	utils.SetOperatorScope()
 
-	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
+	var mgroptions manager.Options
+	mgroptions = ctrl.Options{
 		Scheme:                 scheme,
 		Metrics:                metricsserver.Options{BindAddress: metricsAddr},
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
-		LeaderElectionID:       "9973c3fe.redis.kun",
+		LeaderElectionID:       "9973c4fe.redis.kun",
 		// LeaderElectionReleaseOnCancel defines if the leader should step down voluntarily
 		// when the Manager ends. This requires the binary to immediately end when the
 		// Manager is stopped, otherwise, this setting is unsafe. Setting this significantly
@@ -128,7 +131,30 @@ func main() {
 		// if you are doing or is intended to do any operation such as perform cleanups
 		// after the manager stops then its usage might be unsafe.
 		// LeaderElectionReleaseOnCancel: true,
-	})
+	}
+
+	if utils.IsClusterScoped() {
+		setupLog.Info("Operator is running in cluster scope")
+	} else {
+		setupLog.Info("Operator is running in namespace scope")
+		err := utils.GenerateNamespaceList(setupLog)
+		if err != nil {
+			os.Exit(1)
+		}
+
+		defaultNamespaces := make(map[string]cache.Config)
+		nslist := utils.GetNamespaceList()
+
+		for _, ns := range nslist {
+			defaultNamespaces[ns] = cache.Config{}
+		}
+		mgroptions.NewCache = func(config *rest.Config, opts cache.Options) (cache.Cache, error) {
+			opts.DefaultNamespaces = defaultNamespaces
+			return cache.New(config, opts)
+		}
+	}
+
+	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), mgroptions)
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")
 		os.Exit(1)
