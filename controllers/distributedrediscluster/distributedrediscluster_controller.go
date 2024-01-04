@@ -480,9 +480,9 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 				if err != nil {
 					reqLogger.Error(err, "HaStatusRedistribute - PlaceMastersbySTS")
 				}
+				reqLogger.Info("HaStatusHealthy - HaHealing Completed")
 				return reconcile.Result{RequeueAfter: time.Duration(reconcileTime) * time.Second}, nil
 			} else if haStatus == rediskunv1alpha1.HaStatusHealthy && len(displacedMasters) == 0 {
-				reqLogger.Info("HaStatusHealthy - HaHealing Completed")
 				newStatus := instance.Status.DeepCopy()
 				SetHAStatus(newStatus, rediskunv1alpha1.HaStatusHealthy)
 				r.updateClusterIfNeed(instance, newStatus, reqLogger)

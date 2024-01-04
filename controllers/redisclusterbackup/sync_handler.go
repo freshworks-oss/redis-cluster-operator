@@ -46,7 +46,7 @@ func (r *RedisClusterBackupReconciler) reconcileUtilDeployment(reqLogger logr.Lo
 	}
 
 	//Check If Deployment Exists or Create a new Deployment for RedisClusterBackup
-	deplName := redisClusterBackupName + backup.Name
+	deplName := backup.Spec.RedisClusterName
 	dp, err := r.DeploymentController.GetDeployment(backup.Namespace, deplName)
 	if err != nil {
 		if errors.IsNotFound(err) {
