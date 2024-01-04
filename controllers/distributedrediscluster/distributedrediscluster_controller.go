@@ -181,8 +181,8 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 		r.updateClusterIfNeed(instance, newStatus, reqLogger)
 		return reconcile.Result{RequeueAfter: requeueAfter}, nil
 	} else {
-		var newStatus *rediskunv1alpha1.DistributedRedisClusterStatus
-		newStatus = instance.Status.DeepCopy()
+		//var newStatus *rediskunv1alpha1.DistributedRedisClusterStatus
+		newStatus := instance.Status.DeepCopy()
 		if instance.Status.SecretStatus == "" {
 			secretVersions, err := configmaps.Getsecretversions(reqLogger, r.Client, instance)
 			if err != nil {
@@ -413,7 +413,7 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 	//5. if all zones are not present then leave it for zone failure condition to recover
 
 	if clusterHealthOk && haStatus == rediskunv1alpha1.HaStatusFailed {
-		err := fmt.Errorf("Unexpected Error - HaStatusFailed")
+		err := fmt.Errorf("unexpected Error - HaStatusFailed")
 		reqLogger.Error(err, "HaStatusFailed")
 		return reconcile.Result{RequeueAfter: time.Duration(reconcileTime) * time.Second}, nil
 		// 2. If ha needs healing , then check if the cluster is in a stable state
@@ -424,8 +424,21 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 			reqLogger.Error(err, "CheckallZonesActive")
 			return reconcile.Result{RequeueAfter: 20 * time.Second}, nil
 		}
+
+		// Checking if annotation "reDistributeNode" is true only then it should proceed for nodes rebalancing
+		redisClusterCRAnnotations := instance.Annotations
+		reDitributeNodes := false
+		for key, val := range redisClusterCRAnnotations {
+			if key == "reDistributeNode" {
+				if val == "true" {
+					reDitributeNodes = true
+				}
+			}
+		}
+
 		// 3. If all zones not active , then check if we need to add annotations to not evict master pods
-		if isAllactive {
+		// Inorder for self heal to occur, set reDitributeNodes=true as annotation in respective cluster CRD.
+		if isAllactive && reDitributeNodes {
 			matchLabels := getLabels(instance)
 			redisClusterPods, err := r.StatefulSetController.GetStatefulSetPodsByLabels(instance.Namespace, matchLabels)
 			if err != nil {
@@ -459,7 +472,7 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 			//check if any masters needs to be failedover
 			haStatus, displacedMasters, _ := buildHAStatus(newClusterInfos, pods, instance, reqLogger, r.Client)
 			if haStatus == rediskunv1alpha1.HaStatusFailed {
-				reqLogger.Error(fmt.Errorf("Unexpected Error - HaStatusFailed"), "HaStatusFailed When trying to Distribute Masters")
+				reqLogger.Error(fmt.Errorf("unexpected Error - HaStatusFailed"), "HaStatusFailed When trying to Distribute Masters")
 			} else if haStatus == rediskunv1alpha1.HaStatusRedistribute && len(displacedMasters) > 0 {
 				reqLogger.Info("HaStatusRedistribute - Distribute Masters", "displacedMasters", displacedMasters)
 				//Distribute Masters
@@ -476,13 +489,18 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 				return reconcile.Result{RequeueAfter: time.Duration(reconcileTime) * time.Second}, nil
 			}
 		} else {
-			reqLogger.Info("HaStatusRedistribute - Not all zones active")
+			reqLogger.Info("HaStatusRedistribute - Not all zones active or Healing annotation reDistributeNode is unset to true!")
 			return reconcile.Result{RequeueAfter: time.Duration(reconcileTime) * time.Second}, nil
 
 		}
-
 	} else {
 		reqLogger.Info("HAhealing not required", "haStatus", haStatus)
+		//Update the annotation reDistributeNode to false in cluster CRD to stop selfheal.
+		//Selfheal should occur only if human operator sets annotation reDistributeNode as true on cluster crd.
+		//Once selfheal is completed, setting this annotation to false to stop auto selfheal as it is doesn't consider production traffic.
+		if err := r.CrController.UpdateCrdAnnotations(instance, "reDistributeNode", "false"); err != nil {
+			return reconcile.Result{}, err
+		}
 	}
 
 	return reconcile.Result{RequeueAfter: time.Duration(reconcileTime) * time.Second}, nil
@@ -529,7 +547,7 @@ func (r *DistributedRedisClusterReconciler) getListofNodestoDelete(cluster *redi
 			return 0, nil, err
 		}
 		if stsNodes == nil || len(stsNodes) < int(cluster.Spec.ClusterReplicas+1) {
-			return 0, nil, fmt.Errorf("Invalid number of nodes in sts %s", stsname)
+			return 0, nil, fmt.Errorf("invalid number of nodes in sts %s", stsname)
 		}
 		for _, zone := range zones {
 			if _, ok := nodesPerZonePerSTS[zone]; !ok {
@@ -549,7 +567,7 @@ func (r *DistributedRedisClusterReconciler) getListofNodestoDelete(cluster *redi
 						slaveNodesPerZone++
 						nodesPerZonePerSTS[zone][stsname] = append(nodesPerZonePerSTS[zone][stsname], node)
 					} else {
-						return 0, nil, fmt.Errorf("Invalid Role %s", node.Role)
+						return 0, nil, fmt.Errorf("invalid Role %s", node.Role)
 					}
 				}
 			}
@@ -613,7 +631,7 @@ func (r *DistributedRedisClusterReconciler) PlaceMastersbySTS(cluster *rediskunv
 			return err
 		}
 		if stsNodes == nil || len(stsNodes) < int(cluster.Spec.ClusterReplicas+1) {
-			return fmt.Errorf("Invalid number of nodes in sts %s", stsname)
+			return fmt.Errorf("invalid number of nodes in sts %s", stsname)
 		}
 		stsindex, err := getSTSindex(node.StatefulSet)
 		if err != nil {
@@ -626,7 +644,7 @@ func (r *DistributedRedisClusterReconciler) PlaceMastersbySTS(cluster *rediskunv
 		for _, node := range stsNodes {
 			if node.Zonename == zonename {
 				if node.Role == redisutil.RedisMasterRole {
-					reqLogger.Error(fmt.Errorf("Possible Multimaster"), "Node already master in appropriate zone Possibility of Multimaster", "nodeID", node.ID, "nodeIP", node.IP, "nodeRole", node.Role, "nodeStatefulSet", node.StatefulSet, "nodeZone", node.Zonename, "nodePodName", node.PodName, "nodeNodeName", node.NodeName)
+					reqLogger.Error(fmt.Errorf("possible Multimaster"), "Node already master in appropriate zone Possibility of Multimaster", "nodeID", node.ID, "nodeIP", node.IP, "nodeRole", node.Role, "nodeStatefulSet", node.StatefulSet, "nodeZone", node.Zonename, "nodePodName", node.PodName, "nodeNodeName", node.NodeName)
 					// Possibility of Multimaster scenario Manual operator involment needed
 				} else if node.Role == redisutil.RedisSlaveRole {
 					reqLogger.Info("Node to be promoted to master", "nodeID", node.ID, "nodeIP", node.IP, "nodeRole", node.Role, "nodeStatefulSet", node.StatefulSet, "nodeZone", node.Zonename, "nodePodName", node.PodName, "nodeNodeName", node.NodeName)
@@ -637,7 +655,7 @@ func (r *DistributedRedisClusterReconciler) PlaceMastersbySTS(cluster *rediskunv
 						return err
 					}
 				} else {
-					return fmt.Errorf("Invalid Role %s", node.Role)
+					return fmt.Errorf("invalid Role %s", node.Role)
 				}
 			}
 		}

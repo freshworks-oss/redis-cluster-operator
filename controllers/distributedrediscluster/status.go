@@ -138,7 +138,7 @@ func buildHAStatus(clusterInfos *redisutil.ClusterInfos, pods []*corev1.Pod, clu
 	})
 
 	if err != nil || len(masterNodes) != int(cluster.Spec.MasterSize) {
-		reqLogger.Error(err, fmt.Sprintf("unable to retrieve sufficient redis node with the role master"))
+		reqLogger.Error(err, "unable to retrieve sufficient redis node with the role master")
 		return redisv1alpha1.HaStatusFailed, nil, err
 	}
 
@@ -304,6 +304,10 @@ func (r *DistributedRedisClusterReconciler) updateClusterIfNeed(cluster *redisv1
 
 func compareStatus(old, new *redisv1alpha1.DistributedRedisClusterStatus, reqLogger logr.Logger) bool {
 	if utils.CompareStringValue("ClusterStatus", string(old.Status), string(new.Status), reqLogger) {
+		return true
+	}
+
+	if utils.CompareStringValue("HaStatus", string(old.HAStatus), string(new.HAStatus), reqLogger) {
 		return true
 	}
 
