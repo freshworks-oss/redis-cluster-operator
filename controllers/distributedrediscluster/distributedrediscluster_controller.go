@@ -481,6 +481,12 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 					reqLogger.Error(err, "HaStatusRedistribute - PlaceMastersbySTS")
 				}
 				reqLogger.Info("HaStatusHealthy - HaHealing Completed")
+				//Update the annotation reDistributeNode to false in cluster CRD to stop selfheal.
+				//Selfheal should occur only if human operator sets annotation reDistributeNode as true on cluster crd.
+				//Once selfheal is completed, setting this annotation to false to stop auto selfheal as it is doesn't consider production traffic.
+				if err := r.CrController.UpdateCrdAnnotations(instance, "reDistributeNode", "false"); err != nil {
+					return reconcile.Result{}, err
+				}
 				return reconcile.Result{RequeueAfter: time.Duration(reconcileTime) * time.Second}, nil
 			} else if haStatus == rediskunv1alpha1.HaStatusHealthy && len(displacedMasters) == 0 {
 				newStatus := instance.Status.DeepCopy()
@@ -495,12 +501,6 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 		}
 	} else {
 		reqLogger.Info("HAhealing not required", "haStatus", haStatus)
-		//Update the annotation reDistributeNode to false in cluster CRD to stop selfheal.
-		//Selfheal should occur only if human operator sets annotation reDistributeNode as true on cluster crd.
-		//Once selfheal is completed, setting this annotation to false to stop auto selfheal as it is doesn't consider production traffic.
-		if err := r.CrController.UpdateCrdAnnotations(instance, "reDistributeNode", "false"); err != nil {
-			return reconcile.Result{}, err
-		}
 	}
 
 	return reconcile.Result{RequeueAfter: time.Duration(reconcileTime) * time.Second}, nil

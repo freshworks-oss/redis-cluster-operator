@@ -2,6 +2,7 @@ package k8sutil
 
 import (
 	"context"
+	"fmt"
 
 	"k8s.io/apimachinery/pkg/types"
 
@@ -64,7 +65,7 @@ func (c *clusterControl) GetDistributedRedisCluster(namespace, name string) (*re
 func (c *clusterControl) UpdateCrdAnnotations(crd *redisv1alpha1.DistributedRedisCluster, annotationKey string, annotationvalue string) error {
 
 	if _, ok := crd.ObjectMeta.Annotations[annotationKey]; !ok {
-		return nil
+		return fmt.Errorf("annotation %s Notfound", annotationKey)
 	}
 
 	if crd.ObjectMeta.Annotations[annotationKey] == annotationvalue {
