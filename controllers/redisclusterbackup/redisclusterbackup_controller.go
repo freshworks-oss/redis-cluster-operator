@@ -27,6 +27,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
@@ -52,8 +53,7 @@ var (
 )
 
 const (
-	backupFinalizer        = "finalizer.backup.redis.kun"
-	redisClusterBackupName = "redisclusterbackup"
+	backupFinalizer = "finalizer.backup.redis.kun"
 )
 
 func init() {
@@ -196,6 +196,28 @@ func (r *RedisClusterBackupReconciler) Reconcile(ctx context.Context, request ct
 		return reconcile.Result{}, err
 	}
 
+	isInstanceMarkedToBeDeleted := instance.GetDeletionTimestamp() != nil
+
+	if isInstanceMarkedToBeDeleted {
+		if controllerutil.ContainsFinalizer(instance, backupFinalizer) {
+			// Run finalization logic for backupFinalizer. If the
+			// finalization logic fails, don't remove the finalizer so
+			// that we can retry during the next reconciliation.
+			if err := r.finalizeBackup(request.Namespace, instance); err != nil {
+				return ctrl.Result{}, err
+			}
+
+			// Remove memcachedFinalizer. Once all finalizers have been
+			// removed, the object will be deleted.
+			controllerutil.RemoveFinalizer(instance, backupFinalizer)
+			err := r.Update(ctx, instance)
+			if err != nil {
+				return ctrl.Result{}, err
+			}
+		}
+		return ctrl.Result{}, nil
+	}
+
 	cluster, err := r.CrController.GetDistributedRedisCluster(instance.Namespace, instance.Spec.RedisClusterName)
 	if err != nil {
 		logl.Error(err, "Unable to get cluster instance")
@@ -208,7 +230,14 @@ func (r *RedisClusterBackupReconciler) Reconcile(ctx context.Context, request ct
 		logl.Error(err, "Unable to create Util Deployment due to the above erros, Kindly fix them!")
 	}
 
-	// Add the other operations of the Util Controller here...
+	// Add finalizer for this CR
+	if !controllerutil.ContainsFinalizer(instance, backupFinalizer) {
+		controllerutil.AddFinalizer(instance, backupFinalizer)
+		err = r.Update(ctx, instance)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+	}
 
 	return reconcile.Result{RequeueAfter: time.Duration(60) * time.Second}, nil
 }
@@ -221,14 +250,24 @@ func (r *RedisClusterBackupReconciler) SetupWithManager(mgr ctrl.Manager) error 
 		Complete(r)
 }
 
-// func (r *RedisClusterBackupReconciler) finalizeBackup(b *redisv1alpha1.RedisClusterBackup) error {
-// 	// TODO(user): Add the cleanup steps that the operator
-// 	// needs to do before the CR can be deleted. Examples
-// 	// of finalizers include performing backups and deleting
-// 	// resources that are not owned by this CR, like a PVC.
-// 	logl.Info("Successfully finalized RedisClusterBackup")
-// 	return nil
-// }
+func (r *RedisClusterBackupReconciler) finalizeBackup(namespace string, b *redisv1alpha1.RedisClusterBackup) error {
+	// TODO(user): Add the cleanup steps that the operator
+	// needs to do before the CR can be deleted. Examples
+	// of finalizers include performing backups and deleting
+	// resources that are not owned by this CR, like a PVC.
+	logl.Info("Successfully finalized RedisClusterBackup")
+	dp, err := r.DeploymentController.GetDeployment(namespace, b.Spec.RedisClusterName)
+	if err != nil {
+		logl.Error(err, "unable to get deployment", "namespace", namespace)
+		return err
+	}
+	err = r.DeploymentController.DeleteDeployment(dp)
+	if err != nil {
+		logl.Error(err, "unable to delete deployment", "namespace", namespace)
+		return err
+	}
+	return nil
+}
 
 // func (r *RedisClusterBackupReconciler) addFinalizer(b *redisv1alpha1.RedisClusterBackup) error {
 // 	logl.Info("Adding Finalizer for the backup")
