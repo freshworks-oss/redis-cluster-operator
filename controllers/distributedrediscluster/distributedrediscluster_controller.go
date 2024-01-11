@@ -25,6 +25,7 @@ import (
 	rediskunv1alpha1 "github.com/dinesh-murugiah/rediscluster-operator/api/v1alpha1"
 	"github.com/dinesh-murugiah/rediscluster-operator/controllers/heal"
 	clustermanger "github.com/dinesh-murugiah/rediscluster-operator/controllers/manager"
+	"github.com/dinesh-murugiah/rediscluster-operator/metrics"
 	config "github.com/dinesh-murugiah/rediscluster-operator/redisconfig"
 	"github.com/dinesh-murugiah/rediscluster-operator/resources/configmaps"
 	"github.com/dinesh-murugiah/rediscluster-operator/resources/statefulsets"
@@ -82,6 +83,7 @@ type DistributedRedisClusterReconciler struct {
 	CrController          k8sutil.ICustomResource
 	PodController         k8sutil.IPodControl
 	NodeController        k8sutil.INodeControl
+	MetricsClient         metrics.Recorder
 }
 
 //+kubebuilder:rbac:groups=redis.kun,resources=distributedredisclusters,verbs=get;list;watch;create;update;patch;delete
@@ -502,7 +504,7 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 	} else {
 		reqLogger.Info("HAhealing not required", "haStatus", haStatus)
 	}
-
+	r.MetricsClient.SetClusterOK(instance.Namespace, instance.Name)
 	return reconcile.Result{RequeueAfter: time.Duration(reconcileTime) * time.Second}, nil
 }
 
