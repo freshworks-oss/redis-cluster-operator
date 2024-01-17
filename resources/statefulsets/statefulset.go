@@ -61,8 +61,8 @@ func NewStatefulSetForCR(cluster *redisv1alpha1.DistributedRedisCluster, ssName,
 	//Enable affinity and topology spread constraints only if haenabled is true
 	var affinity *corev1.Affinity
 	var topologySpreadConstraints []corev1.TopologySpreadConstraint
+	affinity = getAffinity(cluster, labels)
 	if cluster.Spec.HaConfig.HaEnabled {
-		affinity = getAffinity(cluster, labels)
 		topologySpreadConstraints = getTopolgyspreadConstraints(cluster, ssName)
 	}
 
@@ -160,25 +160,13 @@ func getTopolgyspreadConstraints(cluster *redisv1alpha1.DistributedRedisCluster,
 }
 
 func getAffinity(cluster *redisv1alpha1.DistributedRedisCluster, labels map[string]string) *corev1.Affinity {
-	affinity := cluster.Spec.Affinity
-	if affinity != nil {
-		return affinity
-	}
-	// pod  anti affinity for every pod in a redis cluster on node level (preferred weighted anti-affinity for every pod, mandatady on STS level)
-	if cluster.Spec.RequiredAntiAffinity {
+
+	var affinity *corev1.Affinity = nil
+	// haEnabled is true, then use pod anti-affinity is enfored on node level and the RequiredAntiAffinity and other affinity definitions are ignored
+	if cluster.Spec.HaConfig.HaEnabled {
+		// return pod  anti-affinity on node level per STS by default
 		return &corev1.Affinity{
 			PodAntiAffinity: &corev1.PodAntiAffinity{
-				PreferredDuringSchedulingIgnoredDuringExecution: []corev1.WeightedPodAffinityTerm{
-					{
-						Weight: 100,
-						PodAffinityTerm: corev1.PodAffinityTerm{
-							TopologyKey: hostnameTopologyKey,
-							LabelSelector: &metav1.LabelSelector{
-								MatchLabels: map[string]string{redisv1alpha1.LabelClusterName: cluster.Name},
-							},
-						},
-					},
-				},
 				RequiredDuringSchedulingIgnoredDuringExecution: []corev1.PodAffinityTerm{
 					{
 						TopologyKey: hostnameTopologyKey,
@@ -190,19 +178,61 @@ func getAffinity(cluster *redisv1alpha1.DistributedRedisCluster, labels map[stri
 			},
 		}
 	}
-	// return pod  anti-affinity on node level per STS by default
-	return &corev1.Affinity{
-		PodAntiAffinity: &corev1.PodAntiAffinity{
-			RequiredDuringSchedulingIgnoredDuringExecution: []corev1.PodAffinityTerm{
-				{
+
+	if cluster.Spec.Affinity != nil {
+		affinity = cluster.Spec.Affinity
+	}
+	// pod  anti affinity for every pod in a redis cluster on node level (preferred weighted anti-affinity for every pod, mandatady on STS level)
+	if cluster.Spec.RequiredAntiAffinity {
+		if affinity.PodAntiAffinity == nil {
+			affinity.PodAntiAffinity = &corev1.PodAntiAffinity{}
+			affinity.PodAntiAffinity.PreferredDuringSchedulingIgnoredDuringExecution = []corev1.WeightedPodAffinityTerm{}
+			affinity.PodAntiAffinity.RequiredDuringSchedulingIgnoredDuringExecution = []corev1.PodAffinityTerm{}
+			affinity.PodAntiAffinity.RequiredDuringSchedulingIgnoredDuringExecution = append(
+				affinity.PodAntiAffinity.RequiredDuringSchedulingIgnoredDuringExecution, corev1.PodAffinityTerm{
 					TopologyKey: hostnameTopologyKey,
 					LabelSelector: &metav1.LabelSelector{
 						MatchLabels: labels,
 					},
+				})
+			affinity.PodAntiAffinity.PreferredDuringSchedulingIgnoredDuringExecution = append(
+				affinity.PodAntiAffinity.PreferredDuringSchedulingIgnoredDuringExecution, corev1.WeightedPodAffinityTerm{
+					Weight: 100,
+					PodAffinityTerm: corev1.PodAffinityTerm{
+						TopologyKey: hostnameTopologyKey,
+						LabelSelector: &metav1.LabelSelector{
+							MatchLabels: map[string]string{redisv1alpha1.LabelClusterName: cluster.Name},
+						},
+					},
+				})
+		}
+		/*
+			return &corev1.Affinity{
+				PodAntiAffinity: &corev1.PodAntiAffinity{
+					PreferredDuringSchedulingIgnoredDuringExecution: []corev1.WeightedPodAffinityTerm{
+						{
+							Weight: 100,
+							PodAffinityTerm: corev1.PodAffinityTerm{
+								TopologyKey: hostnameTopologyKey,
+								LabelSelector: &metav1.LabelSelector{
+									MatchLabels: map[string]string{redisv1alpha1.LabelClusterName: cluster.Name},
+								},
+							},
+						},
+					},
+					RequiredDuringSchedulingIgnoredDuringExecution: []corev1.PodAffinityTerm{
+						{
+							TopologyKey: hostnameTopologyKey,
+							LabelSelector: &metav1.LabelSelector{
+								MatchLabels: labels,
+							},
+						},
+					},
 				},
-			},
-		},
+			}
+		*/
 	}
+	return affinity
 }
 
 func persistentClaim(cluster *redisv1alpha1.DistributedRedisCluster, labels map[string]string) corev1.PersistentVolumeClaim {

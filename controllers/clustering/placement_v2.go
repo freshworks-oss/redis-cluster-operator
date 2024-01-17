@@ -75,8 +75,13 @@ func (c *Ctx) DispatchMasters() error {
 		currentMasterNodes := nodes.FilterByFunc(redisutil.IsMasterWithSlot)
 		if len(currentMasterNodes) == 0 {
 			var master *redisutil.Node = nil
-			if c.haconfig.HaEnabled && c.hastatus == redisv1alpha1.HaStatusCreating {
-				master = c.PlaceMastersHA(i, stsName, c.haconfig)
+			if c.haconfig.HaEnabled {
+				if c.hastatus == redisv1alpha1.HaStatusCreating {
+					master = c.PlaceMastersHA(i, stsName, c.haconfig)
+				} else {
+					c.log.Error(fmt.Errorf("Ha Status not as expected when creating master %s", stsName), "ha status", c.hastatus)
+					master = c.PlaceMastersHA(i, stsName, c.haconfig)
+				}
 			} else {
 				master = c.PlaceMasters(stsName)
 			}
