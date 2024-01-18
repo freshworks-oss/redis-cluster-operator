@@ -170,10 +170,8 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 	var isStsCreated bool = false
 	var haStatus rediskunv1alpha1.HaStatus = rediskunv1alpha1.HaStatusUnknown
 	isStsCreated, err = r.ensureCluster(syncCtx)
-	var ensureClStatus string
 	if !isStsCreated || err != nil {
-		ensureClStatus = metrics.FAIL
-		r.MetricsClient.EnsureCluster(request.Namespace, request.Name, ensureClStatus, "STS_CREATION", err.Error())
+		r.MetricsClient.EnsureCluster(request.Namespace, request.Name, metrics.FAIL, "STS_CREATION", err.Error())
 	}
 	// set p0 metric if err is StopRetry
 	if err != nil {
@@ -255,7 +253,7 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 
 	password, err := statefulsets.GetRedisClusterAdminPassword(r.Client, syncCtx.cluster, reqLogger)
 	if err != nil {
-		r.MetricsClient.RecordRedisOperation(request.Namespace, request.Name, metrics.GET_CA_PASS, "NA", metrics.FAIL, err.Error())
+		r.MetricsClient.RecordRedisOperation(request.Namespace, request.Name, metrics.GET_CLUSTERADMIN_PASSWORD, "NA", metrics.FAIL, err.Error())
 		return reconcile.Result{}, Kubernetes.Wrap(err, "getClusterPassword")
 	}
 

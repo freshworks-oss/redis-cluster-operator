@@ -229,7 +229,7 @@ func (r *DistributedRedisClusterReconciler) syncCluster(ctx *syncContext, contex
 	}
 	clusterCtx := clustering.NewCtx(cluster.Spec.HaConfig, rCluster, nodes, cluster.Spec.MasterSize, cluster.Name, ctx.reqLogger)
 	if err := clusterCtx.DispatchMasters(); err != nil {
-		r.MetricsClient.RecordRedisOperation(instance.Namespace, instance.Name, metrics.DISPATH_MASTER, "NA", metrics.FAIL, err.Error())
+		r.MetricsClient.RecordRedisOperation(instance.Namespace, instance.Name, metrics.DISPATCH_MASTER, "NA", metrics.FAIL, err.Error())
 		return Cluster.Wrap(err, "DispatchMasters")
 	}
 	curMasters := clusterCtx.GetCurrentMasters()
