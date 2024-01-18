@@ -202,7 +202,6 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 		if instance.Status.SecretStatus == "" {
 			secretVersions, err := configmaps.Getsecretversions(reqLogger, r.Client, instance)
 			if err != nil {
-				// raise metric - aclconf error
 				r.MetricsClient.EnsureCluster(request.Namespace, request.Name, metrics.FAIL, "GET_SECRETVERSION", err.Error())
 				SetSecretStatus(newStatus, "aclconferror")
 			} else {

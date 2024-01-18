@@ -447,7 +447,6 @@ func (r *DistributedRedisClusterReconciler) checkandUpdatePods(admin redisutil.I
 	}
 	if !updated && !ok {
 		ctx.reqLogger.Info("Slaves are not ready")
-		// raise metric
 		return true, err
 	}
 	if ok {

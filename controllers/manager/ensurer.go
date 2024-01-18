@@ -94,7 +94,6 @@ func (r *realEnsureResource) ensureRedisStatefulset(cluster *redisv1alpha1.Distr
 				Info("updating statefulSet")
 			newSS, err := statefulsets.NewStatefulSetForCR(cluster, ssName, svcName, labels)
 			if err != nil {
-				// raise metric - stateful set creation failure
 				return false, err
 			}
 			ssErr := r.statefulSetClient.UpdateStatefulSet(newSS)
@@ -202,7 +201,6 @@ func (r *realEnsureResource) EnsureClusterShardsHeadLessSvcs(cluster *redisv1alp
 		labels[redisv1alpha1.StatefulSetLabel] = name
 		labels[redisv1alpha1.ShardLabel] = name
 		if err := r.ensureRedisHeadLessSvc(cluster, svcName, labels); err != nil {
-			// raise metric - headless svc creation failure
 			return err
 		}
 	}

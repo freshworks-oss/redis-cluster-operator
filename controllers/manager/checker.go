@@ -49,7 +49,6 @@ func (c *realCheck) CheckPasswordChanged(cluster *redisv1alpha1.DistributedRedis
 		if errors.IsNotFound(err) {
 			c.logger.WithValues("ConfigMap.Namespace", cluster.Namespace, "ConfigMap.Name", aclcmname).
 				Info("config map not found when checking password change")
-			// raise metric configmap map missing
 			return false, "", secretversion, err
 		}
 	}
