@@ -57,6 +57,8 @@ const (
 )
 
 const (
+	HaStatusUnknown      HaStatus = "haunknown"
+	HaStatusDisabled     HaStatus = "hadisabled"
 	HaStatusCreating     HaStatus = "hacreating"
 	HaStatusHealthy      HaStatus = "hahealthy"
 	HaStatusRedistribute HaStatus = "haredistribute"

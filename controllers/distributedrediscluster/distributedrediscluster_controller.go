@@ -168,6 +168,7 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 		reqLogger: reqLogger,
 	}
 	var isStsCreated bool = false
+	var haStatus rediskunv1alpha1.HaStatus = rediskunv1alpha1.HaStatusUnknown
 	isStsCreated, err = r.ensureCluster(syncCtx)
 	var ensureClStatus string
 	if !isStsCreated || err != nil {
@@ -184,7 +185,13 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 		reqLogger.WithValues("err", err).Info("ensureCluster")
 		newStatus := instance.Status.DeepCopy()
 		if instance.Status.HAStatus == "" || isStsCreated {
-			SetHAStatus(newStatus, rediskunv1alpha1.HaStatusCreating)
+			if instance.Spec.HaConfig.HaEnabled {
+				SetHAStatus(newStatus, rediskunv1alpha1.HaStatusCreating)
+				haStatus = rediskunv1alpha1.HaStatusCreating
+			} else {
+				SetHAStatus(newStatus, rediskunv1alpha1.HaStatusDisabled)
+				haStatus = rediskunv1alpha1.HaStatusDisabled
+			}
 		}
 		SetClusterScaling(newStatus, err.Error())
 		r.updateClusterIfNeed(instance, newStatus, reqLogger)
@@ -207,7 +214,13 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 			}
 		}
 		if instance.Status.HAStatus == "" || isStsCreated {
-			SetHAStatus(newStatus, "hacreating")
+			if instance.Spec.HaConfig.HaEnabled {
+				SetHAStatus(newStatus, rediskunv1alpha1.HaStatusCreating)
+				haStatus = rediskunv1alpha1.HaStatusCreating
+			} else {
+				SetHAStatus(newStatus, rediskunv1alpha1.HaStatusDisabled)
+				haStatus = rediskunv1alpha1.HaStatusDisabled
+			}
 		}
 		r.updateClusterIfNeed(instance, newStatus, reqLogger)
 	}
@@ -399,8 +412,10 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 		}
 	}
 	newStatus := buildClusterStatus(newClusterInfos, syncCtx.pods, instance, reqLogger, r.Client, true)
-	haStatus, _, _ := buildHAStatus(newClusterInfos, syncCtx.pods, instance, reqLogger, r.Client)
-	SetHAStatus(newStatus, haStatus)
+	if instance.Spec.HaConfig.HaEnabled {
+		haStatus, _, _ = buildHAStatus(newClusterInfos, syncCtx.pods, instance, reqLogger, r.Client)
+		SetHAStatus(newStatus, haStatus)
+	}
 	clusterHealthOk := CheackandUpdateClusterHealth(newStatus, newClusterInfos, instance, reqLogger)
 	r.updateClusterIfNeed(instance, newStatus, reqLogger)
 	// This part of code is very un optimally called , First need to optimise checkandUpdatePods, the above
@@ -534,7 +549,7 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 		}
 	} else {
 		r.MetricsClient.SetClusterOK(instance.Namespace, instance.Name, float64(2), "Cluster State Healthy and HAEnabled is False")
-	}
+		}
 	return reconcile.Result{RequeueAfter: time.Duration(reconcileTime) * time.Second}, nil
 }
 
