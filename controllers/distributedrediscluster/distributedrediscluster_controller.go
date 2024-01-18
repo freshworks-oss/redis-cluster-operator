@@ -549,7 +549,7 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 		}
 	} else {
 		r.MetricsClient.SetClusterOK(instance.Namespace, instance.Name, float64(2), "Cluster State Healthy and HAEnabled is False")
-		}
+	}
 	return reconcile.Result{RequeueAfter: time.Duration(reconcileTime) * time.Second}, nil
 }
 

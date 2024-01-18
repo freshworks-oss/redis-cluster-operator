@@ -176,7 +176,6 @@ func main() {
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), mgroptions)
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")
-		//Log alert
 		os.Exit(1)
 	}
 
@@ -188,12 +187,10 @@ func main() {
 	}
 	httpClient, err := rest.HTTPClientFor(mgr.GetConfig())
 	if err != nil {
-		//Log alert
 		os.Exit(1)
 	}
 	restClient, err := apiutil.RESTClientForGVK(gvk, false, mgr.GetConfig(), serializer.NewCodecFactory(clientgoscheme.Scheme), httpClient)
 	if err != nil {
-		//Log alert
 		os.Exit(1)
 	}
 
@@ -211,7 +208,6 @@ func main() {
 		MetricsClient:         recorder,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "DistributedRedisCluster")
-		//Log alert
 		os.Exit(1)
 	}
 
@@ -232,19 +228,16 @@ func main() {
 		MetricsClient:         recorder,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "RedisClusterBackup")
-		//Log alert
 		os.Exit(1)
 	}
 	//+kubebuilder:scaffold:builder
 
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
 		setupLog.Error(err, "unable to set up health check")
-		//Log alert
 		os.Exit(1)
 	}
 	if err := mgr.AddReadyzCheck("readyz", healthz.Ping); err != nil {
 		setupLog.Error(err, "unable to set up ready check")
-		//Log alert
 		os.Exit(1)
 	}
 
@@ -257,7 +250,6 @@ func main() {
 		*/
 		if err = (&rediskunv1alpha1.DistributedRedisCluster{}).SetupWebhookWithManager(mgr); err != nil {
 			log.Error(err, "unable to create webHook", "webHook", "DistributedRedisCluster")
-			//Log alert
 			os.Exit(1)
 		}
 	}
@@ -265,7 +257,6 @@ func main() {
 	setupLog.Info("starting manager")
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
 		setupLog.Error(err, "problem running manager")
-		//Log alert
 		os.Exit(1)
 	}
 }

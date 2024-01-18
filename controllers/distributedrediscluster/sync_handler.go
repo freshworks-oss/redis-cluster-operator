@@ -95,7 +95,6 @@ func (r *DistributedRedisClusterReconciler) validateAndSetDefault(cluster *redis
 	// TODO: DR-1173 Move this to validation webhook
 	if cluster.Spec.HaConfig == nil {
 		err = fmt.Errorf("ha config expected missing")
-		//Log alert
 		return err
 
 	} else {
@@ -103,12 +102,10 @@ func (r *DistributedRedisClusterReconciler) validateAndSetDefault(cluster *redis
 			//limit the HA solution to 3 zones , neither lesser nor higher
 			if cluster.Spec.HaConfig.ZonesInfo == nil || (len(cluster.Spec.HaConfig.ZonesInfo) != 3) {
 				err = fmt.Errorf("haspec missing zone info or incorrect zone info")
-				//Log alert
 				return err
 			}
 			if cluster.Spec.ClusterReplicas != int32(len(cluster.Spec.HaConfig.ZonesInfo)-1) {
 				err = fmt.Errorf("cluster replicas should be equal to availabilty zones")
-				//Log alert
 				return err
 			}
 		}
@@ -119,7 +116,6 @@ func (r *DistributedRedisClusterReconciler) validateAndSetDefault(cluster *redis
 	for _, container := range *cluster.Spec.Monitor {
 		if container.Image == "" || container.Prometheus == nil || container.Prometheus.Port == 0 {
 			err = fmt.Errorf("required fields missing for monitor")
-			//Log alert
 			return err
 		}
 	}
