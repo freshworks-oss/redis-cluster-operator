@@ -69,11 +69,13 @@ func CheackandUpdateClusterHealth(clusterStatus *rediskunv1alpha1.DistributedRed
 
 	if clusterInfos.Status == redisutil.ClusterInfosInconsistent {
 		SetClusterNOK(clusterStatus, "Cluster view is inconsistent")
+		// raise metric
 		return false
 	}
 
 	if clusterStatus.MinReplicationFactor < cluster.Spec.ClusterReplicas {
 		SetClusterNOK(clusterStatus, "Cluster Replication Factor is not met")
+		// raise metric
 		return false
 	}
 

@@ -211,6 +211,7 @@ func (a *Admin) GetClusterInfos(ctx context.Context) (*ClusterInfos, error) {
 func (a *Admin) getInfos(ctx context.Context, c *redis.Client, addr string) (*NodeInfos, error) {
 	resp := c.Do(ctx, "CLUSTER", "NODES")
 	if err := a.Connections().ValidateResp(ctx, resp, addr, "unable to retrieve node info"); err != nil {
+		// raise metric
 		return nil, err
 	}
 	//var err error
@@ -278,6 +279,7 @@ func CheckandUpdateClusterState(cinfos *ClusterInfos, cs clusterstate, fromip st
 func (a *Admin) clusterGetStatus(ctx context.Context, client *redis.Client, addr string) (string, error) {
 	resp := client.Do(ctx, "CLUSTER", "INFO")
 	if err := a.Connections().ValidateResp(ctx, resp, addr, "unable to retrieve cluster info"); err != nil {
+		// raise metric
 		return "", err
 	}
 	raw := resp.String()
@@ -285,11 +287,13 @@ func (a *Admin) clusterGetStatus(ctx context.Context, client *redis.Client, addr
 		match := clusterStateRE.FindStringSubmatch(raw)
 		if len(match) == 0 {
 			return "", fmt.Errorf("cluster_state not found")
+			// raise metric
 		} else {
 			//a.log.Info("cluster state", "state", match[1])
 			return match[1], nil
 		}
 	} else {
+		// raise metric
 		return "", fmt.Errorf("cluster_state not found")
 
 	}
@@ -328,6 +332,7 @@ func (a *Admin) AttachSlaveToMaster(ctx context.Context, slave *Node, masterID s
 
 	resp := c.Do(ctx, "CLUSTER", "REPLICATE", masterID)
 	if err := a.Connections().ValidateResp(ctx, resp, slave.IPPort(), "unable to run command REPLICATE"); err != nil {
+		// raise metric
 		return err
 	}
 	if resp.Err() != nil {
@@ -533,6 +538,7 @@ func (a *Admin) SetConfigIfNeed(ctx context.Context, newConfig map[string]string
 				a.log.V(3).Info("CONFIG SET", key, value)
 				resp := c.Do(ctx, "CONFIG", "SET", key, value)
 				if err := a.Connections().ValidateResp(ctx, resp, addr, "unable to retrieve config"); err != nil {
+					// raise metric
 					return err
 				}
 				if resp.Err() != nil {
@@ -802,6 +808,7 @@ func (a *Admin) GetSlaveStatus(ip string, ctx context.Context) (string, error) {
 	}
 	info, err := c.Info(context.TODO(), "replication").Result()
 	if err != nil {
+		// raise metric
 		return ReplicaStatusUnknown, err
 	}
 

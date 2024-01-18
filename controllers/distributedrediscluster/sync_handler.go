@@ -48,6 +48,7 @@ func (r *DistributedRedisClusterReconciler) ensureCluster(ctx *syncContext) (boo
 	labels := getLabels(cluster)
 	if err, crdeferr := r.Ensurer.EnsureRedisConfigMap(cluster, labels); err != nil {
 		if crdeferr {
+			// admin secret missing - raise error
 			return false, StopRetry.Wrap(err, "AdminSecretMissing")
 		} else {
 			return false, Kubernetes.Wrap(err, "EnsureRedisConfigMap")
@@ -92,6 +93,7 @@ func (r *DistributedRedisClusterReconciler) validateAndSetDefault(cluster *redis
 	// TODO: DR-1173 Move this to validation webhook
 	if cluster.Spec.HaConfig == nil {
 		err = fmt.Errorf("ha config expected missing")
+		//Log alert
 		return err
 
 	} else {
@@ -99,10 +101,12 @@ func (r *DistributedRedisClusterReconciler) validateAndSetDefault(cluster *redis
 			//limit the HA solution to 3 zones , neither lesser nor higher
 			if cluster.Spec.HaConfig.ZonesInfo == nil || (len(cluster.Spec.HaConfig.ZonesInfo) != 3) {
 				err = fmt.Errorf("haspec missing zone info or incorrect zone info")
+				//Log alert
 				return err
 			}
 			if cluster.Spec.ClusterReplicas != int32(len(cluster.Spec.HaConfig.ZonesInfo)-1) {
 				err = fmt.Errorf("cluster replicas should be equal to availabilty zones")
+				//Log alert
 				return err
 			}
 		}
@@ -113,6 +117,7 @@ func (r *DistributedRedisClusterReconciler) validateAndSetDefault(cluster *redis
 	for _, container := range *cluster.Spec.Monitor {
 		if container.Image == "" || container.Prometheus == nil || container.Prometheus.Port == 0 {
 			err = fmt.Errorf("required fields missing for monitor")
+			//Log alert
 			return err
 		}
 	}
@@ -224,6 +229,7 @@ func (r *DistributedRedisClusterReconciler) syncCluster(ctx *syncContext, contex
 	}
 	clusterCtx := clustering.NewCtx(cluster.Spec.HaConfig, rCluster, nodes, cluster.Spec.MasterSize, cluster.Name, ctx.reqLogger)
 	if err := clusterCtx.DispatchMasters(); err != nil {
+		// raise error
 		return Cluster.Wrap(err, "DispatchMasters")
 	}
 	curMasters := clusterCtx.GetCurrentMasters()
@@ -373,6 +379,7 @@ func (r *DistributedRedisClusterReconciler) checkandUpdatePassword(admin redisut
 					}
 					resp := c.Do(context, args...)
 					if err := admin.Connections().ValidateResp(context, resp, addr, "unable to set ACL"); err != nil {
+						//raise metric unable to set acl
 						return nil, err
 					}
 				}
@@ -430,6 +437,7 @@ func (r *DistributedRedisClusterReconciler) checkandUpdatePods(admin redisutil.I
 	}
 	if !updated && !ok {
 		ctx.reqLogger.Info("Slaves are not ready")
+		// raise metric
 		return true, err
 	}
 	if ok {

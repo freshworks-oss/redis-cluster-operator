@@ -205,6 +205,7 @@ func GenerateAclconf(conflog logr.Logger, client client.Client, cluster *redisv1
 		acldata, versionID, err := GetAclStringFromSecrets(conflog, client, cluster, cluster.Spec.AdminSecret.Name)
 		if err != nil {
 			conflog.Error(err, "admin secret unable to create")
+			// raise metric - admin secret unable to create
 			return "", secretversion, err
 
 		} else {
@@ -223,6 +224,7 @@ func GenerateAclconf(conflog logr.Logger, client client.Client, cluster *redisv1
 		acldata, versionID, err := GetAclStringFromSecrets(conflog, client, cluster, cluster.Spec.DefaultSecret.Name)
 		if err != nil {
 			conflog.Error(err, "default secret unable to create")
+			// raise metric - default secret unable to create
 			return "", secretversion, err
 
 		} else {
@@ -239,6 +241,7 @@ func GenerateAclconf(conflog logr.Logger, client client.Client, cluster *redisv1
 			acldata, versionID, err := GetAclStringFromSecrets(conflog, client, cluster, sceretrefname)
 			if err != nil {
 				conflog.Error(err, "additional secret unable to create")
+				// raise metric - additional secret unable to create
 				return "", secretversion, err
 			} else {
 				buffer.WriteString(acldata)
@@ -331,6 +334,7 @@ func GetAcldataFromSecrets(client client.Client, cluster *redisv1alpha1.Distribu
 	if len(string(secret.Data["username"])) == 0 ||
 		len(string(secret.Data["password"])) == 0 ||
 		len(string(secret.Data["acl"])) == 0 {
+		// raise metric - secret has missing data (username or password or acl)
 		return values, secret.ResourceVersion, fmt.Errorf("secret has missing data")
 	}
 	values["username"] = strings.TrimSpace(string(secret.Data["username"]))
