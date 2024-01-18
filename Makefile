@@ -71,7 +71,7 @@ BIN_DIR=bin/operator
 DEVREPO=$(REPO)
 
 
-BINARY_VERSION=v0.0.27
+BINARY_VERSION=v0.0.28
 BINARY_VERSION_DEV=metricstest-10
 ECR_REPO=redis-cluster-operator
 ECR__DEV_REPO=redis-cluster-operator-dev

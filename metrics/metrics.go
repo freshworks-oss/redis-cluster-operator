@@ -43,7 +43,7 @@ const (
 
 type Recorder interface {
 	// ClusterOK metrics
-	SetClusterOK(namespace string, name string, val float64, reason string)
+	SetClusterOK(namespace string, name string, val float64)
 	RecordK8sOperation(namespace string, kind string, name string, operation string, status string, err string)
 	EnsureCluster(namespace string, name string, status string, operation string, err string)
 	RecordRedisOperation(namespace string, name string, operation string, ip string, status string, err string)
@@ -62,7 +62,7 @@ func NewRecorder(namespace string, reg prometheus.Registerer) Recorder {
 		Subsystem: promControllerSubsystemRedis,
 		Name:      "cluster_ok",
 		Help:      "Number of clusters managed by the operator.",
-	}, []string{"namespace", "name", "reason"})
+	}, []string{"namespace", "name"})
 
 	k8sServiceOperations := prometheus.NewCounterVec(
 		prometheus.CounterOpts{
@@ -104,8 +104,8 @@ func NewRecorder(namespace string, reg prometheus.Registerer) Recorder {
 	return r
 }
 
-func (r recorder) SetClusterOK(namespace string, name string, val float64, reason string) {
-	r.clusterOK.WithLabelValues(namespace, name, reason).Set(val)
+func (r recorder) SetClusterOK(namespace string, name string, val float64) {
+	r.clusterOK.WithLabelValues(namespace, name).Set(val)
 }
 
 func (r recorder) RecordK8sOperation(namespace string, kind string, name string, operation string, status string, err string) {
