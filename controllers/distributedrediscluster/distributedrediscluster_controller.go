@@ -165,6 +165,7 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 		reqLogger: reqLogger,
 	}
 	var isStsCreated bool = false
+	var haStatus rediskunv1alpha1.HaStatus = rediskunv1alpha1.HaStatusUnknown
 	isStsCreated, err = r.ensureCluster(syncCtx)
 	if err != nil {
 		switch GetType(err) {
@@ -175,7 +176,13 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 		reqLogger.WithValues("err", err).Info("ensureCluster")
 		newStatus := instance.Status.DeepCopy()
 		if instance.Status.HAStatus == "" || isStsCreated {
-			SetHAStatus(newStatus, rediskunv1alpha1.HaStatusCreating)
+			if instance.Spec.HaConfig.HaEnabled {
+				SetHAStatus(newStatus, rediskunv1alpha1.HaStatusCreating)
+				haStatus = rediskunv1alpha1.HaStatusCreating
+			} else {
+				SetHAStatus(newStatus, rediskunv1alpha1.HaStatusDisabled)
+				haStatus = rediskunv1alpha1.HaStatusDisabled
+			}
 		}
 		SetClusterScaling(newStatus, err.Error())
 		r.updateClusterIfNeed(instance, newStatus, reqLogger)
@@ -196,7 +203,13 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 			}
 		}
 		if instance.Status.HAStatus == "" || isStsCreated {
-			SetHAStatus(newStatus, "hacreating")
+			if instance.Spec.HaConfig.HaEnabled {
+				SetHAStatus(newStatus, rediskunv1alpha1.HaStatusCreating)
+				haStatus = rediskunv1alpha1.HaStatusCreating
+			} else {
+				SetHAStatus(newStatus, rediskunv1alpha1.HaStatusDisabled)
+				haStatus = rediskunv1alpha1.HaStatusDisabled
+			}
 		}
 		r.updateClusterIfNeed(instance, newStatus, reqLogger)
 	}
@@ -376,8 +389,10 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 		}
 	}
 	newStatus := buildClusterStatus(newClusterInfos, syncCtx.pods, instance, reqLogger, r.Client, true)
-	haStatus, _, _ := buildHAStatus(newClusterInfos, syncCtx.pods, instance, reqLogger, r.Client)
-	SetHAStatus(newStatus, haStatus)
+	if instance.Spec.HaConfig.HaEnabled {
+		haStatus, _, _ = buildHAStatus(newClusterInfos, syncCtx.pods, instance, reqLogger, r.Client)
+		SetHAStatus(newStatus, haStatus)
+	}
 	clusterHealthOk := CheackandUpdateClusterHealth(newStatus, newClusterInfos, instance, reqLogger)
 	r.updateClusterIfNeed(instance, newStatus, reqLogger)
 	// This part of code is very un optimally called , First need to optimise checkandUpdatePods, the above
@@ -411,98 +426,99 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 	//3. check if all availability zones are present
 	// 4. if all zone are  present then, we need to heal the cluster for master and node distrubution
 	//5. if all zones are not present then leave it for zone failure condition to recover
+	if instance.Spec.HaConfig.HaEnabled {
+		if clusterHealthOk && haStatus == rediskunv1alpha1.HaStatusFailed {
+			err := fmt.Errorf("unexpected Error - HaStatusFailed")
+			reqLogger.Error(err, "HaStatusFailed")
+			return reconcile.Result{RequeueAfter: time.Duration(reconcileTime) * time.Second}, nil
+			// 2. If ha needs healing , then check if the cluster is in a stable state
+		} else if clusterHealthOk && haStatus == rediskunv1alpha1.HaStatusRedistribute {
+			//check if all Zones active now
+			isAllactive, _, err := CheckallZonesActive(instance, reqLogger, r.Client)
+			if err != nil {
+				reqLogger.Error(err, "CheckallZonesActive")
+				return reconcile.Result{RequeueAfter: 20 * time.Second}, nil
+			}
 
-	if clusterHealthOk && haStatus == rediskunv1alpha1.HaStatusFailed {
-		err := fmt.Errorf("unexpected Error - HaStatusFailed")
-		reqLogger.Error(err, "HaStatusFailed")
-		return reconcile.Result{RequeueAfter: time.Duration(reconcileTime) * time.Second}, nil
-		// 2. If ha needs healing , then check if the cluster is in a stable state
-	} else if clusterHealthOk && haStatus == rediskunv1alpha1.HaStatusRedistribute {
-		//check if all Zones active now
-		isAllactive, _, err := CheckallZonesActive(instance, reqLogger, r.Client)
-		if err != nil {
-			reqLogger.Error(err, "CheckallZonesActive")
-			return reconcile.Result{RequeueAfter: 20 * time.Second}, nil
-		}
-
-		// Checking if annotation "reDistributeNode" is true only then it should proceed for nodes rebalancing
-		redisClusterCRAnnotations := instance.Annotations
-		reDitributeNodes := false
-		for key, val := range redisClusterCRAnnotations {
-			if key == "reDistributeNode" {
-				if val == "true" {
-					reDitributeNodes = true
+			// Checking if annotation "reDistributeNode" is true only then it should proceed for nodes rebalancing
+			redisClusterCRAnnotations := instance.Annotations
+			reDitributeNodes := false
+			for key, val := range redisClusterCRAnnotations {
+				if key == "reDistributeNode" {
+					if val == "true" {
+						reDitributeNodes = true
+					}
 				}
 			}
-		}
 
-		// 3. If all zones not active , then check if we need to add annotations to not evict master pods
-		// Inorder for self heal to occur, set reDitributeNodes=true as annotation in respective cluster CRD.
-		if isAllactive && reDitributeNodes {
-			matchLabels := getLabels(instance)
-			redisClusterPods, err := r.StatefulSetController.GetStatefulSetPodsByLabels(instance.Namespace, matchLabels)
-			if err != nil {
-				reqLogger.Error(err, "HaRedistribute - GetStatefulSetPodsByLabels")
-				return reconcile.Result{RequeueAfter: time.Duration(reconcileTime) * time.Second}, nil
-			}
-			pods := clusterPods(redisClusterPods.Items)
-			numofNodestoDel, delNodes, err1 := r.getListofNodestoDelete(instance, newClusterInfos, reqLogger)
-			if err1 != nil {
-				reqLogger.Error(err1, "HaRedistribute - getListofNodestoDelete")
-				return reconcile.Result{RequeueAfter: time.Duration(reconcileTime) * time.Second}, nil
+			// 3. If all zones not active , then check if we need to add annotations to not evict master pods
+			// Inorder for self heal to occur, set reDitributeNodes=true as annotation in respective cluster CRD.
+			if isAllactive && reDitributeNodes {
+				matchLabels := getLabels(instance)
+				redisClusterPods, err := r.StatefulSetController.GetStatefulSetPodsByLabels(instance.Namespace, matchLabels)
+				if err != nil {
+					reqLogger.Error(err, "HaRedistribute - GetStatefulSetPodsByLabels")
+					return reconcile.Result{RequeueAfter: time.Duration(reconcileTime) * time.Second}, nil
+				}
+				pods := clusterPods(redisClusterPods.Items)
+				numofNodestoDel, delNodes, err1 := r.getListofNodestoDelete(instance, newClusterInfos, reqLogger)
+				if err1 != nil {
+					reqLogger.Error(err1, "HaRedistribute - getListofNodestoDelete")
+					return reconcile.Result{RequeueAfter: time.Duration(reconcileTime) * time.Second}, nil
 
-			}
-			if numofNodestoDel > 0 {
-				Podclient := k8sutil.NewPodController(r.Client)
-				for i := 0; i < int(instance.Spec.MasterSize); i++ {
-					stsname := statefulsets.ClusterStatefulSetName(instance.Name, i)
-					if _, ok := delNodes[stsname]; ok {
-						for _, delRedisNode := range delNodes[stsname] {
-							reqLogger.Info("Calling Delete Pod", "PodName", delRedisNode.PodName, "stsname", stsname, "NodeName", delRedisNode.NodeName, "Zone", delRedisNode.Zonename, "Role", delRedisNode.Role, "IP", delRedisNode.IP, "StatefulSet", delRedisNode.StatefulSet)
-							err2 := Podclient.DeletePodByName(instance.Namespace, delRedisNode.PodName)
-							if err2 != nil {
-								reqLogger.Error(err2, "HaRedistribute - DeletePodByName")
-								return reconcile.Result{RequeueAfter: time.Duration(reconcileTime) * time.Second}, nil
+				}
+				if numofNodestoDel > 0 {
+					Podclient := k8sutil.NewPodController(r.Client)
+					for i := 0; i < int(instance.Spec.MasterSize); i++ {
+						stsname := statefulsets.ClusterStatefulSetName(instance.Name, i)
+						if _, ok := delNodes[stsname]; ok {
+							for _, delRedisNode := range delNodes[stsname] {
+								reqLogger.Info("Calling Delete Pod", "PodName", delRedisNode.PodName, "stsname", stsname, "NodeName", delRedisNode.NodeName, "Zone", delRedisNode.Zonename, "Role", delRedisNode.Role, "IP", delRedisNode.IP, "StatefulSet", delRedisNode.StatefulSet)
+								err2 := Podclient.DeletePodByName(instance.Namespace, delRedisNode.PodName)
+								if err2 != nil {
+									reqLogger.Error(err2, "HaRedistribute - DeletePodByName")
+									return reconcile.Result{RequeueAfter: time.Duration(reconcileTime) * time.Second}, nil
+								}
 							}
 						}
 					}
+					return reconcile.Result{RequeueAfter: time.Duration(reconcileTime) * time.Second}, nil
 				}
-				return reconcile.Result{RequeueAfter: time.Duration(reconcileTime) * time.Second}, nil
-			}
-			//check if any masters needs to be failedover
-			haStatus, displacedMasters, _ := buildHAStatus(newClusterInfos, pods, instance, reqLogger, r.Client)
-			if haStatus == rediskunv1alpha1.HaStatusFailed {
-				reqLogger.Error(fmt.Errorf("unexpected Error - HaStatusFailed"), "HaStatusFailed When trying to Distribute Masters")
-			} else if haStatus == rediskunv1alpha1.HaStatusRedistribute && len(displacedMasters) > 0 {
-				reqLogger.Info("HaStatusRedistribute - Distribute Masters", "displacedMasters", displacedMasters)
-				//Distribute Masters
-				err := r.PlaceMastersbySTS(instance, displacedMasters, newClusterInfos, admin, context, reqLogger)
-				if err != nil {
-					reqLogger.Error(err, "HaStatusRedistribute - PlaceMastersbySTS")
+				//check if any masters needs to be failedover
+				haStatus, displacedMasters, _ := buildHAStatus(newClusterInfos, pods, instance, reqLogger, r.Client)
+				if haStatus == rediskunv1alpha1.HaStatusFailed {
+					reqLogger.Error(fmt.Errorf("unexpected Error - HaStatusFailed"), "HaStatusFailed When trying to Distribute Masters")
+				} else if haStatus == rediskunv1alpha1.HaStatusRedistribute && len(displacedMasters) > 0 {
+					reqLogger.Info("HaStatusRedistribute - Distribute Masters", "displacedMasters", displacedMasters)
+					//Distribute Masters
+					err := r.PlaceMastersbySTS(instance, displacedMasters, newClusterInfos, admin, context, reqLogger)
+					if err != nil {
+						reqLogger.Error(err, "HaStatusRedistribute - PlaceMastersbySTS")
+					}
+					reqLogger.Info("HaStatusHealthy - HaHealing Completed")
+					//Update the annotation reDistributeNode to false in cluster CRD to stop selfheal.
+					//Selfheal should occur only if human operator sets annotation reDistributeNode as true on cluster crd.
+					//Once selfheal is completed, setting this annotation to false to stop auto selfheal as it is doesn't consider production traffic.
+					if err := r.CrController.UpdateCrdAnnotations(instance, "reDistributeNode", "false"); err != nil {
+						return reconcile.Result{}, err
+					}
+					return reconcile.Result{RequeueAfter: time.Duration(reconcileTime) * time.Second}, nil
+				} else if haStatus == rediskunv1alpha1.HaStatusHealthy && len(displacedMasters) == 0 {
+					newStatus := instance.Status.DeepCopy()
+					SetHAStatus(newStatus, rediskunv1alpha1.HaStatusHealthy)
+					haStatus = rediskunv1alpha1.HaStatusHealthy
+					r.updateClusterIfNeed(instance, newStatus, reqLogger)
+					return reconcile.Result{RequeueAfter: time.Duration(reconcileTime) * time.Second}, nil
 				}
-				reqLogger.Info("HaStatusHealthy - HaHealing Completed")
-				//Update the annotation reDistributeNode to false in cluster CRD to stop selfheal.
-				//Selfheal should occur only if human operator sets annotation reDistributeNode as true on cluster crd.
-				//Once selfheal is completed, setting this annotation to false to stop auto selfheal as it is doesn't consider production traffic.
-				if err := r.CrController.UpdateCrdAnnotations(instance, "reDistributeNode", "false"); err != nil {
-					return reconcile.Result{}, err
-				}
+			} else {
+				reqLogger.Info("HaStatusRedistribute - Not all zones active or Healing annotation reDistributeNode is unset to true!")
 				return reconcile.Result{RequeueAfter: time.Duration(reconcileTime) * time.Second}, nil
-			} else if haStatus == rediskunv1alpha1.HaStatusHealthy && len(displacedMasters) == 0 {
-				newStatus := instance.Status.DeepCopy()
-				SetHAStatus(newStatus, rediskunv1alpha1.HaStatusHealthy)
-				r.updateClusterIfNeed(instance, newStatus, reqLogger)
-				return reconcile.Result{RequeueAfter: time.Duration(reconcileTime) * time.Second}, nil
+
 			}
 		} else {
-			reqLogger.Info("HaStatusRedistribute - Not all zones active or Healing annotation reDistributeNode is unset to true!")
-			return reconcile.Result{RequeueAfter: time.Duration(reconcileTime) * time.Second}, nil
-
+			reqLogger.Info("HAhealing not required", "haStatus", haStatus)
 		}
-	} else {
-		reqLogger.Info("HAhealing not required", "haStatus", haStatus)
 	}
-
 	return reconcile.Result{RequeueAfter: time.Duration(reconcileTime) * time.Second}, nil
 }
 
