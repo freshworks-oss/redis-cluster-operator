@@ -431,7 +431,6 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 	//3. check if all availability zones are present
 	// 4. if all zone are  present then, we need to heal the cluster for master and node distrubution
 	//5. if all zones are not present then leave it for zone failure condition to recover
-
 	if instance.Spec.HaConfig.HaEnabled {
 		if clusterHealthOk && haStatus == rediskunv1alpha1.HaStatusFailed {
 			err := fmt.Errorf("unexpected Error - HaStatusFailed")
