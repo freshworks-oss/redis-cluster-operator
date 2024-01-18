@@ -64,7 +64,7 @@ func (c *realCheck) CheckPasswordChanged(cluster *redisv1alpha1.DistributedRedis
 	//acldata_new, secretversion, err2 := configmaps.GenerateAclconf(c.logger, c.client, cluster)
 	acldata_new, secretversion, err2 := configmaps.GenerateAclconf(c.logger, c.client, cluster)
 	if err2 != nil {
-		c.metricsRecorder.RecordRedisOperation(cluster.Namespace, cluster.Name, "GENERATE_ACLCONF", "NA", metrics.MISC, err2.Error())
+		c.metricsRecorder.RecordRedisOperation(cluster.Namespace, cluster.Name, metrics.GEN_ACL_CONF, "NA", metrics.FAIL, err2.Error())
 		c.logger.Error(err2, "unable to generate acl data from secrets")
 		return false, "", secretversion, err
 	}

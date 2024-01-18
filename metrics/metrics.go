@@ -17,26 +17,40 @@ const (
 	FAIL                         = "FAIL"
 	NOT_APPLICABLE               = "NA"
 	MISC                         = "MISC_ERROR"
+	GET_CA_PASS                  = "GET_CLUSTERADMIN_PASSWORD"
+	CREATE_ADMIN_CONN            = "CREATE_ADMIN_CONNECTION"
+	FORGET_NODE                  = "FORGET NODE"
+	NODE_NOT_FOUND               = "NODE_NOT_FOUND"
+	UNUSED_GHOST_NODE            = "UNUSED/GHOST NODE"
+	GEN_ACL_CONF                 = "GENERATE_ACL_CONF"
+	SET_ACL                      = "SET_ACL"
+	CLUSTER_MEET                 = "CLUSTER_MEET"
+	GET_CLUSTER_NODES_ALL        = "GET_CLUSTER_NODES_ALL"
+	REQUEUE                      = "REQUEUE"
+	HEAL                         = "HEAL"
+	CLUSTER_JOIN_FAILURE         = "CLUSTER_JOIN_FAILURE"
+	REDIS_CONFIG_SET             = "CONFIG_SET"
+	CLUSTERING                   = "SYNC_CLUSTER"
+	DISPATH_MASTER               = "DISPATCH_MASTERS"
+	PLACE_SLAVE                  = "PLACE_SLAVES"
+	ATTACH_SLAVE_TO_MASTER       = "ATTACH_SLAVES_TO_MASTER"
+	SLOT_ALLOCATION              = "SLOT_ALLOCATION"
+	REBALANCE_CLUSTER            = "REBALANCE_CLUSTER"
+	ALLOT_SLOTS_TO_NEW_MASTERS   = "ALLOT_SLOTS_TO_NEW_MASTERS"
+	SCALE_DOWN                   = "SCALE_DOWN"
+	CHECK_AND_UPDATE_REDIS_PODS  = "CHECK_AND_UPDATE_REDIS_PODS"
 )
 
 type Recorder interface {
 	// ClusterOK metrics
-	SetClusterOK(namespace string, name string)
-	SetControllerError(component string, name string)
-	SetWebhookError(component string, name string)
-	SetControllerSuccess(component string, name string)
-	//Actual metrics starts from here
+	SetClusterOK(namespace string, name string, val float64, reason string)
 	RecordK8sOperation(namespace string, kind string, name string, operation string, status string, err string)
 	EnsureCluster(namespace string, name string, status string, operation string, err string)
 	RecordRedisOperation(namespace string, name string, operation string, ip string, status string, err string)
 }
 
 type recorder struct {
-	clusterOK         *prometheus.GaugeVec // clusterOk is the status of a cluster
-	contollerError    *prometheus.GaugeVec // Controller instance creation failure
-	webhookError      *prometheus.GaugeVec // Webhook creation failure for rediscontroller
-	controllerSuccess *prometheus.GaugeVec // test
-	//Actual metrics starts from here
+	clusterOK            *prometheus.GaugeVec   // clusterOk is the status of a cluster
 	k8sServiceOperations *prometheus.CounterVec // number of operations performed on k8s
 	ensureCluster        *prometheus.CounterVec // status of ensure cluster
 	recordRedisOperation *prometheus.CounterVec // record redis operation
@@ -48,25 +62,7 @@ func NewRecorder(namespace string, reg prometheus.Registerer) Recorder {
 		Subsystem: promControllerSubsystemRedis,
 		Name:      "cluster_ok",
 		Help:      "Number of clusters managed by the operator.",
-	}, []string{"namespace", "name"})
-
-	contollerError := prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Subsystem: promController,
-		Name:      "contoller_error",
-		Help:      "Controller instance creation failure.",
-	}, []string{"component", "name"})
-
-	webhookError := prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Subsystem: promController,
-		Name:      "webhook_error",
-		Help:      "webhook instance creation failure.",
-	}, []string{"component", "name"})
-
-	controllerSuccess := prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Subsystem: promController,
-		Name:      "contoller_success",
-		Help:      "controller creation success.",
-	}, []string{"component", "name"})
+	}, []string{"namespace", "name", "reason"})
 
 	k8sServiceOperations := prometheus.NewCounterVec(
 		prometheus.CounterOpts{
@@ -93,9 +89,6 @@ func NewRecorder(namespace string, reg prometheus.Registerer) Recorder {
 
 	r := recorder{
 		clusterOK:            clusterOK,
-		contollerError:       contollerError,
-		webhookError:         webhookError,
-		controllerSuccess:    controllerSuccess,
 		k8sServiceOperations: k8sServiceOperations,
 		ensureCluster:        ensureCluster,
 		recordRedisOperation: recordRedisOperation,
@@ -104,9 +97,6 @@ func NewRecorder(namespace string, reg prometheus.Registerer) Recorder {
 	// Register metrics.
 	reg.MustRegister(
 		r.clusterOK,
-		r.contollerError,
-		r.webhookError,
-		r.controllerSuccess,
 		r.k8sServiceOperations,
 		r.ensureCluster,
 		r.recordRedisOperation,
@@ -114,20 +104,8 @@ func NewRecorder(namespace string, reg prometheus.Registerer) Recorder {
 	return r
 }
 
-func (r recorder) SetClusterOK(namespace string, name string) {
-	r.clusterOK.WithLabelValues(namespace, name).Set(1)
-}
-
-func (r recorder) SetControllerError(component string, name string) {
-	r.contollerError.WithLabelValues(component, name).Set(1)
-}
-
-func (r recorder) SetWebhookError(component string, name string) {
-	r.webhookError.WithLabelValues(component, name).Set(1)
-}
-
-func (r recorder) SetControllerSuccess(component string, name string) {
-	r.controllerSuccess.WithLabelValues(component, name).Set(1)
+func (r recorder) SetClusterOK(namespace string, name string, val float64, reason string) {
+	r.clusterOK.WithLabelValues(namespace, name, reason).Set(val)
 }
 
 func (r recorder) RecordK8sOperation(namespace string, kind string, name string, operation string, status string, err string) {
@@ -139,5 +117,5 @@ func (r recorder) EnsureCluster(namespace string, name string, status string, op
 }
 
 func (r recorder) RecordRedisOperation(namespace string, name string, operation string, ip string, status string, err string) {
-	r.ensureCluster.WithLabelValues(namespace, name, operation, ip, status, err).Add(1)
+	r.recordRedisOperation.WithLabelValues(namespace, name, operation, ip, status, err).Add(1)
 }

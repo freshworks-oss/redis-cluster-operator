@@ -170,18 +170,15 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 	var isStsCreated bool = false
 	isStsCreated, err = r.ensureCluster(syncCtx)
 	var ensureClStatus string
-	if isStsCreated {
-		ensureClStatus = metrics.SUCCESS
-	} else {
+	if !isStsCreated || err != nil {
 		ensureClStatus = metrics.FAIL
+		r.MetricsClient.EnsureCluster(request.Namespace, request.Name, ensureClStatus, "STS_CREATION", err.Error())
 	}
-	r.MetricsClient.EnsureCluster(request.Namespace, request.Name, ensureClStatus, "STS_CREATION", err.Error())
 	// set p0 metric if err is StopRetry
 	if err != nil {
 		switch GetType(err) {
 		case StopRetry:
 			reqLogger.Info("invalid", "err", err)
-			// Log alert
 			return reconcile.Result{}, nil
 		}
 		reqLogger.WithValues("err", err).Info("ensureCluster")
@@ -246,7 +243,7 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 
 	password, err := statefulsets.GetRedisClusterAdminPassword(r.Client, syncCtx.cluster, reqLogger)
 	if err != nil {
-		r.MetricsClient.RecordRedisOperation(request.Namespace, request.Name, "GET_CLUSTERADMIN_PASSWORD", "NA", metrics.MISC, err.Error())
+		r.MetricsClient.RecordRedisOperation(request.Namespace, request.Name, metrics.GET_CA_PASS, "NA", metrics.FAIL, err.Error())
 		return reconcile.Result{}, Kubernetes.Wrap(err, "getClusterPassword")
 	}
 
@@ -254,12 +251,12 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 
 	admin, err := newRedisAdmin(syncCtx.pods, password, config.RedisConf(), reqLogger, context)
 	if err != nil {
-		r.MetricsClient.RecordRedisOperation(request.Namespace, request.Name, "CREATE_ADMINCONNECTION", "NA", metrics.MISC, err.Error())
+		r.MetricsClient.RecordRedisOperation(request.Namespace, request.Name, metrics.CREATE_ADMIN_CONN, "NA", metrics.FAIL, err.Error())
 		return reconcile.Result{}, Redis.Wrap(err, "newRedisAdmin")
 	}
 	defer admin.Close(context)
 
-	secretver, err := r.checkandUpdatePassword(admin, syncCtx, context)
+	secretver, err := r.checkandUpdatePassword(admin, syncCtx, context, instance)
 	newsecretStatus := instance.Status.DeepCopy()
 	if err != nil {
 		reqLogger.WithValues("err", err).Info("error checking / updating password")
@@ -297,6 +294,8 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 
 	requeue, err := syncCtx.healer.Heal(instance, clusterInfos, admin, context)
 	if err != nil {
+		r.MetricsClient.EnsureCluster(instance.Namespace, instance.Name, metrics.MISC, metrics.HEAL, err.Error())
+		// raise alert if a particular tenant is in heal loop for more than 5 mins (rateof incr 5m)
 		return reconcile.Result{}, Redis.Wrap(err, "Heal")
 	}
 	if requeue {
@@ -305,13 +304,16 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 
 	syncCtx.admin = admin
 	syncCtx.clusterInfos = clusterInfos
-	err = r.waitForClusterJoin(syncCtx, context)
+	err = r.waitForClusterJoin(syncCtx, context, instance)
 	if err != nil {
 		switch GetType(err) {
 		case Requeue:
 			reqLogger.WithValues("err", err).Info("requeue")
+			r.MetricsClient.EnsureCluster(instance.Namespace, instance.Name, metrics.MISC, metrics.REQUEUE, err.Error())
+			// raise alert if a particular tenant is in REQUEUE loop for more than 5 mins (rateof incr 5m)
 			return reconcile.Result{RequeueAfter: requeueAfter}, nil
 		}
+		r.MetricsClient.EnsureCluster(instance.Namespace, instance.Name, metrics.FAIL, metrics.CLUSTER_JOIN_FAILURE, err.Error())
 		newStatus := instance.Status.DeepCopy()
 		SetClusterFailed(newStatus, err.Error())
 		r.updateClusterIfNeed(instance, newStatus, reqLogger)
@@ -363,6 +365,7 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 	}
 
 	if err := admin.SetConfigIfNeed(context, instance.Spec.Config); err != nil {
+		r.MetricsClient.RecordRedisOperation(instance.Namespace, instance.Name, metrics.REDIS_CONFIG_SET, "NA", metrics.FAIL, err.Error())
 		return reconcile.Result{}, Redis.Wrap(err, "SetConfigIfNeed")
 	}
 
@@ -377,8 +380,9 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 	instance.Status = *status
 	if needClusterOperation(instance, reqLogger) {
 		reqLogger.Info(">>>>>> clustering")
-		err = r.syncCluster(syncCtx, context)
+		err = r.syncCluster(syncCtx, context, instance)
 		if err != nil {
+			r.MetricsClient.EnsureCluster(instance.Namespace, instance.Name, metrics.FAIL, metrics.CLUSTERING, err.Error())
 			newStatus := instance.Status.DeepCopy()
 			SetClusterFailed(newStatus, err.Error())
 			r.updateClusterIfNeed(instance, newStatus, reqLogger)
@@ -388,6 +392,7 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 
 	newClusterInfos, err := admin.GetClusterInfos(context)
 	if err != nil {
+		r.MetricsClient.RecordRedisOperation(instance.Namespace, instance.Name, metrics.GET_CLUSTER_NODES_ALL, "NA", metrics.FAIL, err.Error())
 		reqLogger.Info("GetClusterInfos", "clusterInfos.Status", clusterInfos.Status)
 		if clusterInfos.Status == redisutil.ClusterInfosPartial {
 			return reconcile.Result{RequeueAfter: 10 * time.Second}, nil
@@ -404,9 +409,9 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 	if clusterHealthOk {
 		requeue, err = r.checkandUpdatePods(admin, syncCtx, context)
 		if err != nil {
+			r.MetricsClient.RecordRedisOperation(instance.Namespace, instance.Name, metrics.CHECK_AND_UPDATE_REDIS_PODS, "NA", metrics.FAIL, err.Error())
 			newStatus := instance.Status.DeepCopy()
 			SetClusterFailed(newStatus, err.Error())
-			// raise metric
 			r.updateClusterIfNeed(instance, newStatus, reqLogger)
 			return reconcile.Result{RequeueAfter: time.Duration(reconcileTime) * time.Second}, nil
 		}
@@ -420,8 +425,8 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 			return reconcile.Result{RequeueAfter: 10 * time.Second}, nil
 		}
 	} else {
+		r.MetricsClient.SetClusterOK(instance.Namespace, instance.Name, float64(0), newStatus.Reason)
 		reqLogger.Info("Cluster Health", "NOK", newStatus.Reason)
-		//raise metric
 		return reconcile.Result{RequeueAfter: 20 * time.Second}, nil
 	}
 
@@ -435,9 +440,11 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 		if clusterHealthOk && haStatus == rediskunv1alpha1.HaStatusFailed {
 			err := fmt.Errorf("unexpected Error - HaStatusFailed")
 			reqLogger.Error(err, "HaStatusFailed")
+			r.MetricsClient.SetClusterOK(instance.Namespace, instance.Name, float64(1), err.Error())
 			return reconcile.Result{RequeueAfter: time.Duration(reconcileTime) * time.Second}, nil
 			// 2. If ha needs healing , then check if the cluster is in a stable state
 		} else if clusterHealthOk && haStatus == rediskunv1alpha1.HaStatusRedistribute {
+			r.MetricsClient.SetClusterOK(instance.Namespace, instance.Name, float64(1), "HA_Status_RedistributeNodes")
 			//check if all Zones active now
 			isAllactive, _, err := CheckallZonesActive(instance, reqLogger, r.Client)
 			if err != nil {
@@ -517,12 +524,16 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 				}
 			} else {
 				reqLogger.Info("HaStatusRedistribute - Not all zones active or Healing annotation reDistributeNode is unset to true!")
+				r.MetricsClient.SetClusterOK(instance.Namespace, instance.Name, float64(1), "HaStatusRedistribute - Not all zones active or Healing annotation reDistributeNode is unset to true!")
 				return reconcile.Result{RequeueAfter: time.Duration(reconcileTime) * time.Second}, nil
 
 			}
 		} else {
 			reqLogger.Info("HAhealing not required", "haStatus", haStatus)
+			r.MetricsClient.SetClusterOK(instance.Namespace, instance.Name, float64(2), "Healthy")
 		}
+	} else {
+		r.MetricsClient.SetClusterOK(instance.Namespace, instance.Name, float64(2), "Cluster State Healthy and HAEnabled is False")
 	}
 	return reconcile.Result{RequeueAfter: time.Duration(reconcileTime) * time.Second}, nil
 }

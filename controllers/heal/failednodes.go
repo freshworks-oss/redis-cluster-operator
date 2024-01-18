@@ -23,7 +23,7 @@ func (c *CheckAndHeal) FixFailedNodes(cluster *redisv1alpha1.DistributedRedisClu
 			c.Logger.Info("[FixFailedNodes] try to forget node", "nodeId", id)
 			err := admin.ForgetNode(context, id)
 			if err != nil {
-				c.MetricsClient.RecordRedisOperation(cluster.Namespace, cluster.Name, "FORGET NODE", id, metrics.FAIL, err.Error())
+				c.MetricsClient.RecordRedisOperation(cluster.Namespace, cluster.Name, metrics.FORGET_NODE, id, metrics.FAIL, err.Error())
 				errs = append(errs, err)
 			}
 		}
