@@ -419,6 +419,7 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 	// buildClusterStatus has to be called only once , that data needs to be used for calling both checkandUpdatePods and updateLabels
 	// and cluster Haheal
 	if clusterHealthOk {
+		r.MetricsClient.SetClusterOK(instance.Namespace, instance.Name, float64(1))
 		requeue, err = r.checkandUpdatePods(admin, syncCtx, context)
 		if err != nil {
 			r.MetricsClient.RecordRedisOperation(instance.Namespace, instance.Name, metrics.CHECK_AND_UPDATE_REDIS_PODS, "NA", metrics.FAIL, err.Error())
@@ -452,11 +453,11 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 		if clusterHealthOk && haStatus == rediskunv1alpha1.HaStatusFailed {
 			err := fmt.Errorf("unexpected Error - HaStatusFailed")
 			reqLogger.Error(err, "HaStatusFailed")
-			r.MetricsClient.SetClusterOK(instance.Namespace, instance.Name, float64(1))
+			r.MetricsClient.SetClusterOK(instance.Namespace, instance.Name, float64(2))
 			return reconcile.Result{RequeueAfter: time.Duration(reconcileTime) * time.Second}, nil
 			// 2. If ha needs healing , then check if the cluster is in a stable state
 		} else if clusterHealthOk && haStatus == rediskunv1alpha1.HaStatusRedistribute {
-			r.MetricsClient.SetClusterOK(instance.Namespace, instance.Name, float64(1))
+			r.MetricsClient.SetClusterOK(instance.Namespace, instance.Name, float64(2))
 			//check if all Zones active now
 			isAllactive, _, err := CheckallZonesActive(instance, reqLogger, r.Client)
 			if err != nil {
@@ -536,16 +537,16 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 				}
 			} else {
 				reqLogger.Info("HaStatusRedistribute - Not all zones active or Healing annotation reDistributeNode is unset to true!")
-				r.MetricsClient.SetClusterOK(instance.Namespace, instance.Name, float64(1))
+				r.MetricsClient.SetClusterOK(instance.Namespace, instance.Name, float64(2))
 				return reconcile.Result{RequeueAfter: time.Duration(reconcileTime) * time.Second}, nil
 
 			}
 		} else {
 			reqLogger.Info("HAhealing not required", "haStatus", haStatus)
-			r.MetricsClient.SetClusterOK(instance.Namespace, instance.Name, float64(2))
+			r.MetricsClient.SetClusterOK(instance.Namespace, instance.Name, float64(3))
 		}
 	} else {
-		r.MetricsClient.SetClusterOK(instance.Namespace, instance.Name, float64(2))
+		r.MetricsClient.SetClusterOK(instance.Namespace, instance.Name, float64(1))
 	}
 	return reconcile.Result{RequeueAfter: time.Duration(reconcileTime) * time.Second}, nil
 }

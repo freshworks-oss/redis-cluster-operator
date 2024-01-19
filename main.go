@@ -97,7 +97,6 @@ func main() {
 		Development: true,
 	}
 	opts.BindFlags(flag.CommandLine)
-
 	pflag.CommandLine.AddFlagSet(distributedrediscluster.FlagSet())
 	pflag.CommandLine.AddFlagSet(redisclusterbackup.FlagSet())
 
@@ -106,14 +105,11 @@ func main() {
 
 	// Use the NewRecorder function from the metrics package to create an instance of Recorder
 	recorder := metrics.NewRecorder("redisoperator", reg)
-
 	http.Handle("/metrics", promhttp.Handler())
-
 	http.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("OK"))
 	})
-
 	go func() {
 		if err := http.ListenAndServe(fmt.Sprintf(":%d", 9297), nil); err != nil {
 			panic(err)
@@ -123,16 +119,11 @@ func main() {
 	// Add flags registered by imported packages (e.g. glog and
 	// controller-runtime)
 	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
-
 	config2.RedisConf().AddFlags(pflag.CommandLine)
-
 	pflag.Parse()
-
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 	printVersion()
-
 	utils.SetOperatorScope()
-
 	mgroptions := ctrl.Options{
 		Scheme:                 scheme,
 		Metrics:                metricsserver.Options{BindAddress: metricsAddr},
@@ -178,7 +169,6 @@ func main() {
 		setupLog.Error(err, "unable to start manager")
 		os.Exit(1)
 	}
-
 	distributedredisclusterclient := mgr.GetClient()
 	gvk := runtimeschema.GroupVersionKind{
 		Group:   "",
@@ -193,7 +183,6 @@ func main() {
 	if err != nil {
 		os.Exit(1)
 	}
-
 	if err = (&distributedrediscluster.DistributedRedisClusterReconciler{
 		Client:                distributedredisclusterclient,
 		Scheme:                mgr.GetScheme(),
