@@ -1,6 +1,11 @@
 package metrics
 
 import (
+	"fmt"
+	"strings"
+	"sync"
+	"time"
+
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -39,7 +44,19 @@ const (
 	ALLOT_SLOTS_TO_NEW_MASTERS   = "ALLOT_SLOTS_TO_NEW_MASTERS"
 	SCALE_DOWN                   = "SCALE_DOWN"
 	CHECK_AND_UPDATE_REDIS_PODS  = "CHECK_AND_UPDATE_REDIS_PODS"
+	metricsGCIntervalMinutes     = 5
 )
+
+var ( // used for grabage collection of metrics
+	mutex                     sync.Mutex
+	recorders                 = []recorder{}
+	instanceMetricLastUpdated = map[string]time.Time{}
+	resourceMetricLastUpdated = map[string]time.Time{}
+)
+
+func init() {
+	go removeStaleMetrics()
+}
 
 type Recorder interface {
 	// ClusterOK metrics
@@ -110,12 +127,106 @@ func (r recorder) SetClusterOK(namespace string, name string, val float64) {
 
 func (r recorder) RecordK8sOperation(namespace string, kind string, name string, operation string, status string, err string) {
 	r.k8sServiceOperations.WithLabelValues(namespace, kind, name, operation, status, err).Add(1)
+	updateResourceMetricLastUpdatedTracker(namespace, kind, name)
 }
 
 func (r recorder) EnsureCluster(namespace string, name string, status string, operation string, err string) {
 	r.ensureCluster.WithLabelValues(namespace, name, status, operation, err).Add(1)
 }
 
-func (r recorder) RecordRedisOperation(namespace string, name string, operation string, ip string, status string, err string) {
-	r.recordRedisOperation.WithLabelValues(namespace, name, operation, ip, status, err).Add(1)
+func (r recorder) RecordRedisOperation(namespace string, name string, operation string, IP string, status string, err string) {
+	r.recordRedisOperation.WithLabelValues(namespace, name, operation, IP, status, err).Add(1)
+	updateInstanceMetricLastUpdatedTracker(IP)
+}
+
+func updateResourceMetricLastUpdatedTracker(namespace string, kind string, name string) {
+	mutex.Lock()
+	resourceMetricLastUpdated[fmt.Sprintf("%v/%v/%v", namespace, kind, name)] = time.Now()
+	mutex.Unlock()
+}
+
+func updateInstanceMetricLastUpdatedTracker(IP string) {
+	mutex.Lock()
+	instanceMetricLastUpdated[IP] = time.Now()
+	mutex.Unlock()
+}
+
+// Garbage collection
+func removeStaleMetrics() {
+	// Runs every `metricsGCIntervalMinutes`. It keeps track of recently updated metrics
+	// And every metric that was not updated after `metricsGCIntervalMinutes` gets deleted
+	for {
+		metricsDeletedCount := 0
+		kubernetesResourceBasedLabels, customResourceBasedLabels, ipBasedLabels := getLabelsOfStaleMetrics()
+		for _, recorder := range recorders {
+			for _, label := range kubernetesResourceBasedLabels {
+				metricsDeletedCount += recorder.ensureCluster.DeletePartialMatch(label)
+				metricsDeletedCount += recorder.k8sServiceOperations.DeletePartialMatch(label)
+			}
+			for _, label := range customResourceBasedLabels {
+				labelWithName := label
+				labelWithName["name"] = labelWithName["resource"]
+				mutex.Lock()
+				delete(labelWithName, "resource")
+				mutex.Unlock()
+				metricsDeletedCount += recorder.clusterOK.DeletePartialMatch(label)
+			}
+			for _, label := range ipBasedLabels {
+				metricsDeletedCount += recorder.recordRedisOperation.DeletePartialMatch(label)
+			}
+		}
+		time.Sleep(metricsGCIntervalMinutes * time.Minute)
+	}
+}
+
+func getLabelsOfStaleMetrics() (kubernetesResourceBasedLabels []prometheus.Labels, customResourceBasedLabels []prometheus.Labels, ipBasedLabels []prometheus.Labels) {
+
+	kubernetesResourceBasedLabels = []prometheus.Labels{}
+	customResourceBasedLabels = []prometheus.Labels{}
+	ipBasedLabels = []prometheus.Labels{}
+
+	for key, value := range resourceMetricLastUpdated {
+		// if the key is stale
+		if value.Before(time.Now().Add(-metricsGCIntervalMinutes * time.Minute)) {
+			// extract keys and create labels
+			ids := strings.Split(key, "/")
+			namespace := ids[0]
+			kind := ids[1]
+			resource := ids[2]
+			kubernetesResourceBasedLabels = append(kubernetesResourceBasedLabels,
+				prometheus.Labels{
+					"namespace": namespace,
+					"name":      resource,
+					"kind":      kind,
+				},
+			)
+			customResourceBasedLabels = append(customResourceBasedLabels,
+				prometheus.Labels{
+					"namespace": namespace,
+					"resource":  resource,
+				},
+			)
+			// once we have created labels out of the contents of the key,
+			// its not longer required - since it is known to be stale. remove it from the tracker.
+			mutex.Lock()
+			delete(resourceMetricLastUpdated, key)
+			mutex.Unlock()
+		}
+	}
+	for IP, value := range instanceMetricLastUpdated {
+		if value.Before(time.Now().Add(-metricsGCIntervalMinutes * time.Minute)) {
+			ipBasedLabels = append(ipBasedLabels,
+				prometheus.Labels{
+					"IP": IP,
+				},
+			)
+			// once we have created labels out of the contents of the key,
+			// its not longer required - since it is known to be stale. remove it from the tracker.
+			mutex.Lock()
+			delete(instanceMetricLastUpdated, IP)
+			mutex.Unlock()
+		}
+
+	}
+	return kubernetesResourceBasedLabels, customResourceBasedLabels, ipBasedLabels
 }
