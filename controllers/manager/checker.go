@@ -3,6 +3,7 @@ package manager
 import (
 	"fmt"
 	"reflect"
+	"strings"
 
 	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -133,8 +134,12 @@ func IsdiffAclVerions(curr_map, check_map map[string]string, logger logr.Logger)
 		if map2Value, ok := check_map[key]; ok {
 			map1Value := curr_map[key]
 			if !reflect.DeepEqual(map1Value, map2Value) {
-				logger.Info("diffAclConfigs", "update in acl data found for user/secret", key)
-				return true
+				redis_user_rawkey := strings.Split(key, "--")
+				redisuser := redis_user_rawkey[len(redis_user_rawkey)-1]
+				if redisuser != "admin" {
+					logger.Info("diffAclConfigs", "update in acl data found for user/secret", key)
+					return true
+				}
 			}
 		}
 	}
