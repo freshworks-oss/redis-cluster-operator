@@ -4,12 +4,14 @@ import (
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 
+	"github.com/dinesh-murugiah/rediscluster-operator/metrics"
 	"github.com/dinesh-murugiah/rediscluster-operator/utils/k8sutil"
 )
 
 type CheckAndHeal struct {
-	Logger     logr.Logger
-	PodControl k8sutil.IPodControl
-	Pods       []*corev1.Pod
-	DryRun     bool
+	Logger        logr.Logger
+	PodControl    k8sutil.IPodControl
+	Pods          []*corev1.Pod
+	DryRun        bool
+	MetricsClient metrics.Recorder
 }

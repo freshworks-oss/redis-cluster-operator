@@ -71,8 +71,8 @@ BIN_DIR=bin/operator
 DEVREPO=$(REPO)
 
 
-BINARY_VERSION=v0.0.25
-BINARY_VERSION_DEV=v0.0.25-devonly
+BINARY_VERSION=v0.0.29
+BINARY_VERSION_DEV=metricstest-11
 ECR_REPO=redis-cluster-operator
 ECR__DEV_REPO=redis-cluster-operator-dev
 ECR_URI=582763096612.dkr.ecr.us-east-1.amazonaws.com
@@ -129,10 +129,8 @@ test: manifests generate fmt vet envtest ## Run tests.
 .PHONY: build
 build: manifests generate fmt vet ## Build manager binary.
 	GO111MODULE=on CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
-	-ldflags "-X github.com/$(REPO)/version.Version=$(VERSION) -X github.com/$(REPO)/version.GitSHA=$(GIT_SHA)" \
 	-o $(BIN_DIR)/$(PROJECT_NAME)-linux-amd64 main.go
 	GO111MODULE=on CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build \
-	-ldflags "-X github.com/$(REPO)/version.Version=$(VERSION) -X github.com/$(REPO)/version.GitSHA=$(GIT_SHA)" \
 	-o $(BIN_DIR)/$(PROJECT_NAME)-darwin-amd64 main.go
 
 .PHONY: run

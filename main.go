@@ -19,6 +19,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"net/http"
 	"os"
 	goruntime "runtime"
 
@@ -37,30 +38,30 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
-	"sigs.k8s.io/controller-runtime/pkg/manager"
 
 	rediskunv1alpha1 "github.com/dinesh-murugiah/rediscluster-operator/api/v1alpha1"
 	"github.com/dinesh-murugiah/rediscluster-operator/controllers/distributedrediscluster"
 	clustermanger "github.com/dinesh-murugiah/rediscluster-operator/controllers/manager"
 	"github.com/dinesh-murugiah/rediscluster-operator/controllers/redisclusterbackup"
+	"github.com/dinesh-murugiah/rediscluster-operator/metrics"
 	config2 "github.com/dinesh-murugiah/rediscluster-operator/redisconfig"
 	utils "github.com/dinesh-murugiah/rediscluster-operator/utils/commonutils"
 	"github.com/dinesh-murugiah/rediscluster-operator/utils/exec"
 	"github.com/dinesh-murugiah/rediscluster-operator/utils/k8sutil"
 	"github.com/dinesh-murugiah/rediscluster-operator/version"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/spf13/pflag"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	//+kubebuilder:scaffold:imports
 )
 
-/*
 var (
 	metricsHost               = "0.0.0.0"
 	metricsPort         int32 = 8383
 	operatorMetricsPort int32 = 8686
 )
-*/
 
 var (
 	scheme     = runtime.NewScheme()
@@ -96,25 +97,34 @@ func main() {
 		Development: true,
 	}
 	opts.BindFlags(flag.CommandLine)
-
 	pflag.CommandLine.AddFlagSet(distributedrediscluster.FlagSet())
 	pflag.CommandLine.AddFlagSet(redisclusterbackup.FlagSet())
+
+	// Create a Prometheus registry
+	reg := prometheus.DefaultRegisterer
+
+	// Use the NewRecorder function from the metrics package to create an instance of Recorder
+	recorder := metrics.NewRecorder("redisoperator", reg)
+	http.Handle("/metrics", promhttp.Handler())
+	http.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("OK"))
+	})
+	go func() {
+		if err := http.ListenAndServe(fmt.Sprintf(":%d", 9297), nil); err != nil {
+			panic(err)
+		}
+	}()
 
 	// Add flags registered by imported packages (e.g. glog and
 	// controller-runtime)
 	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
-
 	config2.RedisConf().AddFlags(pflag.CommandLine)
-
 	pflag.Parse()
-
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 	printVersion()
-
 	utils.SetOperatorScope()
-
-	var mgroptions manager.Options
-	mgroptions = ctrl.Options{
+	mgroptions := ctrl.Options{
 		Scheme:                 scheme,
 		Metrics:                metricsserver.Options{BindAddress: metricsAddr},
 		HealthProbeBindAddress: probeAddr,
@@ -159,7 +169,6 @@ func main() {
 		setupLog.Error(err, "unable to start manager")
 		os.Exit(1)
 	}
-
 	distributedredisclusterclient := mgr.GetClient()
 	gvk := runtimeschema.GroupVersionKind{
 		Group:   "",
@@ -174,18 +183,18 @@ func main() {
 	if err != nil {
 		os.Exit(1)
 	}
-
 	if err = (&distributedrediscluster.DistributedRedisClusterReconciler{
 		Client:                distributedredisclusterclient,
 		Scheme:                mgr.GetScheme(),
-		Ensurer:               clustermanger.NewEnsureResource(distributedredisclusterclient, clusterLog),
+		Ensurer:               clustermanger.NewEnsureResource(distributedredisclusterclient, clusterLog, recorder),
 		StatefulSetController: k8sutil.NewStatefulSetController(distributedredisclusterclient),
 		ServiceController:     k8sutil.NewServiceController(distributedredisclusterclient),
 		PdbController:         k8sutil.NewPodDisruptionBudgetController(distributedredisclusterclient),
 		PvcController:         k8sutil.NewPvcController(distributedredisclusterclient),
 		CrController:          k8sutil.NewCRControl(distributedredisclusterclient),
-		Checker:               clustermanger.NewCheck(distributedredisclusterclient, clusterLog),
+		Checker:               clustermanger.NewCheck(distributedredisclusterclient, clusterLog, recorder),
 		Execer:                exec.NewRemoteExec(restClient, mgr.GetConfig(), clusterLog),
+		MetricsClient:         recorder,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "DistributedRedisCluster")
 		os.Exit(1)
@@ -205,6 +214,7 @@ func main() {
 		ConfigmapController:   k8sutil.NewConfigMapController(redisclusterbackupdrclient),
 		SecretController:      k8sutil.NewSecretController(redisclusterbackupdrclient),
 		Recorder:              mgr.GetEventRecorderFor("redis-cluster-operator-backup"),
+		MetricsClient:         recorder,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "RedisClusterBackup")
 		os.Exit(1)

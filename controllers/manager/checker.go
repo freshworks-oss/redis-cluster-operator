@@ -9,6 +9,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	redisv1alpha1 "github.com/dinesh-murugiah/rediscluster-operator/api/v1alpha1"
+	"github.com/dinesh-murugiah/rediscluster-operator/metrics"
 	"github.com/dinesh-murugiah/rediscluster-operator/resources/configmaps"
 	"github.com/dinesh-murugiah/rediscluster-operator/resources/statefulsets"
 	"github.com/dinesh-murugiah/rediscluster-operator/utils/k8sutil"
@@ -26,14 +27,16 @@ type realCheck struct {
 	configMapClient   k8sutil.IConfigMapControl
 	logger            logr.Logger
 	client            client.Client
+	metricsRecorder   metrics.Recorder
 }
 
-func NewCheck(client client.Client, logger logr.Logger) ICheck {
+func NewCheck(client client.Client, logger logr.Logger, metricsRecorder metrics.Recorder) ICheck {
 	return &realCheck{
 		statefulSetClient: k8sutil.NewStatefulSetController(client),
 		configMapClient:   k8sutil.NewConfigMapController(client),
 		logger:            logger,
 		client:            client,
+		metricsRecorder:   metricsRecorder,
 	}
 }
 
@@ -41,6 +44,7 @@ func (c *realCheck) CheckPasswordChanged(cluster *redisv1alpha1.DistributedRedis
 	secretversion := make(map[string]string)
 	aclcmname := configmaps.AclConfigMapName(cluster.Name)
 	_, err := c.configMapClient.GetConfigMap(cluster.Namespace, aclcmname)
+	k8sutil.RecordMetrics(cluster.Namespace, "ConfigMap", aclcmname, "GET", err, c.metricsRecorder)
 	if err != nil {
 		if errors.IsNotFound(err) {
 			c.logger.WithValues("ConfigMap.Namespace", cluster.Namespace, "ConfigMap.Name", aclcmname).
@@ -59,6 +63,7 @@ func (c *realCheck) CheckPasswordChanged(cluster *redisv1alpha1.DistributedRedis
 	//acldata_new, secretversion, err2 := configmaps.GenerateAclconf(c.logger, c.client, cluster)
 	acldata_new, secretversion, err2 := configmaps.GenerateAclconf(c.logger, c.client, cluster)
 	if err2 != nil {
+		c.metricsRecorder.RecordRedisOperation(cluster.Namespace, cluster.Name, metrics.GEN_ACL_CONF, "NA", metrics.FAIL, err2.Error())
 		c.logger.Error(err2, "unable to generate acl data from secrets")
 		return false, "", secretversion, err
 	}

@@ -35,6 +35,7 @@ import (
 
 	//rediskunv1alpha1 "github.com/dinesh-murugiah/rediscluster-operator/api/v1alpha1"
 	redisv1alpha1 "github.com/dinesh-murugiah/rediscluster-operator/api/v1alpha1"
+	"github.com/dinesh-murugiah/rediscluster-operator/metrics"
 	utils "github.com/dinesh-murugiah/rediscluster-operator/utils/commonutils"
 	"github.com/dinesh-murugiah/rediscluster-operator/utils/k8sutil"
 	"github.com/spf13/pflag"
@@ -77,6 +78,7 @@ type RedisClusterBackupReconciler struct {
 	DeploymentController  k8sutil.IDeploymentControl
 	ConfigmapController   k8sutil.IConfigMapControl
 	SecretController      k8sutil.ISecretControl
+	MetricsClient         metrics.Recorder
 }
 
 func redisbackupcontrollerPredfunction() predicate.Funcs {

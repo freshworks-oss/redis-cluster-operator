@@ -11,9 +11,11 @@ import (
 	v1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 
+	rediskunv1alpha1 "github.com/dinesh-murugiah/rediscluster-operator/api/v1alpha1"
 	redisv1alpha1 "github.com/dinesh-murugiah/rediscluster-operator/api/v1alpha1"
 	"github.com/dinesh-murugiah/rediscluster-operator/controllers/clustering"
 	"github.com/dinesh-murugiah/rediscluster-operator/controllers/manager"
+	"github.com/dinesh-murugiah/rediscluster-operator/metrics"
 	"github.com/dinesh-murugiah/rediscluster-operator/resources/statefulsets"
 	"github.com/dinesh-murugiah/rediscluster-operator/utils/k8sutil"
 	"github.com/dinesh-murugiah/rediscluster-operator/utils/redisutil"
@@ -48,6 +50,7 @@ func (r *DistributedRedisClusterReconciler) ensureCluster(ctx *syncContext) (boo
 	labels := getLabels(cluster)
 	if err, crdeferr := r.Ensurer.EnsureRedisConfigMap(cluster, labels); err != nil {
 		if crdeferr {
+			// admin secret missing - raise error
 			return false, StopRetry.Wrap(err, "AdminSecretMissing")
 		} else {
 			return false, Kubernetes.Wrap(err, "EnsureRedisConfigMap")
@@ -186,7 +189,7 @@ func (r *DistributedRedisClusterReconciler) initRestore(cluster *redisv1alpha1.D
 	return update, nil
 }
 
-func (r *DistributedRedisClusterReconciler) waitForClusterJoin(ctx *syncContext, context context.Context) error {
+func (r *DistributedRedisClusterReconciler) waitForClusterJoin(ctx *syncContext, context context.Context, cluster *rediskunv1alpha1.DistributedRedisCluster) error {
 	if infos, err := ctx.admin.GetClusterInfos(context); err == nil {
 		ctx.reqLogger.V(6).Info("debug waitForClusterJoin", "cluster infos", infos)
 		return nil
@@ -199,6 +202,7 @@ func (r *DistributedRedisClusterReconciler) waitForClusterJoin(ctx *syncContext,
 	ctx.reqLogger.Info(">>> Sending CLUSTER MEET messages to join the cluster")
 	err := ctx.admin.AttachNodeToCluster(context, firstNode.IPPort())
 	if err != nil {
+		r.MetricsClient.RecordRedisOperation(cluster.Namespace, cluster.Name, metrics.CLUSTER_MEET, firstNode.IP, metrics.FAIL, err.Error())
 		return Redis.Wrap(err, "AttachNodeToCluster")
 	}
 	// Give one second for the join to start, in order to avoid that
@@ -208,12 +212,13 @@ func (r *DistributedRedisClusterReconciler) waitForClusterJoin(ctx *syncContext,
 
 	_, err = ctx.admin.GetClusterInfos(context)
 	if err != nil {
+		r.MetricsClient.RecordRedisOperation(cluster.Namespace, cluster.Name, metrics.GET_CLUSTER_NODES_ALL, "NA", metrics.FAIL, err.Error())
 		return Requeue.Wrap(err, "wait for cluster join")
 	}
 	return nil
 }
 
-func (r *DistributedRedisClusterReconciler) syncCluster(ctx *syncContext, context context.Context) error {
+func (r *DistributedRedisClusterReconciler) syncCluster(ctx *syncContext, context context.Context, instance *rediskunv1alpha1.DistributedRedisCluster) error {
 	cluster := ctx.cluster
 	admin := ctx.admin
 	clusterInfos := ctx.clusterInfos
@@ -224,6 +229,7 @@ func (r *DistributedRedisClusterReconciler) syncCluster(ctx *syncContext, contex
 	}
 	clusterCtx := clustering.NewCtx(cluster.Spec.HaConfig, rCluster, nodes, cluster.Spec.MasterSize, cluster.Name, ctx.reqLogger)
 	if err := clusterCtx.DispatchMasters(); err != nil {
+		r.MetricsClient.RecordRedisOperation(instance.Namespace, instance.Name, metrics.DISPATCH_MASTER, "NA", metrics.FAIL, err.Error())
 		return Cluster.Wrap(err, "DispatchMasters")
 	}
 	curMasters := clusterCtx.GetCurrentMasters()
@@ -232,36 +238,44 @@ func (r *DistributedRedisClusterReconciler) syncCluster(ctx *syncContext, contex
 	if len(curMasters) == 0 {
 		ctx.reqLogger.Info("Creating cluster")
 		if err := clusterCtx.PlaceSlaves(); err != nil {
+			r.MetricsClient.RecordRedisOperation(instance.Namespace, instance.Name, metrics.PLACE_SLAVE, "NA", metrics.FAIL, err.Error())
 			return Cluster.Wrap(err, "PlaceSlaves")
 
 		}
 		if err := clusterCtx.AttachingSlavesToMaster(admin, context); err != nil {
+			r.MetricsClient.RecordRedisOperation(instance.Namespace, instance.Name, metrics.ATTACH_SLAVE_TO_MASTER, "NA", metrics.FAIL, err.Error())
 			return Cluster.Wrap(err, "AttachingSlavesToMaster")
 		}
 
 		if err := clusterCtx.AllocSlots(admin, newMasters, context); err != nil {
+			r.MetricsClient.RecordRedisOperation(instance.Namespace, instance.Name, metrics.SLOT_ALLOCATION, "NA", metrics.FAIL, err.Error())
 			return Cluster.Wrap(err, "AllocSlots")
 		}
 	} else if len(newMasters) > len(curMasters) {
 		ctx.reqLogger.Info("Scaling up")
 		if err := clusterCtx.PlaceSlaves(); err != nil {
+			r.MetricsClient.RecordRedisOperation(instance.Namespace, instance.Name, metrics.PLACE_SLAVE, "NA", metrics.FAIL, err.Error())
 			return Cluster.Wrap(err, "PlaceSlaves")
 
 		}
 		if err := clusterCtx.AttachingSlavesToMaster(admin, context); err != nil {
+			r.MetricsClient.RecordRedisOperation(instance.Namespace, instance.Name, metrics.ATTACH_SLAVE_TO_MASTER, "NA", metrics.FAIL, err.Error())
 			return Cluster.Wrap(err, "AttachingSlavesToMaster")
 		}
 
 		if err := clusterCtx.RebalancedCluster(admin, newMasters, context); err != nil {
+			r.MetricsClient.RecordRedisOperation(instance.Namespace, instance.Name, metrics.REBALANCE_CLUSTER, "NA", metrics.FAIL, err.Error())
 			return Cluster.Wrap(err, "RebalancedCluster")
 		}
 	} else if cluster.Status.MinReplicationFactor < cluster.Spec.ClusterReplicas {
 		ctx.reqLogger.Info("Scaling slave")
 		if err := clusterCtx.PlaceSlaves(); err != nil {
+			r.MetricsClient.RecordRedisOperation(instance.Namespace, instance.Name, metrics.PLACE_SLAVE, "NA", metrics.FAIL, err.Error())
 			return Cluster.Wrap(err, "PlaceSlaves")
 
 		}
 		if err := clusterCtx.AttachingSlavesToMaster(admin, context); err != nil {
+			r.MetricsClient.RecordRedisOperation(instance.Namespace, instance.Name, metrics.ATTACH_SLAVE_TO_MASTER, "NA", metrics.FAIL, err.Error())
 			return Cluster.Wrap(err, "AttachingSlavesToMaster")
 		}
 	} else if len(curMasters) > int(expectMasterNum) {
@@ -270,9 +284,11 @@ func (r *DistributedRedisClusterReconciler) syncCluster(ctx *syncContext, contex
 		allMaster = append(allMaster, newMasters...)
 		allMaster = append(allMaster, curMasters...)
 		if err := clusterCtx.DispatchSlotToNewMasters(admin, newMasters, curMasters, allMaster, context); err != nil {
+			r.MetricsClient.RecordRedisOperation(instance.Namespace, instance.Name, metrics.ALLOT_SLOTS_TO_NEW_MASTERS, "NA", metrics.FAIL, err.Error())
 			return err
 		}
 		if err := r.scalingDown(ctx, len(curMasters), clusterCtx.GetStatefulsetNodes(), context); err != nil {
+			r.MetricsClient.RecordRedisOperation(instance.Namespace, instance.Name, metrics.SCALE_DOWN, "NA", metrics.FAIL, err.Error())
 			return err
 		}
 	}
@@ -341,7 +357,7 @@ func (r *DistributedRedisClusterReconciler) scalingDown(ctx *syncContext, curren
 	return nil
 }
 
-func (r *DistributedRedisClusterReconciler) checkandUpdatePassword(admin redisutil.IAdmin, ctx *syncContext, context context.Context) (map[string]string, error) {
+func (r *DistributedRedisClusterReconciler) checkandUpdatePassword(admin redisutil.IAdmin, ctx *syncContext, context context.Context, cluster *rediskunv1alpha1.DistributedRedisCluster) (map[string]string, error) {
 
 	passChanged, newaclconf, newsecretver, err := r.Checker.CheckPasswordChanged(ctx.cluster)
 	if err != nil {
@@ -373,6 +389,7 @@ func (r *DistributedRedisClusterReconciler) checkandUpdatePassword(admin redisut
 					}
 					resp := c.Do(context, args...)
 					if err := admin.Connections().ValidateResp(context, resp, addr, "unable to set ACL"); err != nil {
+						r.MetricsClient.RecordRedisOperation(cluster.Namespace, cluster.Name, metrics.SET_ACL, addr, metrics.FAIL, err.Error())
 						return nil, err
 					}
 				}
