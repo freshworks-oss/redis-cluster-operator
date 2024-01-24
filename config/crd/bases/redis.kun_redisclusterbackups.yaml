@@ -439,6 +439,8 @@ spec:
                     type: object
                   s3Bucket:
                     type: string
+                  serviceAccountName:
+                    type: string
                   startupCommand:
                     type: string
                   terminationGracePeriod:
@@ -449,6 +451,7 @@ spec:
                 - image
                 - replicas
                 - s3Bucket
+                - serviceAccountName
                 - terminationGracePeriod
                 type: object
             required:

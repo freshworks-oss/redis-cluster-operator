@@ -63,6 +63,7 @@ type DistributedRedisClusterSpec struct {
 	CustomReadinessProbe     corev1.Probe                  `json:"customReadinessProbe"`
 	CustomStartupProbe       corev1.Probe                  `json:"customStartupProbe"`
 	PdbEnabled               bool                          `json:"pdbEnabled"`
+	ServiceAccountName       string                        `json:"serviceAccountName"`
 }
 
 type HAspec struct {

@@ -149,6 +149,7 @@ func utilGeneratePodTemplate(instance *redisv1alpha1.RedisClusterBackup, cluster
 			},
 			Volumes:                       utilGenerateConfigmapVolumeSpec(cluster),
 			TerminationGracePeriodSeconds: &TerminationGracePeriodSeconds,
+			ServiceAccountName:            instance.Spec.UtilSpec.ServiceAccountName,
 		},
 	}
 	return podTemplate
