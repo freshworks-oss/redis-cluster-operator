@@ -379,18 +379,20 @@ func (r *DistributedRedisClusterReconciler) checkandUpdatePassword(admin redisut
 			return newsecretver, err
 
 		} else {
-			for _, acl := range aclcommands {
-				for addr, c := range admin.Connections().GetAll() {
-					ctx.reqLogger.Info("Setting ACL for", "address", addr)
-					cmd := strings.Fields(acl)
-					args := make([]interface{}, len(cmd))
-					for i, cm := range cmd {
-						args[i] = cm
-					}
-					resp := c.Do(context, args...)
-					if err := admin.Connections().ValidateResp(context, resp, addr, "unable to set ACL"); err != nil {
-						r.MetricsClient.RecordRedisOperation(cluster.Namespace, cluster.Name, metrics.SET_ACL, addr, metrics.FAIL, err.Error())
-						return nil, err
+			if len(aclcommands) != 0 {
+				for _, acl := range aclcommands {
+					for addr, c := range admin.Connections().GetAll() {
+						ctx.reqLogger.Info("Setting ACL for", "address", addr)
+						cmd := strings.Fields(acl)
+						args := make([]interface{}, len(cmd))
+						for i, cm := range cmd {
+							args[i] = cm
+						}
+						resp := c.Do(context, args...)
+						if err := admin.Connections().ValidateResp(context, resp, addr, "unable to set ACL"); err != nil {
+							r.MetricsClient.RecordRedisOperation(cluster.Namespace, cluster.Name, metrics.SET_ACL, addr, metrics.FAIL, err.Error())
+							return nil, err
+						}
 					}
 				}
 			}
