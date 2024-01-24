@@ -48,6 +48,7 @@ type UtilSpec struct {
 	TerminationGracePeriod   *int64                       `json:"terminationGracePeriod"`
 	Resources                *corev1.ResourceRequirements `json:"resources,omitempty"`
 	ContainerSecurityContext *corev1.SecurityContext      `json:"containerSecurityContext"`
+	ServiceAccountName       string                       `json:"serviceAccountName"`
 }
 
 type PodSpec struct {
