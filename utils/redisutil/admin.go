@@ -8,7 +8,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
 	utils "github.com/dinesh-murugiah/rediscluster-operator/utils/commonutils"
 	"github.com/go-logr/logr"
 	"github.com/redis/go-redis/v9"
@@ -521,14 +520,15 @@ func (a *Admin) SetConfigIfNeed(ctx context.Context, newConfig map[string]string
 		}
 
 		for key, value := range newConfig {
-			var err error
-			if _, ok := parseConfigMap[key]; ok {
-				value, err = utils.ParseRedisMemConf(value)
-				if err != nil {
-					a.log.Error(err, "redis config format err", "key", key, "value", value)
-					continue
-				}
-			}
+			// Disabling byte conversion and sending only byte as value
+			// var err error
+			// if _, ok := parseConfigMap[key]; ok {
+			// 	value, err = utils.ParseRedisMemConf(value)
+			// 	if err != nil {
+			// 		a.log.Error(err, "redis config format err", "key", key, "value", value)
+			// 		continue
+			// 	}
+			// }
 			if value != oldConfig[key] {
 				a.log.V(3).Info("CONFIG SET", key, value)
 				resp := c.Do(ctx, "CONFIG", "SET", key, value)
