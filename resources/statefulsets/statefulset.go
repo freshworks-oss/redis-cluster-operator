@@ -2,7 +2,6 @@ package statefulsets
 
 import (
 	"fmt"
-	"reflect"
 	"sort"
 	"strings"
 
@@ -169,10 +168,7 @@ func getAffinity(cluster *redisv1alpha1.DistributedRedisCluster, labels map[stri
 	if cluster.Spec.HaConfig.HaEnabled {
 		// Check if Nodeaffinity is passed and if present, add it to Affinity
 		if cluster.Spec.Affinity != nil {
-			nodeAffnityStructCheck := "NodeAffinity"
-			affinity := reflect.ValueOf(cluster.Spec.Affinity)
-			nodeAff := affinity.FieldByName(nodeAffnityStructCheck)
-			if nodeAff.IsValid() {
+			if cluster.Spec.Affinity.NodeAffinity != nil {
 				nodeAffinity = cluster.Spec.Affinity.NodeAffinity
 			}
 		}
