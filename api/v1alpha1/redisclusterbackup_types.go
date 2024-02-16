@@ -49,6 +49,7 @@ type UtilSpec struct {
 	Resources                *corev1.ResourceRequirements `json:"resources,omitempty"`
 	ContainerSecurityContext *corev1.SecurityContext      `json:"containerSecurityContext"`
 	ServiceAccountName       string                       `json:"serviceAccountName"`
+	Affinity                 *corev1.Affinity             `json:"affinity,omitempty"`
 }
 
 type PodSpec struct {

@@ -2,6 +2,7 @@ package statefulsets
 
 import (
 	"fmt"
+	"reflect"
 	"sort"
 	"strings"
 
@@ -163,10 +164,21 @@ func getTopolgyspreadConstraints(cluster *redisv1alpha1.DistributedRedisCluster,
 func getAffinity(cluster *redisv1alpha1.DistributedRedisCluster, labels map[string]string) *corev1.Affinity {
 
 	var affinity *corev1.Affinity = nil
+	var nodeAffinity *corev1.NodeAffinity = nil
 	// haEnabled is true, then use pod anti-affinity is enfored on node level and the RequiredAntiAffinity and other affinity definitions are ignored
 	if cluster.Spec.HaConfig.HaEnabled {
-		// return pod  anti-affinity on node level per STS by default
+		// Check if Nodeaffinity is passed and if present, add it to Affinity
+		if cluster.Spec.Affinity != nil {
+			nodeAffnityStructCheck := "NodeAffinity"
+			affinity := reflect.ValueOf(cluster.Spec.Affinity)
+			nodeAff := affinity.FieldByName(nodeAffnityStructCheck)
+			if nodeAff.IsValid() {
+				nodeAffinity = cluster.Spec.Affinity.NodeAffinity
+			}
+		}
 		return &corev1.Affinity{
+			NodeAffinity: nodeAffinity,
+			// return pod  anti-affinity on node level per STS by default
 			PodAntiAffinity: &corev1.PodAntiAffinity{
 				RequiredDuringSchedulingIgnoredDuringExecution: []corev1.PodAffinityTerm{
 					{

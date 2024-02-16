@@ -71,8 +71,8 @@ BIN_DIR=bin/operator
 DEVREPO=$(REPO)
 
 
-BINARY_VERSION=v0.0.31
-BINARY_VERSION_DEV=serviceaccountname-test-1
+BINARY_VERSION=v0.0.32
+BINARY_VERSION_DEV=affinity_chg_5
 ECR_REPO=redis-cluster-operator
 ECR__DEV_REPO=redis-cluster-operator-dev
 ECR_URI=582763096612.dkr.ecr.us-east-1.amazonaws.com
