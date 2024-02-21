@@ -73,6 +73,7 @@ func utilGeneratePodTemplate(instance *redisv1alpha1.RedisClusterBackup, cluster
 		},
 		Spec: corev1.PodSpec{
 			SecurityContext: instance.Spec.SecurityContext,
+			Affinity:        instance.Spec.UtilSpec.Affinity,
 			Containers: []corev1.Container{
 				{
 					Name:            utilContainerName,
