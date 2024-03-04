@@ -2,7 +2,6 @@ package clustering
 
 import (
 	"fmt"
-	"sort"
 
 	"github.com/go-logr/logr"
 
@@ -12,29 +11,31 @@ import (
 )
 
 type Ctx struct {
-	log               logr.Logger
-	expectedMasterNum int
-	clusterName       string
-	cluster           *redisutil.Cluster
-	nodes             map[string]redisutil.Nodes
-	currentMasters    redisutil.Nodes
-	newMastersBySts   map[string]*redisutil.Node
-	slavesByMaster    map[string]redisutil.Nodes
-	bestEffort        bool
-	haconfig          *redisv1alpha1.HAspec
-	hastatus          redisv1alpha1.HaStatus
+	log                  logr.Logger
+	expectedMasterNum    int
+	expectedReplicaCount int
+	clusterName          string
+	cluster              *redisutil.Cluster
+	nodes                map[string]redisutil.Nodes
+	currentMasters       redisutil.Nodes
+	newMastersBySts      map[string]*redisutil.Node
+	slavesByMaster       map[string]redisutil.Nodes
+	bestEffort           bool
+	haconfig             *redisv1alpha1.HAspec
+	hastatus             redisv1alpha1.HaStatus
 }
 
-func NewCtx(haconf *redisv1alpha1.HAspec, cluster *redisutil.Cluster, nodes redisutil.Nodes, masterNum int32, clusterName string, log logr.Logger) *Ctx {
+func NewCtx(haconf *redisv1alpha1.HAspec, cluster *redisutil.Cluster, nodes redisutil.Nodes, masterNum int32, replicaCount int32, clusterName string, log logr.Logger) *Ctx {
 	ctx := &Ctx{
-		log:               log,
-		expectedMasterNum: int(masterNum),
-		clusterName:       clusterName,
-		cluster:           cluster,
-		slavesByMaster:    make(map[string]redisutil.Nodes),
-		newMastersBySts:   make(map[string]*redisutil.Node),
-		haconfig:          haconf,
-		hastatus:          cluster.HaStatus,
+		log:                  log,
+		expectedMasterNum:    int(masterNum),
+		expectedReplicaCount: int(replicaCount),
+		clusterName:          clusterName,
+		cluster:              cluster,
+		slavesByMaster:       make(map[string]redisutil.Nodes),
+		newMastersBySts:      make(map[string]*redisutil.Node),
+		haconfig:             haconf,
+		hastatus:             cluster.HaStatus,
 	}
 	ctx.nodes = ctx.sortRedisNodeByStatefulSet(nodes)
 	return ctx
@@ -66,6 +67,8 @@ func (c *Ctx) sortRedisNodeByStatefulSet(nodes redisutil.Nodes) map[string]redis
 }
 
 func (c *Ctx) DispatchMasters() error {
+	zoneRankingInfo := NewRankingInfo(c.haconfig, c.nodes, int32(c.expectedMasterNum), int32(c.expectedReplicaCount), c.clusterName, c.log)
+	zoneRankingInfo.ApplyZoneRankingPerNodeDistribution()
 	for i := 0; i < c.expectedMasterNum; i++ {
 		stsName := statefulsets.ClusterStatefulSetName(c.clusterName, i)
 		nodes, ok := c.nodes[stsName]
@@ -76,12 +79,10 @@ func (c *Ctx) DispatchMasters() error {
 		if len(currentMasterNodes) == 0 {
 			var master *redisutil.Node = nil
 			if c.haconfig.HaEnabled {
-				if c.hastatus == redisv1alpha1.HaStatusCreating {
-					master = c.PlaceMastersHA(i, stsName, c.haconfig)
-				} else {
+				if c.hastatus != redisv1alpha1.HaStatusCreating {
 					c.log.Error(fmt.Errorf("Ha Status not as expected when creating master %s", stsName), "ha status", c.hastatus)
-					master = c.PlaceMastersHA(i, stsName, c.haconfig)
 				}
+				master = c.PlaceMastersHA(stsName, zoneRankingInfo)
 			} else {
 				master = c.PlaceMasters(stsName)
 			}
@@ -102,21 +103,20 @@ func (c *Ctx) DispatchMasters() error {
 	return nil
 }
 
-func (c *Ctx) PlaceMastersHA(stsindex int, ssName string, haconf *redisv1alpha1.HAspec) *redisutil.Node {
-	nodes := c.nodes[ssName]
-	zoneoffset := (stsindex % len(haconf.ZonesInfo))
-	zones := make([]string, 0, len(haconf.ZonesInfo))
-	for zone := range haconf.ZonesInfo {
-		zones = append(zones, zone)
+func (c *Ctx) PlaceMastersHA(ssName string, zoneRankingInfo *RankingInfo) *redisutil.Node {
+
+	masterNode, err := zoneRankingInfo.GetBestRankedNodeinAllZonesPerSTS(ssName)
+	if err != nil || masterNode == nil {
+		c.log.Error(err, "Error when trying to get master node with best rank ")
+		return nil
 	}
-	sort.Strings(zones)
-	zonename := zones[zoneoffset]
-	for _, node := range nodes {
-		if node.Zonename == zonename {
-			return node
-		}
+	err1 := zoneRankingInfo.ZoneRankReducePostmasterSelect(masterNode.ID, masterNode.Zonename)
+	if err1 != nil {
+		c.log.Error(err, "Error when trying to get master node with best rank ")
+		return nil
 	}
-	return nil
+
+	return masterNode
 
 }
 

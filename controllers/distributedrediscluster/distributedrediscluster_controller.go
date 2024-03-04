@@ -23,6 +23,7 @@ import (
 	"time"
 
 	rediskunv1alpha1 "github.com/dinesh-murugiah/rediscluster-operator/api/v1alpha1"
+	"github.com/dinesh-murugiah/rediscluster-operator/controllers/clustering"
 	"github.com/dinesh-murugiah/rediscluster-operator/controllers/heal"
 	clustermanger "github.com/dinesh-murugiah/rediscluster-operator/controllers/manager"
 	"github.com/dinesh-murugiah/rediscluster-operator/metrics"
@@ -287,21 +288,14 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 	//reqLogger.WithValues("adminpassword:", password).Info("please check adminpass")
 	// Setting this context for request flow
 
-	clusterInfos, err := admin.GetClusterInfos(context)
+	clusterInfos, clusterinfoerr := admin.GetClusterInfos(context)
 
 	if err != nil {
 		if clusterInfos.Status == redisutil.ClusterInfosPartial {
 			return reconcile.Result{}, Redis.Wrap(err, "GetClusterInfos")
 		}
 	}
-	/*
-		if clusterInfos.ClusterState == "NOK" && len(clusterInfos.ClusterNokReason) > 0 {
-			for key, value := range clusterInfos.ClusterNokReason {
-				reqLogger.Info("clusterInfos - cluster not healthy", "NodeIP", key, "Reason", value)
-			}
-		}
-	*/
-
+	// check if the cluster is in a state where it needs healing
 	requeue, err := syncCtx.healer.Heal(instance, clusterInfos, admin, context)
 	if err != nil {
 		r.MetricsClient.EnsureCluster(instance.Namespace, instance.Name, metrics.MISC, metrics.HEAL, err.Error())
@@ -314,22 +308,34 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 
 	syncCtx.admin = admin
 	syncCtx.clusterInfos = clusterInfos
-	err = r.waitForClusterJoin(syncCtx, context, instance)
-	if err != nil {
-		switch GetType(err) {
-		case Requeue:
-			reqLogger.WithValues("err", err).Info("requeue")
+	reqLogger.V(6).Info("debug waitForClusterJoin", "cluster infos", syncCtx.clusterInfos)
+	//cluster view inconsistent, wait for cluster join
+	if clusterinfoerr != nil {
+		err = r.waitForClusterJoin(syncCtx, context, instance)
+		if err != nil {
+			r.MetricsClient.EnsureCluster(instance.Namespace, instance.Name, metrics.FAIL, metrics.CLUSTER_JOIN_FAILURE, err.Error())
+			newStatus := instance.Status.DeepCopy()
+			SetClusterFailed(newStatus, err.Error())
+			r.updateClusterIfNeed(instance, newStatus, reqLogger)
+			return reconcile.Result{}, err
+		}
+		clusterInfos, err = syncCtx.admin.GetClusterInfos(context)
+		if clusterInfos.Status == redisutil.ClusterInfosPartial {
+			return reconcile.Result{}, Redis.Wrap(err, "GetClusterInfos")
+		}
+		if err != nil {
 			r.MetricsClient.EnsureCluster(instance.Namespace, instance.Name, metrics.MISC, metrics.REQUEUE, err.Error())
 			// raise alert if a particular tenant is in REQUEUE loop for more than 5 mins (rateof incr 5m)
 			return reconcile.Result{RequeueAfter: requeueAfter}, nil
 		}
-		r.MetricsClient.EnsureCluster(instance.Namespace, instance.Name, metrics.FAIL, metrics.CLUSTER_JOIN_FAILURE, err.Error())
-		newStatus := instance.Status.DeepCopy()
-		SetClusterFailed(newStatus, err.Error())
-		r.updateClusterIfNeed(instance, newStatus, reqLogger)
-		return reconcile.Result{}, err
 	}
-
+	syncCtx.clusterInfos = clusterInfos
+	err1 := UpdateClusterInfos(clusterInfos, syncCtx.pods, r.Client, reqLogger)
+	if err1 != nil {
+		r.MetricsClient.RecordRedisOperation(instance.Namespace, instance.Name, metrics.GET_CLUSTER_NODES_ALL, "NA", metrics.FAIL, err1.Error())
+		reqLogger.Error(err1, "UpdateClusterInfos", "Error when updating cluster infos", err1)
+		return reconcile.Result{RequeueAfter: 10 * time.Second}, nil
+	}
 	// mark .Status.Restore.Phase = RestorePhaseRestart, will
 	// remove init container and restore volume that referenced in stateulset for
 	// dump RDB file from backup, then the redis master node will be restart.
@@ -379,8 +385,7 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 		return reconcile.Result{}, Redis.Wrap(err, "SetConfigIfNeed")
 	}
 
-	// Un optimial calling of buildClusterStatus , Donot remove this from here as its used for cluster creation process
-	status := buildClusterStatus(clusterInfos, syncCtx.pods, instance, reqLogger, r.Client, true)
+	status := buildClusterStatus(clusterInfos, syncCtx.pods, instance, reqLogger)
 	if is := r.isScalingDown(instance, reqLogger); is {
 		SetClusterRebalancing(status, "scaling down")
 	}
@@ -408,9 +413,21 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 			return reconcile.Result{RequeueAfter: 10 * time.Second}, nil
 		}
 	}
-	newStatus := buildClusterStatus(newClusterInfos, syncCtx.pods, instance, reqLogger, r.Client, true)
+	err2 := UpdateClusterInfos(newClusterInfos, syncCtx.pods, r.Client, reqLogger)
+	if err2 != nil {
+		r.MetricsClient.RecordRedisOperation(instance.Namespace, instance.Name, metrics.GET_CLUSTER_NODES_ALL, "NA", metrics.FAIL, err2.Error())
+		reqLogger.Error(err1, "UpdateClusterInfos", "Error when updating cluster infos", err1)
+		return reconcile.Result{RequeueAfter: 10 * time.Second}, nil
+	}
+	newStatus := buildClusterStatus(newClusterInfos, syncCtx.pods, instance, reqLogger)
 	if instance.Spec.HaConfig.HaEnabled {
-		haStatus, _, _ = buildHAStatus(newClusterInfos, syncCtx.pods, instance, reqLogger, r.Client)
+		haRanking := clustering.CreateRankingFromClusterInfo(instance.Spec.HaConfig, newClusterInfos, instance.Spec.MasterSize, instance.Spec.ClusterReplicas, instance.Name, reqLogger)
+		BestRankedMasters, rankerr := haRanking.GetBestRankedMasters()
+		if rankerr != nil {
+			reqLogger.Error(rankerr, "GetBestRankedMasters", "Error when getting best ranked masters", rankerr)
+			return reconcile.Result{RequeueAfter: 20 * time.Second}, nil
+		}
+		haStatus, _, _ = buildHAStatus(newClusterInfos, instance, BestRankedMasters, reqLogger)
 		SetHAStatus(newStatus, haStatus)
 	}
 	clusterHealthOk := CheackandUpdateClusterHealth(newStatus, newClusterInfos, instance, reqLogger)
@@ -479,46 +496,33 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 			// 3. If all zones not active , then check if we need to add annotations to not evict master pods
 			// Inorder for self heal to occur, set reDitributeNodes=true as annotation in respective cluster CRD.
 			if isAllactive && reDitributeNodes {
-				matchLabels := getLabels(instance)
-				redisClusterPods, err := r.StatefulSetController.GetStatefulSetPodsByLabels(instance.Namespace, matchLabels)
-				if err != nil {
-					reqLogger.Error(err, "HaRedistribute - GetStatefulSetPodsByLabels")
-					return reconcile.Result{RequeueAfter: time.Duration(reconcileTime) * time.Second}, nil
-				}
-				pods := clusterPods(redisClusterPods.Items)
-				numofNodestoDel, delNodes, err1 := r.getListofNodestoDelete(instance, newClusterInfos, reqLogger)
+				haRanking := clustering.CreateRankingFromClusterInfo(instance.Spec.HaConfig, newClusterInfos, instance.Spec.MasterSize, instance.Spec.ClusterReplicas, instance.Name, reqLogger)
+
+				numofNodestoDel, delNodes, err1 := r.getListofNodestoDelete(instance, haRanking, reqLogger)
 				if err1 != nil {
 					reqLogger.Error(err1, "HaRedistribute - getListofNodestoDelete")
 					return reconcile.Result{RequeueAfter: time.Duration(reconcileTime) * time.Second}, nil
 
 				}
 				if numofNodestoDel > 0 {
-					Podclient := k8sutil.NewPodController(r.Client)
-					for i := 0; i < int(instance.Spec.MasterSize); i++ {
-						stsname := statefulsets.ClusterStatefulSetName(instance.Name, i)
-						if _, ok := delNodes[stsname]; ok {
-							for _, delRedisNode := range delNodes[stsname] {
-								reqLogger.Info("Calling Delete Pod", "PodName", delRedisNode.PodName, "stsname", stsname, "NodeName", delRedisNode.NodeName, "Zone", delRedisNode.Zonename, "Role", delRedisNode.Role, "IP", delRedisNode.IP, "StatefulSet", delRedisNode.StatefulSet)
-								err2 := Podclient.DeletePodByName(instance.Namespace, delRedisNode.PodName)
-								if err2 != nil {
-									reqLogger.Error(err2, "HaRedistribute - DeletePodByName")
-									return reconcile.Result{RequeueAfter: time.Duration(reconcileTime) * time.Second}, nil
-								}
-							}
-						}
-					}
+					r.DeletePodsForHA(instance, delNodes, reqLogger)
 					return reconcile.Result{RequeueAfter: time.Duration(reconcileTime) * time.Second}, nil
 				}
+				BestRankedMasters, rankerr := haRanking.GetBestRankedMasters()
+				if rankerr != nil {
+					reqLogger.Error(rankerr, "GetBestRankedMasters", "Error when getting best ranked masters", rankerr)
+					return reconcile.Result{RequeueAfter: 20 * time.Second}, nil
+				}
 				//check if any masters needs to be failedover
-				haStatus, displacedMasters, _ := buildHAStatus(newClusterInfos, pods, instance, reqLogger, r.Client)
+				haStatus, displacedMasters, _ := buildHAStatus(newClusterInfos, instance, BestRankedMasters, reqLogger)
 				if haStatus == rediskunv1alpha1.HaStatusFailed {
 					reqLogger.Error(fmt.Errorf("unexpected Error - HaStatusFailed"), "HaStatusFailed When trying to Distribute Masters")
 				} else if haStatus == rediskunv1alpha1.HaStatusRedistribute && len(displacedMasters) > 0 {
 					reqLogger.Info("HaStatusRedistribute - Distribute Masters", "displacedMasters", displacedMasters)
 					//Distribute Masters
-					err := r.PlaceMastersbySTS(instance, displacedMasters, newClusterInfos, admin, context, reqLogger)
+					err := r.FailoverMastersbySTS(instance, displacedMasters, newClusterInfos, BestRankedMasters, admin, context, reqLogger)
 					if err != nil {
-						reqLogger.Error(err, "HaStatusRedistribute - PlaceMastersbySTS")
+						reqLogger.Error(err, "HaStatusRedistribute - FailoverMastersbySTS")
 					}
 					reqLogger.Info("HaStatusHealthy - HaHealing Completed")
 					//Update the annotation reDistributeNode to false in cluster CRD to stop selfheal.
@@ -563,19 +567,29 @@ func (r *DistributedRedisClusterReconciler) isScalingDown(cluster *rediskunv1alp
 	return false
 }
 
-func (r *DistributedRedisClusterReconciler) getListofNodestoDelete(cluster *rediskunv1alpha1.DistributedRedisCluster, clusterinfos *redisutil.ClusterInfos, reqLogger logr.Logger) (int32, map[string][]*redisutil.Node, error) {
+// This function is called to identify the list of replica nodes to delete per stateful set to bring back the HA distribution
+// This function assumes that its called only when all the zone have become active again and there is atleast one node available
+// per zone , even without any pods scheduled
+// This function would return a list of nodes to be deleted per statefulset if there is a need along with number of nodes to be deleted
+// if there is no need for nodes to be deleted the list would be empty and the count would be zero
+func (r *DistributedRedisClusterReconciler) getListofNodestoDelete(cluster *rediskunv1alpha1.DistributedRedisCluster, haRanking *clustering.RankingInfo, reqLogger logr.Logger) (int32, map[string][]*redisutil.Node, error) {
 	var nodesToDelete map[string][]*redisutil.Node = make(map[string][]*redisutil.Node)
-	var nodesPerZonePerSTS map[string]map[string][]*redisutil.Node = make(map[string]map[string][]*redisutil.Node)
-	var masterNodesPerZone, slaveNodesPerZone int32
-	var minNodesExpectedPerZone int32 = 0
-	var maxNodesExpectedPerZone int32 = 0
-	var numNodesToDelete int32 = 0
+	var minNodesExpectedPerZone, maxNodesExpectedPerZone int32 = 0, 0
+	var nodesDelCntPerSTS, nodesPickedFordel, possibleNodeDelCnt, totalnodesToDel int32 = 0, 0, 0, 0
+	var isDeleteNodesbyMinNodecnt bool = false
 
 	zones := make([]string, 0, len(cluster.Spec.HaConfig.ZonesInfo))
 	for zone := range cluster.Spec.HaConfig.ZonesInfo {
 		zones = append(zones, zone)
 	}
 	sort.Strings(zones)
+
+	//In cases where the number of zones is greater than the number of redis replicas + master,
+	//each zone is expected to have min 0 or 1 redis nodes only , so its good enough the get the number of nodes to delete
+	//based on the maxnumber of nodes avaiable in the zone, and min number of nodes expecected per zone is not needed
+	if int(1+cluster.Spec.ClusterReplicas) > len(zones) {
+		isDeleteNodesbyMinNodecnt = true
+	}
 
 	minNodesExpectedPerZone = (1 + cluster.Spec.ClusterReplicas) / int32(len(zones))
 	maxNodesExpectedPerZone = ((1 + cluster.Spec.ClusterReplicas) + (int32(len(zones) - 1))) / int32(len(zones))
@@ -585,126 +599,125 @@ func (r *DistributedRedisClusterReconciler) getListofNodestoDelete(cluster *redi
 
 	for i := 0; i < int(cluster.Spec.MasterSize); i++ {
 		stsname := statefulsets.ClusterStatefulSetName(cluster.Name, i)
-		stsNodes, err := clusterinfos.GetNodes().GetNodesByFunc(func(node *redisutil.Node) bool {
-			return node.StatefulSet == stsname
-		})
-		if err != nil {
-			return 0, nil, err
-		}
-		if stsNodes == nil || len(stsNodes) < int(cluster.Spec.ClusterReplicas+1) {
-			return 0, nil, fmt.Errorf("invalid number of nodes in sts %s", stsname)
-		}
+		nodesDelCntPerSTS = 0
+		//First Iteration get the count of nodes to be deleted per zone for that statefulset or shard
 		for _, zone := range zones {
-			if _, ok := nodesPerZonePerSTS[zone]; !ok {
-				nodesPerZonePerSTS[zone] = make(map[string][]*redisutil.Node)
-			}
-			if _, ok := nodesPerZonePerSTS[zone][stsname]; !ok {
-				nodesPerZonePerSTS[zone][stsname] = make([]*redisutil.Node, 0)
+
+			//Get the number of nodes to be deleted in this zone by checking against the min number of nodes expected per zone
+			if isDeleteNodesbyMinNodecnt && minNodesExpectedPerZone > 0 && (len(haRanking.NodesIndexedbyZoneAndSTS[zone][stsname]) < int(minNodesExpectedPerZone)) {
+				reqLogger.Info("Less nodes in zone", "zone", zone, "nodes", len(haRanking.NodesIndexedbyZoneAndSTS[zone][stsname]), "stsname", stsname)
+				nodesDelCntPerSTS = nodesDelCntPerSTS + (minNodesExpectedPerZone - int32(len(haRanking.NodesIndexedbyZoneAndSTS[zone][stsname])))
 			}
 
-			masterNodesPerZone, slaveNodesPerZone = 0, 0
-			for _, node := range stsNodes {
-				if node.Zonename == zone {
-					if node.Role == redisutil.RedisMasterRole {
-						masterNodesPerZone++
-						nodesPerZonePerSTS[zone][stsname] = append(nodesPerZonePerSTS[zone][stsname], node)
-					} else if node.Role == redisutil.RedisSlaveRole {
-						slaveNodesPerZone++
-						nodesPerZonePerSTS[zone][stsname] = append(nodesPerZonePerSTS[zone][stsname], node)
-					} else {
-						return 0, nil, fmt.Errorf("invalid Role %s", node.Role)
-					}
-				}
+			//Get the number of nodes to be deleted in this zone by checking against the max number of nodes expected per zone
+			if !isDeleteNodesbyMinNodecnt && (len(haRanking.NodesIndexedbyZoneAndSTS[zone][stsname]) > int(maxNodesExpectedPerZone)) {
+				reqLogger.Info("More nodes in zone", "zone", zone, "nodes", len(haRanking.NodesIndexedbyZoneAndSTS[zone][stsname]), "stsname", stsname)
+				nodesDelCntPerSTS = nodesDelCntPerSTS + (int32(len(haRanking.NodesIndexedbyZoneAndSTS[zone][stsname])) - maxNodesExpectedPerZone)
 			}
-			reqLogger.Info("Nodes in zone", "zone", zone, "masterNodesPerZone", masterNodesPerZone, "slaveNodesPerZone", slaveNodesPerZone, "stsname", stsname)
-			if _, nodesExists := nodesPerZonePerSTS[zone][stsname]; !nodesExists || len(nodesPerZonePerSTS[zone][stsname]) == 0 {
-				reqLogger.Info("No nodes in zone", "zone", zone, "stsname", stsname)
-				numNodesToDelete = numNodesToDelete + minNodesExpectedPerZone
-			} else {
-				if len(nodesPerZonePerSTS[zone][stsname]) < int(minNodesExpectedPerZone) {
-					reqLogger.Info("Less nodes in zone", "zone", zone, "nodes", len(nodesPerZonePerSTS[zone][stsname]), "stsname", stsname)
-					numNodesToDelete = numNodesToDelete + (minNodesExpectedPerZone - int32(len(nodesPerZonePerSTS[zone][stsname])))
-				}
-			}
+
 		}
-	}
-	TempNumNodesToDelete := numNodesToDelete
-	if TempNumNodesToDelete > 0 {
-		reqLogger.Info("getListofNodestoDelete", "numNodesToDelete", numNodesToDelete)
-		for i := 0; i < int(cluster.Spec.MasterSize); i++ {
-			stsname := statefulsets.ClusterStatefulSetName(cluster.Name, i)
-			for _, zone := range zones {
+		//Second iteraation identify the nodes to be deleted for the statefulset per zone
+		//If there are nodes to be deleted per statefulset , try to identify and pick the nodes to be deleted
+		if nodesDelCntPerSTS > 0 {
 
-				if _, nodesExists := nodesPerZonePerSTS[zone][stsname]; nodesExists && len(nodesPerZonePerSTS[zone][stsname]) > int(maxNodesExpectedPerZone) {
-					reqLogger.Info("More nodes in zone", "zone", zone, "nodes", len(nodesPerZonePerSTS[zone][stsname]), "stsname", stsname)
-					for _, node := range nodesPerZonePerSTS[zone][stsname] {
+			copy_nodesDelCntPerSTS := nodesDelCntPerSTS
+			totalnodesToDel = totalnodesToDel + nodesDelCntPerSTS
+			for _, zone := range zones {
+				//For each zone if nodes exists for this STS and its greater than or equal to the maxnodes expected per zone
+				//Then delete replica nodes from this zone , until we reach the min node count for that zone
+				if _, nodesExists := haRanking.NodesIndexedbyZoneAndSTS[zone][stsname]; nodesExists && len(haRanking.NodesIndexedbyZoneAndSTS[zone][stsname]) >= int(maxNodesExpectedPerZone) {
+
+					reqLogger.Info("Trying to pick nodes to deleted in zone", "zone", zone, "for stsname", stsname)
+					possibleNodeDelCnt = int32(len(haRanking.NodesIndexedbyZoneAndSTS[zone][stsname])) - minNodesExpectedPerZone
+
+					for _, node := range haRanking.NodesIndexedbyZoneAndSTS[zone][stsname] {
+
+						//Break the loop if the possible nodes that can be deleted from this satefulset has become zero
+						if possibleNodeDelCnt == 0 {
+							break
+						}
 						if node.Role == redisutil.RedisSlaveRole {
-							nodesToDelete[node.StatefulSet] = append(nodesToDelete[zone], node)
+							nodesToDelete[stsname] = append(nodesToDelete[stsname], node)
 							reqLogger.Info("Node to delete", "nodeID", node.ID, "nodeIP", node.IP, "nodeRole", node.Role, "nodeStatefulSet", node.StatefulSet, "nodeZone", node.Zonename, "nodePodName", node.PodName, "nodeNodeName", node.NodeName)
-							TempNumNodesToDelete--
+							possibleNodeDelCnt = possibleNodeDelCnt - 1
+							nodesDelCntPerSTS = nodesDelCntPerSTS - 1
+							nodesPickedFordel = nodesPickedFordel + 1
 						}
 					}
 				}
+				if nodesDelCntPerSTS == 0 {
+					reqLogger.Info("Required number of nodes to be deleted identified for statefulset", stsname)
+					break
+				}
 			}
+			if nodesDelCntPerSTS > 0 {
+				reqLogger.Error(fmt.Errorf("node deletion error"), "getListofNodestoDelete", "expecected number of nodes to delete", copy_nodesDelCntPerSTS, "actual number of nodes picked for deletion", nodesPickedFordel, "for statefuleset", stsname)
+				return 0, nil, fmt.Errorf("unsucess/invalid number of nodes picked to delete")
+			} else {
+				reqLogger.Info("getListofNodestoDelete", "expecected number of nodes to delete", copy_nodesDelCntPerSTS, "actual number of nodes picked for deletion", nodesPickedFordel, "for statefuleset", stsname)
+			}
+		} else {
+			reqLogger.Info("No nodes to delete in statefulset", stsname)
 		}
-		if TempNumNodesToDelete == 0 {
-			reqLogger.Info("numNodesToDelete Identification Completed", "numNodesToDelete", numNodesToDelete)
-			return numNodesToDelete, nodesToDelete, nil
-		}
-	} else if TempNumNodesToDelete == 0 {
-		reqLogger.Info("No nodes to delete")
-		return 0, nil, nil
+
 	}
-	reqLogger.Info("Delete node identification Unsucefull", "number of nodes to delete", TempNumNodesToDelete)
-	return 0, nil, fmt.Errorf("unsucess/Invalid number of nodes to delete")
+	if totalnodesToDel > 0 {
+		if totalnodesToDel == nodesPickedFordel {
+			return nodesPickedFordel, nodesToDelete, nil
+		} else {
+			reqLogger.Error(fmt.Errorf("unexpected error"), "getListofNodestoDelete", "Unexpected Error totalnodesToDel", totalnodesToDel, "nodesPickedFordel", nodesPickedFordel)
+
+		}
+	}
+	return 0, nil, nil
 
 }
 
-func (r *DistributedRedisClusterReconciler) PlaceMastersbySTS(cluster *rediskunv1alpha1.DistributedRedisCluster, displacedMasters redisutil.Nodes, clusterinfos *redisutil.ClusterInfos, admin redisutil.IAdmin, context context.Context, reqLogger logr.Logger) error {
+func (r *DistributedRedisClusterReconciler) FailoverMastersbySTS(cluster *rediskunv1alpha1.DistributedRedisCluster, displacedMasters redisutil.Nodes, clusterinfos *redisutil.ClusterInfos, BestRankedMasters map[string]*redisutil.Node, admin redisutil.IAdmin, context context.Context, reqLogger logr.Logger) error {
 
-	zones := make([]string, 0, len(cluster.Spec.HaConfig.ZonesInfo))
-	for zone := range cluster.Spec.HaConfig.ZonesInfo {
-		zones = append(zones, zone)
-	}
-	sort.Strings(zones)
 	for _, node := range displacedMasters {
 		stsname := node.StatefulSet
-		stsNodes, err := clusterinfos.GetNodes().GetNodesByFunc(func(node *redisutil.Node) bool {
-			return node.StatefulSet == stsname
-		})
-		if err != nil {
-			return err
-		}
-		if stsNodes == nil || len(stsNodes) < int(cluster.Spec.ClusterReplicas+1) {
-			return fmt.Errorf("invalid number of nodes in sts %s", stsname)
-		}
-		stsindex, err := getSTSindex(node.StatefulSet)
-		if err != nil {
-			reqLogger.Error(err, fmt.Sprintf("unable to retrieve STS index  %s", node.StatefulSet))
-			return err
+		failoverNode := BestRankedMasters[stsname]
+
+		if failoverNode.Role == redisutil.RedisMasterRole {
+			if failoverNode.TotalSlots() > 0 {
+				// Possibility of Multimaster scenario Manual operator involment needed
+				reqLogger.Error(fmt.Errorf("possible Multimaster"), "Node already master in appropriate zone Possibility of Multimaster", "nodeID", node.ID, "nodeIP", node.IP, "nodeRole", node.Role, "nodeStatefulSet", node.StatefulSet, "nodeZone", node.Zonename, "nodePodName", node.PodName, "nodeNodeName", node.NodeName)
+			} else {
+				reqLogger.Error(fmt.Errorf("possible dataloss"), "Node to be promoted to master has no slots associated possibility of data loss", "nodeID", node.ID, "nodeIP", node.IP, "nodeRole", node.Role, "nodeStatefulSet", node.StatefulSet, "nodeZone", node.Zonename, "nodePodName", node.PodName, "nodeNodeName", node.NodeName)
+			}
+
+		} else if failoverNode.Role == redisutil.RedisSlaveRole && failoverNode.LinkState == redisutil.RedisLinkStateConnected {
+			reqLogger.Info("Node to be promoted to master", "nodeID", node.ID, "nodeIP", node.IP, "nodeRole", node.Role, "nodeStatefulSet", node.StatefulSet, "nodeZone", node.Zonename, "nodePodName", node.PodName, "nodeNodeName", node.NodeName)
+			//promote node to master
+			err := admin.FailoverSlaveToMaster(context, node, redisutil.RedisFailoverDefault)
+			if err != nil {
+				reqLogger.Error(err, "FailoverSlaveToMaster Failed")
+				return err
+			}
+		} else {
+			return fmt.Errorf("invalid Role %s", node.Role)
 		}
 
-		zoneoffset := (stsindex % len(cluster.Spec.HaConfig.ZonesInfo))
-		zonename := zones[zoneoffset]
-		for _, node := range stsNodes {
-			if node.Zonename == zonename {
-				if node.Role == redisutil.RedisMasterRole {
-					reqLogger.Error(fmt.Errorf("possible Multimaster"), "Node already master in appropriate zone Possibility of Multimaster", "nodeID", node.ID, "nodeIP", node.IP, "nodeRole", node.Role, "nodeStatefulSet", node.StatefulSet, "nodeZone", node.Zonename, "nodePodName", node.PodName, "nodeNodeName", node.NodeName)
-					// Possibility of Multimaster scenario Manual operator involment needed
-				} else if node.Role == redisutil.RedisSlaveRole {
-					reqLogger.Info("Node to be promoted to master", "nodeID", node.ID, "nodeIP", node.IP, "nodeRole", node.Role, "nodeStatefulSet", node.StatefulSet, "nodeZone", node.Zonename, "nodePodName", node.PodName, "nodeNodeName", node.NodeName)
-					//promote node to master
-					err := admin.FailoverSlaveToMaster(context, node, redisutil.RedisFailoverDefault)
-					if err != nil {
-						reqLogger.Error(err, "FailoverSlaveToMaster Failed")
-						return err
-					}
-				} else {
-					return fmt.Errorf("invalid Role %s", node.Role)
+	}
+
+	return nil
+}
+
+func (r *DistributedRedisClusterReconciler) DeletePodsForHA(instance *rediskunv1alpha1.DistributedRedisCluster, delNodes map[string][]*redisutil.Node, reqLogger logr.Logger) error {
+	Podclient := k8sutil.NewPodController(r.Client)
+	for i := 0; i < int(instance.Spec.MasterSize); i++ {
+		stsname := statefulsets.ClusterStatefulSetName(instance.Name, i)
+		if _, ok := delNodes[stsname]; ok {
+			for _, delRedisNode := range delNodes[stsname] {
+				reqLogger.Info("Calling Delete Pod", "PodName", delRedisNode.PodName, "stsname", stsname, "NodeName", delRedisNode.NodeName, "Zone", delRedisNode.Zonename, "Role", delRedisNode.Role, "IP", delRedisNode.IP, "StatefulSet", delRedisNode.StatefulSet)
+				err2 := Podclient.DeletePodByName(instance.Namespace, delRedisNode.PodName)
+				if err2 != nil {
+					reqLogger.Error(err2, "HaRedistribute - DeletePodByName")
+					return err2
 				}
 			}
 		}
 	}
-
 	return nil
 }

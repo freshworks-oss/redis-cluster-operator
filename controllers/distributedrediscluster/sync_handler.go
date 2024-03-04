@@ -190,10 +190,7 @@ func (r *DistributedRedisClusterReconciler) initRestore(cluster *redisv1alpha1.D
 }
 
 func (r *DistributedRedisClusterReconciler) waitForClusterJoin(ctx *syncContext, context context.Context, cluster *rediskunv1alpha1.DistributedRedisCluster) error {
-	if infos, err := ctx.admin.GetClusterInfos(context); err == nil {
-		ctx.reqLogger.V(6).Info("debug waitForClusterJoin", "cluster infos", infos)
-		return nil
-	}
+
 	var firstNode *redisutil.Node
 	for _, nodeInfo := range ctx.clusterInfos.Infos {
 		firstNode = nodeInfo.Node
@@ -209,12 +206,13 @@ func (r *DistributedRedisClusterReconciler) waitForClusterJoin(ctx *syncContext,
 	// waiting for cluster join will find all the nodes agree about
 	// the config as they are still empty with unassigned slots.
 	time.Sleep(1 * time.Second)
-
-	_, err = ctx.admin.GetClusterInfos(context)
-	if err != nil {
-		r.MetricsClient.RecordRedisOperation(cluster.Namespace, cluster.Name, metrics.GET_CLUSTER_NODES_ALL, "NA", metrics.FAIL, err.Error())
-		return Requeue.Wrap(err, "wait for cluster join")
-	}
+	/*
+		_, err = ctx.admin.GetClusterInfos(context)
+		if err != nil {
+			r.MetricsClient.RecordRedisOperation(cluster.Namespace, cluster.Name, metrics.GET_CLUSTER_NODES_ALL, "NA", metrics.FAIL, err.Error())
+			return Requeue.Wrap(err, "wait for cluster join")
+		}
+	*/
 	return nil
 }
 
@@ -227,7 +225,8 @@ func (r *DistributedRedisClusterReconciler) syncCluster(ctx *syncContext, contex
 	if err != nil {
 		return Cluster.Wrap(err, "newRedisCluster")
 	}
-	clusterCtx := clustering.NewCtx(cluster.Spec.HaConfig, rCluster, nodes, cluster.Spec.MasterSize, cluster.Name, ctx.reqLogger)
+	clusterCtx := clustering.NewCtx(cluster.Spec.HaConfig, rCluster, nodes, cluster.Spec.MasterSize, cluster.Spec.ClusterReplicas, cluster.Name, ctx.reqLogger)
+	//Create a New Ranking Info Every time we need to place masters
 	if err := clusterCtx.DispatchMasters(); err != nil {
 		r.MetricsClient.RecordRedisOperation(instance.Namespace, instance.Name, metrics.DISPATCH_MASTER, "NA", metrics.FAIL, err.Error())
 		return Cluster.Wrap(err, "DispatchMasters")
