@@ -506,13 +506,15 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 					//Distribute Masters
 					err := r.FailoverMastersbySTS(instance, displacedMasters, newClusterInfos, BestRankedMasters, admin, context, reqLogger)
 					if err != nil {
-						reqLogger.Error(err, "HaStatusRedistribute - FailoverMastersbySTS")
+						reqLogger.Error(err, "HaStatusRedistribute - FailoverMastersbySTS", err)
+						return reconcile.Result{RequeueAfter: time.Duration(reconcileTime) * time.Second}, nil
 					}
 					reqLogger.Info("HaStatusHealthy - HaHealing Completed")
 					//Update the annotation reDistributeNode to false in cluster CRD to stop selfheal.
 					//Selfheal should occur only if human operator sets annotation reDistributeNode as true on cluster crd.
 					//Once selfheal is completed, setting this annotation to false to stop auto selfheal as it is doesn't consider production traffic.
 					if err := r.CrController.UpdateCrdAnnotations(instance, "reDistributeNode", "false"); err != nil {
+						reqLogger.Error(err, "UpdateCrdAnnotations - Failed to update annotation", err)
 						return reconcile.Result{}, err
 					}
 					return reconcile.Result{RequeueAfter: time.Duration(reconcileTime) * time.Second}, nil
@@ -630,7 +632,7 @@ func (r *DistributedRedisClusterReconciler) getListofNodestoDelete(cluster *redi
 					}
 				}
 				if nodesDelCntPerSTS == 0 {
-					reqLogger.Info("Required number of nodes to be deleted identified for statefulset", stsname)
+					reqLogger.Info("getListofNodestoDelete", "Required number of nodes to be deleted identified for statefulset", stsname)
 					break
 				}
 			}
@@ -641,7 +643,7 @@ func (r *DistributedRedisClusterReconciler) getListofNodestoDelete(cluster *redi
 				reqLogger.Info("getListofNodestoDelete", "expecected number of nodes to delete", copy_nodesDelCntPerSTS, "actual number of nodes picked for deletion", nodesPickedFordel, "for statefuleset", stsname)
 			}
 		} else {
-			reqLogger.Info("No nodes to delete in statefulset", stsname)
+			reqLogger.Info("getListofNodestoDelete", "No nodes to delete in statefulset", stsname)
 		}
 
 	}
@@ -672,11 +674,11 @@ func (r *DistributedRedisClusterReconciler) FailoverMastersbySTS(cluster *redisk
 			}
 
 		} else if failoverNode.Role == redisutil.RedisSlaveRole && failoverNode.LinkState == redisutil.RedisLinkStateConnected {
-			reqLogger.Info("Node to be promoted to master", "nodeID", node.ID, "nodeIP", node.IP, "nodeRole", node.Role, "nodeStatefulSet", node.StatefulSet, "nodeZone", node.Zonename, "nodePodName", node.PodName, "nodeNodeName", node.NodeName)
+			reqLogger.Info("Node to be promoted to master", "nodeID", failoverNode.ID, "nodeIP", failoverNode.IP, "nodeRole", failoverNode.Role, "nodeStatefulSet", failoverNode.StatefulSet, "nodeZone", failoverNode.Zonename, "nodePodName", failoverNode.PodName, "nodeNodeName", failoverNode.NodeName)
 			//promote node to master
-			err := admin.FailoverSlaveToMaster(context, node, redisutil.RedisFailoverDefault)
+			err := admin.FailoverSlaveToMaster(context, failoverNode, redisutil.RedisFailoverDefault)
 			if err != nil {
-				reqLogger.Error(err, "FailoverSlaveToMaster Failed")
+				reqLogger.Error(err, "FailoverSlaveToMaster Failed", err)
 				return err
 			}
 		} else {
