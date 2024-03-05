@@ -48,11 +48,12 @@ func (r *DistributedRedisClusterReconciler) ensureCluster(ctx *syncContext) (boo
 	// "appendonly no" force here when do restore.
 	dbLoadedFromDiskWhenRestore(cluster, ctx.reqLogger)
 	labels := getLabels(cluster)
-	if err, crdeferr := r.Ensurer.EnsureRedisConfigMap(cluster, labels); err != nil {
-		if crdeferr {
+	if err := r.Ensurer.EnsureRedisConfigMap(cluster, labels); err != nil {
+		switch GetType(err) {
+		case StopRetry:
 			// admin secret missing - raise error
 			return false, StopRetry.Wrap(err, "AdminSecretMissing")
-		} else {
+		case Requeue:
 			return false, Kubernetes.Wrap(err, "EnsureRedisConfigMap")
 		}
 	}

@@ -72,7 +72,7 @@ DEVREPO=$(REPO)
 
 
 BINARY_VERSION=v0.0.32
-BINARY_VERSION_DEV=v.0.0.33_dev
+BINARY_VERSION_DEV=v.0.0.34_dev
 ECR_REPO=redis-cluster-operator
 ECR__DEV_REPO=redis-cluster-operator-dev
 ECR_URI=582763096612.dkr.ecr.us-east-1.amazonaws.com

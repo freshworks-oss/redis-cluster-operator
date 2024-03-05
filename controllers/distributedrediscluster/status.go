@@ -13,6 +13,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	redisv1alpha1 "github.com/dinesh-murugiah/rediscluster-operator/api/v1alpha1"
+	"github.com/dinesh-murugiah/rediscluster-operator/resources/configmaps"
 	utils "github.com/dinesh-murugiah/rediscluster-operator/utils/commonutils"
 	"github.com/dinesh-murugiah/rediscluster-operator/utils/k8sutil"
 	"github.com/dinesh-murugiah/rediscluster-operator/utils/redisutil"
@@ -369,4 +370,30 @@ func compareNodes(nodeA, nodeB *redisv1alpha1.RedisClusterNode, reqLogger logr.L
 	}
 
 	return false
+}
+
+func UpdateHaStatus(instance *redisv1alpha1.DistributedRedisCluster, newStatus *redisv1alpha1.DistributedRedisClusterStatus, isStsCreated bool) {
+	if instance.Status.HAStatus == "" || isStsCreated {
+		if instance.Spec.HaConfig.HaEnabled {
+			SetHAStatus(newStatus, redisv1alpha1.HaStatusCreating)
+		} else {
+			SetHAStatus(newStatus, redisv1alpha1.HaStatusDisabled)
+		}
+	}
+}
+func UpdateSecretsStatus(instance *redisv1alpha1.DistributedRedisCluster, newStatus *redisv1alpha1.DistributedRedisClusterStatus, client client.Client, reqLogger logr.Logger) error {
+	if instance.Status.SecretStatus == "" {
+		secretVersions, err := configmaps.Getsecretversions(reqLogger, client, instance)
+		if err != nil {
+			SetSecretStatus(newStatus, "aclconferror")
+			return err
+		} else {
+			SetSecretStatus(newStatus, "aclconfdone")
+			newStatus.SecretsVer = make(map[string]string)
+			for key, value := range secretVersions {
+				newStatus.SecretsVer[key] = value
+			}
+		}
+	}
+	return nil
 }

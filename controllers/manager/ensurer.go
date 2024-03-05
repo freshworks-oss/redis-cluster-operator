@@ -24,7 +24,7 @@ type IEnsureResource interface {
 	EnsureRedisStatefulsets(cluster *redisv1alpha1.DistributedRedisCluster, labels map[string]string) (bool, error)
 	EnsureClusterShardsHeadLessSvcs(cluster *redisv1alpha1.DistributedRedisCluster, labels map[string]string) error
 	EnsureClusterHeadLessSvc(cluster *redisv1alpha1.DistributedRedisCluster, labels map[string]string) error
-	EnsureRedisConfigMap(cluster *redisv1alpha1.DistributedRedisCluster, labels map[string]string) (error, bool)
+	EnsureRedisConfigMap(cluster *redisv1alpha1.DistributedRedisCluster, labels map[string]string) error
 	EnsureRedisRCloneSecret(cluster *redisv1alpha1.DistributedRedisCluster, labels map[string]string) error
 	UpdateRedisStatefulsets(cluster *redisv1alpha1.DistributedRedisCluster, labels map[string]string) error
 }
@@ -237,7 +237,7 @@ func (r *realEnsureResource) EnsureClusterHeadLessSvc(cluster *redisv1alpha1.Dis
 	return err
 }
 
-func (r *realEnsureResource) EnsureRedisConfigMap(cluster *redisv1alpha1.DistributedRedisCluster, labels map[string]string) (error, bool) {
+func (r *realEnsureResource) EnsureRedisConfigMap(cluster *redisv1alpha1.DistributedRedisCluster, labels map[string]string) error {
 
 	cmName := configmaps.RedisConfigMapName(cluster.Name)
 	drcCm, err := r.configMapClient.GetConfigMap(cluster.Namespace, cmName)
@@ -251,11 +251,11 @@ func (r *realEnsureResource) EnsureRedisConfigMap(cluster *redisv1alpha1.Distrib
 			err2 := r.configMapClient.CreateConfigMap(cm)
 			k8sutil.RecordMetrics(cluster.Namespace, "ConfigMap", cm.Name, "CREATE", err2, r.metricsRecorder)
 			if err2 != nil {
-				return err2, false
+				return Requeue.Wrap(err2, "Error creating ConfigMap")
 			}
 
 		} else {
-			return err, false
+			return Requeue.Wrap(err, "Error getting ConfigMap")
 		}
 	} else {
 		if isRedisConfChanged(drcCm.Data[configmaps.RedisConfKey], cluster.Spec.Config, r.logger) {
@@ -263,7 +263,7 @@ func (r *realEnsureResource) EnsureRedisConfigMap(cluster *redisv1alpha1.Distrib
 			err2 := r.configMapClient.UpdateConfigMap(cm)
 			k8sutil.RecordMetrics(cluster.Namespace, "ConfigMap", cm.Name, "UPDATE", err2, r.metricsRecorder)
 			if err2 != nil {
-				return err2, false
+				return Requeue.Wrap(err2, "Error updating ConfigMap")
 			}
 		}
 	}
@@ -277,51 +277,53 @@ func (r *realEnsureResource) EnsureRedisConfigMap(cluster *redisv1alpha1.Distrib
 			aclcm, _, conferr, abortcr := configmaps.NewACLConfigMap(r.logger, r.client, cluster, labels)
 			if conferr != nil {
 				if abortcr {
-					return conferr, true
+					StopRetry.Wrap(conferr, "Error generating ACL ConfigMap - Secret not found")
 				} else {
-					return conferr, false
+					return Requeue.Wrap(conferr, "Error generating ACL ConfigMap - retrying")
 				}
 
 			}
 			err3 := r.configMapClient.CreateConfigMap(aclcm)
 			k8sutil.RecordMetrics(cluster.Namespace, "ConfigMap", aclcm.Name, "CREATE", err2, r.metricsRecorder)
 			if err3 != nil {
-				return err3, false
+				return Requeue.Wrap(err3, "Error creating ACL ConfigMap")
 			}
 
 		} else {
-			return err2, false
+			return Requeue.Wrap(err2, "Error getting ACL ConfigMap")
 		}
 	}
-
-	if cluster.IsRestoreFromBackup() {
-		restoreCmName := configmaps.RestoreConfigMapName(cluster.Name)
-		restoreCm, err := r.configMapClient.GetConfigMap(cluster.Namespace, restoreCmName)
-		k8sutil.RecordMetrics(cluster.Namespace, "ConfigMap", restoreCmName, "GET", err2, r.metricsRecorder)
-		if err != nil {
-			if errors.IsNotFound(err) {
-				r.logger.WithValues("ConfigMap.Namespace", cluster.Namespace, "ConfigMap.Name", restoreCmName).
-					Info("creating a new restore configMap")
-				cm := configmaps.NewConfigMapForRestore(cluster, labels)
-				err1 := r.configMapClient.CreateConfigMap(cm)
-				k8sutil.RecordMetrics(cluster.Namespace, "ConfigMap", cm.Name, "CREATE", err1, r.metricsRecorder)
-				if err1 != nil {
-					return err1, false
-				}
-			} else {
-				return err, false
-			}
-		}
-		if cluster.Status.Restore.Phase == redisv1alpha1.RestorePhaseRestart && restoreCm.Data[configmaps.RestoreSucceeded] == "0" {
-			cm := configmaps.NewConfigMapForRestore(cluster, labels)
-			err := r.configMapClient.UpdateConfigMap(cm)
-			k8sutil.RecordMetrics(cluster.Namespace, "ConfigMap", cm.Name, "UPDATE", err, r.metricsRecorder)
+	//Restore from backup is not supported yet
+	/*
+		if cluster.IsRestoreFromBackup() {
+			restoreCmName := configmaps.RestoreConfigMapName(cluster.Name)
+			restoreCm, err := r.configMapClient.GetConfigMap(cluster.Namespace, restoreCmName)
+			k8sutil.RecordMetrics(cluster.Namespace, "ConfigMap", restoreCmName, "GET", err2, r.metricsRecorder)
 			if err != nil {
-				return err, false
+				if errors.IsNotFound(err) {
+					r.logger.WithValues("ConfigMap.Namespace", cluster.Namespace, "ConfigMap.Name", restoreCmName).
+						Info("creating a new restore configMap")
+					cm := configmaps.NewConfigMapForRestore(cluster, labels)
+					err1 := r.configMapClient.CreateConfigMap(cm)
+					k8sutil.RecordMetrics(cluster.Namespace, "ConfigMap", cm.Name, "CREATE", err1, r.metricsRecorder)
+					if err1 != nil {
+						return err1, false
+					}
+				} else {
+					return err, false
+				}
+			}
+			if cluster.Status.Restore.Phase == redisv1alpha1.RestorePhaseRestart && restoreCm.Data[configmaps.RestoreSucceeded] == "0" {
+				cm := configmaps.NewConfigMapForRestore(cluster, labels)
+				err := r.configMapClient.UpdateConfigMap(cm)
+				k8sutil.RecordMetrics(cluster.Namespace, "ConfigMap", cm.Name, "UPDATE", err, r.metricsRecorder)
+				if err != nil {
+					return err, false
+				}
 			}
 		}
-	}
-	return nil, false
+	*/
+	return nil
 }
 
 func (r *realEnsureResource) EnsureRedisRCloneSecret(cluster *redisv1alpha1.DistributedRedisCluster, labels map[string]string) error {
