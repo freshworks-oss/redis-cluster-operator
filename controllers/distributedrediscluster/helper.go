@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	redisv1alpha1 "github.com/dinesh-murugiah/rediscluster-operator/api/v1alpha1"
 	config "github.com/dinesh-murugiah/rediscluster-operator/redisconfig"
@@ -27,6 +28,45 @@ func getLabels(cluster *redisv1alpha1.DistributedRedisCluster) map[string]string
 		redisv1alpha1.LabelClusterName: cluster.Name,
 	}
 	return utils.MergeLabels(defaultLabels, dynLabels, cluster.Labels)
+}
+
+// Helper functin to upadte the cluster info with additional information from other sources
+func UpdateClusterInfos(clusterInfos *redisutil.ClusterInfos, pods []*corev1.Pod, Client client.Client, reqLogger logr.Logger) error {
+
+	nodectrl := k8sutil.NewNodeController(Client)
+	nodes := clusterInfos.GetNodes()
+	for _, node := range nodes {
+		pod := getpodFromlist(pods, node.IP)
+		if pod == nil {
+			return fmt.Errorf("pod not found for node %s", node.IP)
+		}
+		node.NodeName = pod.Spec.NodeName
+		if len(pod.OwnerReferences) > 0 {
+			if pod.OwnerReferences[0].Kind == "StatefulSet" {
+				node.StatefulSet = pod.OwnerReferences[0].Name
+			}
+		}
+		node.PodName = pod.Name
+		znode, err := nodectrl.GetNode(pod.Spec.NodeName)
+		if err == nil {
+			node.Zonename = nodectrl.GetZoneLabel(znode)
+			//reqLogger.Info("UpdateClusterInfos", "Zone label found", node.Zonename)
+		} else {
+			reqLogger.Error(err, "GetNode Returned Error", "context", "UpdateClusterInfos", "action", "setting zonename to unknown")
+			node.Zonename = "unknown"
+		}
+	}
+	return nil
+}
+
+func getpodFromlist(pods []*corev1.Pod, nodeIP string) *corev1.Pod {
+	for _, pod := range pods {
+		if pod.Status.PodIP == nodeIP {
+			return pod
+		}
+	}
+	return nil
+
 }
 
 // newRedisAdmin builds and returns new redis.Admin from the list of pods

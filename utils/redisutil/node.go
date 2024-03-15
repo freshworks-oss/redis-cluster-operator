@@ -61,10 +61,13 @@ type Node struct {
 	ImportingSlots  map[Slot]string
 	ServerStartTime time.Time
 
-	NodeName    string
-	Zonename    string
-	PodName     string
-	StatefulSet string
+	NodeName              string
+	ZoneDistributionRank  int
+	NodeDistributionRank  int
+	ShardDistributionRank int
+	Zonename              string
+	PodName               string
+	StatefulSet           string
 }
 
 // Nodes represent a Node slice
