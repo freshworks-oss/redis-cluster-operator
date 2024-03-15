@@ -2,7 +2,6 @@ package k8sutil
 
 import (
 	"context"
-	"fmt"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -66,8 +65,8 @@ func (p *PodController) DeletePodByName(namespace, name string) error {
 func (p *PodController) UpdatePodAnnotations(pod *corev1.Pod, annotationKey string, annotationvalue string) error {
 
 	if _, ok := pod.ObjectMeta.Annotations[annotationKey]; !ok {
-		err := fmt.Errorf("Annotation %s Notfound", annotationKey)
-		return err
+		pod.ObjectMeta.Annotations[annotationKey] = annotationvalue
+		return p.UpdatePod(pod)
 	}
 
 	if pod.ObjectMeta.Annotations[annotationKey] == annotationvalue {
