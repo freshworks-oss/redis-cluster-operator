@@ -35,29 +35,12 @@ func GetNamespacesList() ([]string, []string, error) {
 	var tempNamespaceList []string
 	var tempNamespaceUnwatchList []string
 
-	if !watchfound && !unwatchfound {
+	if !watchfound || !unwatchfound {
 		return nil, nil, fmt.Errorf("%s & %s - must be set", watchNamespaceEnvVar, unwatchNamespaceEnvVar)
 	}
 
-	if watchfound {
-		if strings.Contains(namespacesWatch, ",") {
-			tempNamespaceList = strings.Split(namespacesWatch, ",")
-		} else {
-			tempNamespaceList = []string{namespacesWatch}
-		}
-	} else {
-		tempNamespaceList = nil
-	}
-
-	if unwatchfound {
-		if strings.Contains(namespacesunWatch, ",") {
-			tempNamespaceUnwatchList = strings.Split(namespacesunWatch, ",")
-		} else {
-			tempNamespaceUnwatchList = []string{namespacesunWatch}
-		}
-	} else {
-		tempNamespaceUnwatchList = nil
-	}
+	tempNamespaceList = strings.Split(namespacesWatch, ",")
+	tempNamespaceUnwatchList = strings.Split(namespacesunWatch, ",")
 	return tempNamespaceList, tempNamespaceUnwatchList, nil
 
 }
