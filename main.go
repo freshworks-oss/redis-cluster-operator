@@ -124,12 +124,18 @@ func main() {
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 	printVersion()
 	utils.SetOperatorScope()
+	//Obtain leader election ID from env
+	leaderElectionID, found := os.LookupEnv("LEADER_ELECTION_ID")
+	if !found {
+		setupLog.Info("Leader election ID not found in env")
+		panic("Pass LEADER_ELECTION_ID as env in operator deployment")
+	}
 	mgroptions := ctrl.Options{
 		Scheme:                 scheme,
 		Metrics:                metricsserver.Options{BindAddress: metricsAddr},
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
-		LeaderElectionID:       "9973c4fe.redis.kun",
+		LeaderElectionID:       leaderElectionID,
 		// LeaderElectionReleaseOnCancel defines if the leader should step down voluntarily
 		// when the Manager ends. This requires the binary to immediately end when the
 		// Manager is stopped, otherwise, this setting is unsafe. Setting this significantly
