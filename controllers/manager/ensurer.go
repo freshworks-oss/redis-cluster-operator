@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"reflect"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/go-logr/logr"
@@ -61,7 +62,7 @@ func (r *realEnsureResource) EnsureRedisStatefulsets(cluster *redisv1alpha1.Dist
 		svcName := statefulsets.ClusterHeadlessSvcName(cluster.Spec.ServiceName, i)
 		// assign label
 		labels[redisv1alpha1.StatefulSetLabel] = name
-		labels[redisv1alpha1.ShardLabel] = name
+		labels[redisv1alpha1.ShardLabel] = strconv.Itoa(i)
 		stsStatus, err := r.ensureRedisStatefulset(cluster, name, svcName, labels)
 		if err != nil {
 			return isSTScreated, err
@@ -199,7 +200,7 @@ func (r *realEnsureResource) EnsureClusterShardsHeadLessSvcs(cluster *redisv1alp
 		name := statefulsets.ClusterStatefulSetName(cluster.Name, i)
 		// assign label
 		labels[redisv1alpha1.StatefulSetLabel] = name
-		labels[redisv1alpha1.ShardLabel] = name
+		labels[redisv1alpha1.ShardLabel] = strconv.Itoa(i)
 		if err := r.ensureRedisHeadLessSvc(cluster, svcName, labels); err != nil {
 			return err
 		}
@@ -224,6 +225,7 @@ func (r *realEnsureResource) ensureRedisHeadLessSvc(cluster *redisv1alpha1.Distr
 func (r *realEnsureResource) EnsureClusterHeadLessSvc(cluster *redisv1alpha1.DistributedRedisCluster, labels map[string]string) error {
 	name := cluster.Spec.ServiceName
 	delete(labels, redisv1alpha1.StatefulSetLabel)
+	delete(labels, redisv1alpha1.ShardLabel)
 	_, err := r.svcClient.GetService(cluster.Namespace, name)
 	k8sutil.RecordMetrics(cluster.Namespace, "SVC", name, "GET", err, r.metricsRecorder)
 	if err != nil && errors.IsNotFound(err) {
@@ -375,7 +377,7 @@ func (r *realEnsureResource) UpdateRedisStatefulsets(cluster *redisv1alpha1.Dist
 		svcName := statefulsets.ClusterHeadlessSvcName(cluster.Spec.ServiceName, i)
 		// assign label
 		labels[redisv1alpha1.StatefulSetLabel] = name
-		labels[redisv1alpha1.ShardLabel] = name
+		labels[redisv1alpha1.ShardLabel] = strconv.Itoa(i)
 		if err := r.updateRedisStatefulset(cluster, name, svcName, labels); err != nil {
 			return err
 		}

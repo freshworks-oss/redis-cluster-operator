@@ -170,8 +170,10 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 	var isStsCreated bool = false
 	var haStatus rediskunv1alpha1.HaStatus = rediskunv1alpha1.HaStatusUnknown
 	isStsCreated, err = r.ensureCluster(syncCtx)
-	if !isStsCreated || err != nil {
-		r.MetricsClient.EnsureCluster(request.Namespace, request.Name, metrics.FAIL, "STS_CREATION", err.Error())
+	if !isStsCreated {
+		if err != nil {
+			r.MetricsClient.EnsureCluster(request.Namespace, request.Name, metrics.FAIL, "STS_CREATION", err.Error())
+		}
 	}
 	// set p0 metric if err is StopRetry
 	if err != nil {
@@ -215,6 +217,7 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 	})
 	err = r.waitPodReady(syncCtx)
 	if err != nil {
+		r.MetricsClient.EnsureCluster(request.Namespace, request.Name, metrics.MISC, "WAIT_FOR_POD_READY", err.Error())
 		switch GetType(err) {
 		case Kubernetes:
 			return reconcile.Result{}, err
@@ -264,6 +267,7 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 
 	clusterInfos, clusterinfoerr := admin.GetClusterInfos(context)
 	if clusterinfoerr != nil {
+		r.MetricsClient.EnsureCluster(request.Namespace, request.Name, metrics.MISC, "BUILD_CLUSTER_INFO", clusterinfoerr.Error())
 		if clusterErr, ok := clusterinfoerr.(redisutil.ClusterInfosError); ok {
 			if clusterErr.Partial() {
 				reqLogger.Info("GetClusterInfos", "clusterInfos Error", clusterinfoerr)
