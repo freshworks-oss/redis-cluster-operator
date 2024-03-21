@@ -8,12 +8,13 @@ import (
 	redisv1alpha1 "github.com/dinesh-murugiah/rediscluster-operator/api/v1alpha1"
 	"github.com/dinesh-murugiah/rediscluster-operator/metrics"
 	"github.com/dinesh-murugiah/rediscluster-operator/utils/redisutil"
+	"github.com/go-logr/logr"
 )
 
 // FixFailedNodes fix failed nodes: in some cases (cluster without enough master after crash or scale down), some nodes may still know about fail nodes
 func (c *CheckAndHeal) FixFailedNodes(cluster *redisv1alpha1.DistributedRedisCluster, infos *redisutil.ClusterInfos, admin redisutil.IAdmin, context context.Context) (bool, error) {
 
-	forgetSet := listGhostNodes(cluster, infos)
+	forgetSet := listGhostNodes(cluster, infos, c.Logger)
 	var errs []error
 	doneAnAction := false
 	for id := range forgetSet {
@@ -34,10 +35,11 @@ func (c *CheckAndHeal) FixFailedNodes(cluster *redisv1alpha1.DistributedRedisClu
 
 // listGhostNodes : A Ghost node is a node still known by some redis node but which doesn't exists anymore
 // meaning it is failed, and pod not in kubernetes, or without targetable IP
-func listGhostNodes(cluster *redisv1alpha1.DistributedRedisCluster, infos *redisutil.ClusterInfos) map[string]bool {
+func listGhostNodes(cluster *redisv1alpha1.DistributedRedisCluster, infos *redisutil.ClusterInfos, log logr.Logger) map[string]bool {
 	ghostNodesSet := map[string]bool{}
 	ghostNodesDetect := map[string]int32{}
 	if infos == nil || infos.Infos == nil {
+		log.Info("No infos available")
 		return ghostNodesSet
 	}
 	for _, nodeinfos := range infos.Infos {
@@ -55,8 +57,10 @@ func listGhostNodes(cluster *redisv1alpha1.DistributedRedisCluster, infos *redis
 	}
 
 	for ghnodeid, count := range ghostNodesDetect {
+		// if more than half of the cluster knows about it, it is a ghost
 		if count >= ((cluster.Spec.ClusterReplicas+1)*cluster.Spec.MasterSize)/2 {
 			ghostNodesSet[ghnodeid] = true
+			log.Info("Node is ghost", "node", ghnodeid, "count", count)
 		}
 	}
 
