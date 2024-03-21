@@ -145,7 +145,8 @@ func main() {
 
 	if utils.IsClusterScoped() {
 		setupLog.Info("Operator is running in cluster scope")
-		err := utils.GenerateNamespaceList(setupLog) //This will get the namespace watch and unwatch list but since it is cluster scoped,
+		err := utils.GenerateNamespaceList(setupLog)
+		//This will get the namespace watch and unwatch list but since it is cluster scoped,
 		// we need only unwatch list and rest all will be watched.
 		if err != nil {
 			os.Exit(1)
@@ -158,7 +159,8 @@ func main() {
 		}
 
 		defaultNamespaces := make(map[string]cache.Config)
-		nslist, _ := utils.GetNamespaceList() //this will return watch and unwatch list but since it is running in namespace scoped, we need only watch list, so dropping unwatch list.
+		nslist, _ := utils.GetNamespaceList()
+		//this will return watch and unwatch list but since it is running in namespace scoped, we need only watch list, so dropping unwatch list.
 
 		for _, ns := range nslist {
 			defaultNamespaces[ns] = cache.Config{}
