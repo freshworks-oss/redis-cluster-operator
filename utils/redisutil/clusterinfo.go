@@ -162,11 +162,15 @@ func (c *ClusterInfos) ComputeStatus(log logr.Logger) bool {
 
 	consistencyStatus := false
 
-	consolidatedView := c.GetNodes().SortByFunc(LessByID)
+	consolidatedView := c.GetNodes()
+	consolidatedView = consolidatedView.SortByFunc(LessByID)
 	consolidatedSignature := getConfigSignature(consolidatedView)
 	log.V(6).Info("consolidated view", "consolidatedSignature:\n", consolidatedSignature)
 	for addr, nodeinfos := range c.Infos {
-		nodesView := append(nodeinfos.Friends, nodeinfos.Node).SortByFunc(LessByID)
+		nodesView := make(Nodes, len(nodeinfos.Friends))
+		copy(nodesView, nodeinfos.Friends)
+		nodesView = append(nodesView, nodeinfos.Node)
+		nodesView = nodesView.SortByFunc(LessByID)
 		nodeSignature := getConfigSignature(nodesView)
 		log.V(6).Info(fmt.Sprintf("node view from %s (ID: %s):\n%s", addr, nodeinfos.Node.ID, nodeSignature))
 		if !reflect.DeepEqual(consolidatedSignature, nodeSignature) {
@@ -186,7 +190,7 @@ func (c *ClusterInfos) ComputeStatus(log logr.Logger) bool {
 // the slice if formed from how each node see itself
 // you should check the Status before doing it, to wait for a consistent view
 func (c *ClusterInfos) GetNodes() Nodes {
-	nodes := Nodes{}
+	nodes := make(Nodes, 0, len(c.Infos))
 	for _, nodeinfos := range c.Infos {
 		nodes = append(nodes, nodeinfos.Node)
 	}
