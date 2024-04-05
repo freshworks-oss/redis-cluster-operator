@@ -372,14 +372,24 @@ func compareNodes(nodeA, nodeB *redisv1alpha1.RedisClusterNode, reqLogger logr.L
 	return false
 }
 
-func UpdateHaStatus(instance *redisv1alpha1.DistributedRedisCluster, newStatus *redisv1alpha1.DistributedRedisClusterStatus, isStsCreated bool) {
-	if instance.Status.HAStatus == "" || isStsCreated {
-		if instance.Spec.HaConfig.HaEnabled {
+func UpdateHaStatus(instance *redisv1alpha1.DistributedRedisCluster, newStatus *redisv1alpha1.DistributedRedisClusterStatus, hastatus string, stsStatus redisv1alpha1.StsEnsureStatus) {
+
+	if !instance.Spec.HaConfig.HaEnabled {
+		SetHAStatus(newStatus, redisv1alpha1.HaStatusDisabled)
+		return
+	}
+	if hastatus != "" {
+		SetHAStatus(newStatus, redisv1alpha1.HaStatus(hastatus))
+		return
+	}
+	if stsStatus != "" {
+		if stsStatus == redisv1alpha1.STSCreated || stsStatus == redisv1alpha1.STSCreateUpadate {
 			SetHAStatus(newStatus, redisv1alpha1.HaStatusCreating)
-		} else {
-			SetHAStatus(newStatus, redisv1alpha1.HaStatusDisabled)
+		} else if stsStatus == redisv1alpha1.STSUpdated {
+			SetHAStatus(newStatus, redisv1alpha1.HaStatusUpdating)
 		}
 	}
+
 }
 func UpdateSecretsStatus(instance *redisv1alpha1.DistributedRedisCluster, newStatus *redisv1alpha1.DistributedRedisClusterStatus, client client.Client, reqLogger logr.Logger) error {
 	if instance.Status.SecretStatus == "" {

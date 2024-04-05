@@ -117,9 +117,10 @@ func (c *RankingInfo) InitRankingInfo(nodes map[string]redisutil.Nodes) {
 			}
 
 			if rNode.GetRole() == redisv1alpha1.RedisClusterNodeRoleSlave && rNode.MasterReferent != "" {
-				c.replicaNodesBySTS[rNode.MasterReferent] = append(c.replicaNodesBySTS[rNode.MasterReferent], rNode)
+				c.replicaNodesBySTS[rNode.StatefulSet] = append(c.replicaNodesBySTS[rNode.StatefulSet], rNode)
 			} else if rNode.GetRole() == redisv1alpha1.RedisClusterNodeRoleSlave && rNode.MasterReferent == "" {
-				c.log.Info("InitRankingInfo", "Slave without master", rNode.ID)
+				c.log.Info("InitRankingInfo", "Slave without master", rNode.ID, "Statefulset", rNode.StatefulSet, "IP", rNode.IP)
+				c.replicaNodesBySTS[rNode.StatefulSet] = append(c.replicaNodesBySTS[rNode.StatefulSet], rNode)
 			}
 		}
 	}
@@ -135,10 +136,18 @@ func (c *RankingInfo) ApplyZoneRankingPerNodeDistribution() {
 			//For all the nodes in the zone, we will add the weight based on the number of nodes in the zone
 			node.ZoneDistributionRank = node.ZoneDistributionRank + (NodesCountsPerZoneRankingWeight / len(nodes))
 			//If the node is a slave without a master, and gossip is connected, then we will add weight to it
-			// This is needed to rank this as a potential master on multi zone failures
-			if (node.GetRole() == redisv1alpha1.RedisClusterNodeRoleSlave) && node.MasterReferent == "" && node.LinkState == redisutil.RedisLinkStateConnected {
-				node.ZoneDistributionRank = node.ZoneDistributionRank * ExistingReplicasWeightMultiplier
+			// This is needed to rank this as a potential master on multi zone failures or when there are no masters for a shard and we need to promote a slave
+			if node.GetRole() == redisv1alpha1.RedisClusterNodeRoleSlave && node.LinkState == redisutil.RedisLinkStateConnected {
+				//Check if this statefulset has a master with slots or not, if not then add more weight to this node as this slave is a potential candidate for master if cluster is not able to find a master
+				if c.masternodeBySTS[node.StatefulSet] == nil || c.masternodeBySTS[node.StatefulSet].TotalSlots() == 0 {
+					node.ZoneDistributionRank = node.ZoneDistributionRank * ExistingReplicasWeightMultiplier
+					//If the repliaction offset is less than 10, then add more weight to this node
+					if (node.MasterReplOffset - node.SlaveReplOffset) < 10 {
+						node.ZoneDistributionRank = node.ZoneDistributionRank + 10
+					}
+				}
 			}
+
 		}
 	}
 }
@@ -187,9 +196,9 @@ func (c *RankingInfo) ZoneRankReducePostmasterSelect(masternodeID string, zoneNa
 
 // This function will return the best ranked node for the given STS across the zones
 func (c *RankingInfo) GetBestRankedNodeinAllZonesPerSTS(stsname string) (*redisutil.Node, error) {
+
 	var bestRankedNode *redisutil.Node = nil
-	var tieBreakerRank int = 0
-	var tieBreakNodes []*redisutil.Node = []*redisutil.Node{}
+	var rankedNodes = make(map[int][]*redisutil.Node)
 
 	for _, zone := range c.zoneList {
 		nodes, ok := c.nodesByZone[zone]
@@ -200,37 +209,75 @@ func (c *RankingInfo) GetBestRankedNodeinAllZonesPerSTS(stsname string) (*redisu
 		if checkRankNode == nil {
 			c.log.Info("GetZoneRankedNodePerSTS", "Statefulset", stsname, "Not found in Zone", zone)
 			continue
-		}
-
-		if bestRankedNode == nil {
-			bestRankedNode = checkRankNode
-			tieBreakerRank = 0
-		} else if checkRankNode.ZoneDistributionRank > bestRankedNode.ZoneDistributionRank {
-			bestRankedNode = checkRankNode
-			tieBreakerRank = 0
-		} else if checkRankNode.ZoneDistributionRank == bestRankedNode.ZoneDistributionRank {
-			//If there is a tie, we will store it and break the tie later after checking all the zones
-			tieBreakerRank = checkRankNode.ZoneDistributionRank
-			tieBreakNodes = append(tieBreakNodes, bestRankedNode, checkRankNode)
+		} else {
+			rankedNodes[checkRankNode.ZoneDistributionRank] = append(rankedNodes[checkRankNode.ZoneDistributionRank], checkRankNode)
 		}
 	}
-	//If there is a tie, we will break the tie by adding weight to the node in lowest zone in ascending order for now
-	//This can be enhanced later to consider other factors like node distribution, zone with lowest master etc
-	if tieBreakerRank != 0 {
-		for _, zone := range c.zoneList {
-			for _, node := range tieBreakNodes {
-				if node.Zonename == zone {
-					node.ZoneDistributionRank += ZoneRankingTieBreakerWeightAdd
-					return node, nil
-				}
+
+	if len(rankedNodes) == 0 {
+		return nil, fmt.Errorf("no nodes found for the statefulset %s", stsname)
+	}
+
+	// Extract the Ranks from the rankedNodes map to get a slice of rank so that it can be sorted.
+	ranks := make([]int, 0, len(rankedNodes))
+	for rank := range rankedNodes {
+		ranks = append(ranks, rank)
+	}
+	// Sort the slice of ranks in descending order.
+	sort.Slice(ranks, func(i, j int) bool {
+		return ranks[i] > ranks[j]
+	})
+
+	if len(rankedNodes[ranks[0]]) == 1 {
+		bestRankedNode = rankedNodes[ranks[0]][0]
+	} else {
+		bestRankedNode = TieBreakGetTopRankedNode(rankedNodes[ranks[0]], c.zoneList, c.log)
+	}
+
+	return bestRankedNode, nil
+}
+
+func TieBreakGetTopRankedNode(tiebreaknodes []*redisutil.Node, zoneList []string, log logr.Logger) *redisutil.Node {
+	var bestrankedNode *redisutil.Node = nil
+
+	//If there are slaves in the tiebreaknodes, then select the slave with the least replication offset difference with the master
+	for _, selectnode := range tiebreaknodes {
+		if selectnode.GetRole() == redisv1alpha1.RedisClusterNodeRoleSlave && selectnode.LinkState == redisutil.RedisLinkStateConnected {
+			if bestrankedNode == nil {
+				bestrankedNode = selectnode
+			} else if (selectnode.MasterReplOffset - selectnode.SlaveReplOffset) < (bestrankedNode.MasterReplOffset - bestrankedNode.SlaveReplOffset) {
+				bestrankedNode = selectnode
 			}
 		}
-		for _, node := range tieBreakNodes {
-			c.log.Error(fmt.Errorf("unable to break tie"), "GetBestRankedNodeinAllZonesPerSTS", "unable to break tie for nodes", node.PodName, "rank", node.ZoneDistributionRank, "zone", node.Zonename)
-		}
-		return nil, fmt.Errorf("unable to break the tie")
 	}
-	return bestRankedNode, nil
+
+	//If there are no slaves in the tiebreakernodes , then possiblity all nodes are masters without slots, then select the one in the first zone
+	if bestrankedNode == nil {
+		for _, zone := range zoneList {
+			for _, selectnode := range tiebreaknodes {
+				if selectnode.Zonename == zone {
+					bestrankedNode = selectnode
+					break
+				}
+			}
+			if bestrankedNode != nil {
+				break
+			}
+		}
+	}
+
+	if bestrankedNode == nil {
+		log.Error(fmt.Errorf("node not found"), "TieBreakGetTopRankedNode", "No node found in tiebreakernodes")
+	} else {
+
+		if bestrankedNode.GetRole() == redisv1alpha1.RedisClusterNodeRoleMaster && bestrankedNode.TotalSlots() == 0 {
+			log.Info("TieBreakGetTopRankedNode", "Possibility of selecting master with no slots", bestrankedNode.IP, "Statefulset", bestrankedNode.StatefulSet, "pod", bestrankedNode.PodName, "Zone", bestrankedNode.Zonename, "Rank", bestrankedNode.ZoneDistributionRank)
+		} else if bestrankedNode.GetRole() == redisv1alpha1.RedisClusterNodeRoleSlave {
+			log.Info("TieBreakGetTopRankedNode", "Selected Slave with least replication offset difference", bestrankedNode.StatefulSet, "pod", bestrankedNode.PodName, "Zone", bestrankedNode.Zonename, "Rank", bestrankedNode.ZoneDistributionRank, "MasterReplOffset", bestrankedNode.MasterReplOffset, "SlaveReplOffset", bestrankedNode.SlaveReplOffset)
+		}
+	}
+
+	return bestrankedNode
 }
 
 // This function will return the best ranked node for the given STS within the zone

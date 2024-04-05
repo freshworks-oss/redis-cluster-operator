@@ -45,21 +45,24 @@ const (
 
 // Node Represent a Redis Node
 type Node struct {
-	ID              string
-	IP              string
-	Port            string
-	Role            string
-	LinkState       string
-	MasterReferent  string
-	FailStatus      []string
-	PingSent        int64
-	PongRecv        int64
-	ConfigEpoch     int64
-	Slots           []Slot
-	balance         int
-	MigratingSlots  map[Slot]string
-	ImportingSlots  map[Slot]string
-	ServerStartTime time.Time
+	ID               string
+	IP               string
+	Port             string
+	Role             string
+	LinkState        string
+	MasterReferent   string
+	LastIOSecs       int64
+	SlaveReplOffset  int64
+	MasterReplOffset int64
+	FailStatus       []string
+	PingSent         int64
+	PongRecv         int64
+	ConfigEpoch      int64
+	Slots            []Slot
+	balance          int
+	MigratingSlots   map[Slot]string
+	ImportingSlots   map[Slot]string
+	ServerStartTime  time.Time
 
 	NodeName              string
 	ZoneDistributionRank  int

@@ -32,6 +32,7 @@ const (
 // ClusterStatus Redis Cluster status
 type ClusterStatus string
 type HaStatus string
+type StsEnsureStatus string
 
 const (
 	// ClusterStatusOK ClusterStatus OK
@@ -60,9 +61,21 @@ const (
 	HaStatusUnknown      HaStatus = "haunknown"
 	HaStatusDisabled     HaStatus = "hadisabled"
 	HaStatusCreating     HaStatus = "hacreating"
+	HaStatusUpdating     HaStatus = "haupdating"
 	HaStatusHealthy      HaStatus = "hahealthy"
 	HaStatusRedistribute HaStatus = "haredistribute"
 	HaStatusFailed       HaStatus = "hafailed"
+)
+
+const (
+	STSCreated       StsEnsureStatus = "stscreated"
+	STSUpdated       StsEnsureStatus = "stsupdated"
+	STSNochange      StsEnsureStatus = "stsnochange"
+	STSCreateError   StsEnsureStatus = "stscreateerror"
+	STSUpdateError   StsEnsureStatus = "stsupdateerror"
+	STSNotEnsured    StsEnsureStatus = "stsnotyetensured"
+	STSgetError      StsEnsureStatus = "stsgetError"
+	STSCreateUpadate StsEnsureStatus = "stscreateandupdate"
 )
 
 const (

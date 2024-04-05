@@ -22,7 +22,7 @@ import (
 )
 
 const (
-	requeueAfter = 10 * time.Second
+	requeueAfter = 15 * time.Second
 )
 
 type syncContext struct {
@@ -34,13 +34,17 @@ type syncContext struct {
 	reqLogger    logr.Logger
 }
 
-func (r *DistributedRedisClusterReconciler) ensureCluster(ctx *syncContext) (bool, error) {
+func (r *DistributedRedisClusterReconciler) ensureCluster(ctx *syncContext) (redisv1alpha1.StsEnsureStatus, error) {
+
+	ensureSTSStatus := rediskunv1alpha1.STSNotEnsured
+
 	cluster := ctx.cluster
 	if err := r.validateAndSetDefault(cluster, ctx.reqLogger); err != nil {
+		r.MetricsClient.EnsureCluster(ctx.cluster.Namespace, ctx.cluster.Name, metrics.FAIL, "VALIDATE_SPEC", err.Error())
 		if k8sutil.IsRequestRetryable(err) {
-			return false, Kubernetes.Wrap(err, "Validate")
+			return ensureSTSStatus, InvalidSpec.Wrap(err, "Validate Requeue")
 		}
-		return false, StopRetry.Wrap(err, "stop retry")
+		return ensureSTSStatus, StopRetry.Wrap(err, "stop retry")
 	}
 
 	// Redis only load db from append only file when AOF ON, because of
@@ -49,33 +53,41 @@ func (r *DistributedRedisClusterReconciler) ensureCluster(ctx *syncContext) (boo
 	dbLoadedFromDiskWhenRestore(cluster, ctx.reqLogger)
 	labels := getLabels(cluster)
 	if err := r.Ensurer.EnsureRedisConfigMap(cluster, labels); err != nil {
+		r.MetricsClient.EnsureCluster(ctx.cluster.Namespace, ctx.cluster.Name, metrics.FAIL, "ENSURE_CONFIGMAP", err.Error())
 		switch GetType(err) {
 		case StopRetry:
-			// admin secret missing - raise error
-			return false, StopRetry.Wrap(err, "AdminSecretMissing")
+			return ensureSTSStatus, StopRetry.Wrap(err, "Irrecoverable error when EnsureRedisConfigMap")
 		case Requeue:
-			return false, Kubernetes.Wrap(err, "EnsureRedisConfigMap")
+			return ensureSTSStatus, EnsureConfigMap.Wrap(err, "EnsureRedisConfigMap Requeue")
 		}
 	}
 
-	isSTScreated, err := r.Ensurer.EnsureRedisStatefulsets(cluster, labels)
+	ensureSTSStatus, err := r.Ensurer.EnsureRedisStatefulsets(cluster, labels)
 	if err != nil {
 		ctx.reqLogger.Error(err, "EnsureRedisStatefulSets")
-		return false, Kubernetes.Wrap(err, "EnsureRedisStatefulSets")
+		r.MetricsClient.EnsureCluster(ctx.cluster.Namespace, ctx.cluster.Name, metrics.FAIL, "ENSURE_STATEFULSET", err.Error())
+		return ensureSTSStatus, EnsureSTS.Wrap(err, "EnsureRedisStatefulSets failed")
 	}
-	if err1 := r.Ensurer.EnsureClusterShardsHeadLessSvcs(cluster, labels); err1 != nil {
-		return isSTScreated, Kubernetes.Wrap(err, "EnsureRedisHeadLessSvcs")
+	if err1 := r.Ensurer.EnsureRedisPDB(cluster, labels); err1 != nil {
+		r.MetricsClient.EnsureCluster(ctx.cluster.Namespace, ctx.cluster.Name, metrics.FAIL, "ENSURE_PDB", err1.Error())
+		return ensureSTSStatus, EnsurePDB.Wrap(err1, "EnsureRedisPDB failed")
 	}
-	if err2 := r.Ensurer.EnsureClusterHeadLessSvc(cluster, labels); err2 != nil {
-		return isSTScreated, Kubernetes.Wrap(err, "EnsureRedisSvc")
+	if err2 := r.Ensurer.EnsureClusterShardsHeadLessSvcs(cluster, labels); err2 != nil {
+		r.MetricsClient.EnsureCluster(ctx.cluster.Namespace, ctx.cluster.Name, metrics.FAIL, "ENSURE_SHARD_SERVICE", err2.Error())
+		return ensureSTSStatus, EnsureService.Wrap(err2, "EnsureRedisHeadLessSvcs per shard failed")
 	}
-	if err3 := r.Ensurer.EnsureRedisRCloneSecret(cluster, labels); err3 != nil {
-		if k8sutil.IsRequestRetryable(err) {
-			return isSTScreated, Kubernetes.Wrap(err, "EnsureRedisRCloneSecret")
+	if err3 := r.Ensurer.EnsureClusterHeadLessSvc(cluster, labels); err3 != nil {
+		r.MetricsClient.EnsureCluster(ctx.cluster.Namespace, ctx.cluster.Name, metrics.FAIL, "ENSURE_CLUSTER_SERVICE", err3.Error())
+		return ensureSTSStatus, EnsureService.Wrap(err3, "EnsureRedisSvc for all shards failed")
+	}
+	if err4 := r.Ensurer.EnsureRedisRCloneSecret(cluster, labels); err4 != nil {
+		r.MetricsClient.EnsureCluster(ctx.cluster.Namespace, ctx.cluster.Name, metrics.FAIL, "ENSURE_RCLONE", err4.Error())
+		if k8sutil.IsRequestRetryable(err4) {
+			return ensureSTSStatus, Kubernetes.Wrap(err4, "EnsureRedisRCloneSecret")
 		}
-		return isSTScreated, StopRetry.Wrap(err, "stop retry")
+		return ensureSTSStatus, StopRetry.Wrap(err4, "stop retry")
 	}
-	return isSTScreated, nil
+	return ensureSTSStatus, nil
 }
 
 func (r *DistributedRedisClusterReconciler) waitPodReady(ctx *syncContext) error {
@@ -232,9 +244,23 @@ func (r *DistributedRedisClusterReconciler) syncCluster(ctx *syncContext, contex
 		r.MetricsClient.RecordRedisOperation(instance.Namespace, instance.Name, metrics.DISPATCH_MASTER, "NA", metrics.FAIL, err.Error())
 		return Cluster.Wrap(err, "DispatchMasters")
 	}
+	//Check if there is any masters that needs to be recovered from failure before we proceed with cluster operations
+	if err := clusterCtx.CheckAndHealCluster(admin, context); err != nil {
+		if clustering.ErrorType(GetType(err)) == clustering.HealReconcile {
+			//We need alert for this metric if its hapenning continually for more than a minute
+			r.MetricsClient.RecordRedisOperation(instance.Namespace, instance.Name, metrics.SELFHEAL_CLUSTER, "NA", metrics.SUCCESS, err.Error())
+			return Requeue.Wrap(err, "HealCluster")
+		}
+		r.MetricsClient.RecordRedisOperation(instance.Namespace, instance.Name, metrics.SELFHEAL_CLUSTER, "NA", metrics.FAIL, err.Error())
+		return Cluster.Wrap(err, "HealCluster")
+	}
 	curMasters := clusterCtx.GetCurrentMasters()
 	newMasters := clusterCtx.GetNewMasters()
 	ctx.reqLogger.Info("masters", "newMasters", len(newMasters), "curMasters", len(curMasters))
+	//This if condition will be satisfied under the following scenarios
+	//1. Cluster is being created for the first time
+	//2. Cluster is recovering from a failure where all the masters are lost
+	//In both the above scenarios, masters will be chosen based on the ranking info and slots will be allocated to them
 	if len(curMasters) == 0 {
 		ctx.reqLogger.Info("Creating cluster")
 		if err := clusterCtx.PlaceSlaves(); err != nil {

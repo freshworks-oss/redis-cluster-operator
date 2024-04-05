@@ -1,7 +1,10 @@
 package clustering
 
 import (
+	"context"
 	"fmt"
+	"sort"
+	"time"
 
 	"github.com/go-logr/logr"
 
@@ -44,6 +47,10 @@ func NewCtx(haconf *redisv1alpha1.HAspec, cluster *redisutil.Cluster, nodes redi
 func (c *Ctx) sortRedisNodeByStatefulSet(nodes redisutil.Nodes) map[string]redisutil.Nodes {
 	nodesByStatefulSet := make(map[string]redisutil.Nodes)
 
+	if c.currentMasters == nil {
+		c.currentMasters = make(redisutil.Nodes, 0)
+	}
+
 	for _, rNode := range nodes {
 		cNode, err := c.cluster.GetNodeByID(rNode.ID)
 		if err != nil {
@@ -62,6 +69,10 @@ func (c *Ctx) sortRedisNodeByStatefulSet(nodes redisutil.Nodes) map[string]redis
 			c.currentMasters = append(c.currentMasters, rNode)
 		}
 	}
+	// sort the current masters by StatefulSet name
+	sort.Slice(c.currentMasters, func(i, j int) bool {
+		return c.currentMasters[i].StatefulSet < c.currentMasters[j].StatefulSet
+	})
 
 	return nodesByStatefulSet
 }
@@ -80,7 +91,7 @@ func (c *Ctx) DispatchMasters() error {
 			var master *redisutil.Node = nil
 			if c.haconfig.HaEnabled {
 				if c.hastatus != redisv1alpha1.HaStatusCreating {
-					c.log.Error(fmt.Errorf("Ha Status not as expected when creating master %s", stsName), "ha status", c.hastatus)
+					c.log.Error(fmt.Errorf("ha status not as expected when creating master %s", stsName), "ha status", "unexpected", c.hastatus)
 				}
 				master = c.PlaceMastersHA(stsName, zoneRankingInfo)
 			} else {
@@ -89,7 +100,7 @@ func (c *Ctx) DispatchMasters() error {
 			if master == nil {
 				return fmt.Errorf("unable to place master for statefulset %s", stsName)
 			} else {
-				c.log.Info("place master", "statefulSet", stsName, "podname", master.PodName, "ip", master.IP, "node", master.NodeName, "zone", master.Zonename)
+				c.log.Info("place master", "statefulSet", stsName, "podname", master.PodName, "ip", master.IP, "node", master.NodeName, "zone", master.Zonename, "current role", master.GetRole())
 			}
 			c.newMastersBySts[stsName] = master
 		} else if len(currentMasterNodes) == 1 {
@@ -153,8 +164,11 @@ func (c *Ctx) PlaceSlaves() error {
 			}
 			if node.GetRole() == redisv1alpha1.RedisClusterNodeRoleSlave {
 				if node.MasterReferent != master.ID {
-					c.log.Error(nil, "master referent conflict", "node ip", node.IP,
-						"current masterID", node.MasterReferent, "expect masterID", master.ID, "master IP", master.IP)
+					/*
+						c.log.Error(nil, "master referent conflict", "node ip", node.IP,
+							"current masterID", node.MasterReferent, "expect masterID", master.ID, "master IP", master.IP)
+					*/
+					c.log.Info("PlaceSlaves", "Trying to attach slave with node ip", node.IP, "to a master which was posisbily a slave earlier", master.IP)
 					c.slavesByMaster[master.ID] = append(c.slavesByMaster[master.ID], node)
 				}
 				continue
@@ -170,9 +184,14 @@ func (c *Ctx) GetCurrentMasters() redisutil.Nodes {
 }
 
 func (c *Ctx) GetNewMasters() redisutil.Nodes {
-	var nodes redisutil.Nodes
+	nodes := make(redisutil.Nodes, 0, len(c.newMastersBySts))
 	for _, node := range c.newMastersBySts {
 		nodes = append(nodes, node)
+	}
+	if len(nodes) != 0 {
+		sort.Slice(nodes, func(i, j int) bool {
+			return nodes[i].StatefulSet < nodes[j].StatefulSet
+		})
 	}
 	return nodes
 }
@@ -181,6 +200,122 @@ func (c *Ctx) GetSlaves() map[string]redisutil.Nodes {
 	return c.slavesByMaster
 }
 
+func (c *Ctx) GetAllSlaves() redisutil.Nodes {
+	slavenodes := make(redisutil.Nodes, 0)
+	if len(c.nodes) != 0 {
+		for _, nodes := range c.nodes {
+			for _, n := range nodes {
+				if n.GetRole() == redisv1alpha1.RedisClusterNodeRoleSlave {
+					slavenodes = append(slavenodes, n)
+				}
+			}
+		}
+	}
+	return slavenodes
+}
+
 func (c *Ctx) GetStatefulsetNodes() map[string]redisutil.Nodes {
 	return c.nodes
+}
+
+func (c *Ctx) GetNodestoScaledandRecover(newMasters redisutil.Nodes, curMasters redisutil.Nodes) (redisutil.Nodes, redisutil.Nodes) {
+	isSlaveinSTS := false
+	recoverMasters := make(redisutil.Nodes, 0)
+	scaleUpMasters := make(redisutil.Nodes, 0)
+
+	for _, newMaster := range newMasters {
+		//First check if the new master is already in the current masters if so continue to the next new master
+		if _, err := curMasters.GetNodeByID(newMaster.ID); err == nil {
+			continue
+		}
+		isSlaveinSTS = false
+		//If the new master is not in the current masters, then check if there are any slaves in the STS where the new master is placed
+		for _, node := range c.nodes[newMaster.StatefulSet] {
+
+			if node.GetRole() == redisv1alpha1.RedisClusterNodeRoleSlave {
+				isSlaveinSTS = true
+				break
+			}
+		}
+		//If the new master is not in the current masters and there are no slaves in the STS where the new master is placed, then add the new master to the scaled up masters list
+		if !isSlaveinSTS {
+			c.log.Info("New Shard is scaled up", "STS name", newMaster.StatefulSet, "New Master IP", newMaster.IP)
+			scaleUpMasters = append(scaleUpMasters, newMaster)
+		} else {
+			c.log.Info("there are slaves in the STS where the new master is placed , this STS requires recovery", "NEW Master IP", newMaster.IP, "STS", newMaster.StatefulSet)
+			recoverMasters = append(recoverMasters, newMaster)
+		}
+
+	}
+	return scaleUpMasters, recoverMasters
+}
+
+func (c *Ctx) CheckAndHealCluster(admin redisutil.IAdmin, ctx context.Context) error {
+
+	curMasters := c.GetCurrentMasters()
+	newMasters := c.GetNewMasters()
+	curSlaves := c.GetAllSlaves()
+	var isRecoveryDone bool = false
+
+	//If GetCurrentMasters is equal to expected master , then healings are not required
+	if len(curMasters) == c.expectedMasterNum {
+		return nil
+	}
+	//If this is the first time cluster is being created, then no healing is required
+	//First time cluster creation is identified by the fact that there are no current masters
+	//and new masters are equal to expected master number  and hastatus is creating and there are no slaves in the clusters
+	if len(curMasters) == 0 && len(newMasters) == c.expectedMasterNum && len(curSlaves) == 0 {
+		return nil
+	}
+
+	//If the current masters is less than the new masters and if not a new cluster creation
+	// then it could be one of the 2 possibilities , either a new masters have scaled up or
+	//there is a cluster failure which might need a recovery get the list of masters which needs recovery and the list of masters which needs to be scaled up
+	if len(curMasters) < len(newMasters) {
+
+		_, recoverMasters := c.GetNodestoScaledandRecover(newMasters, curMasters)
+
+		if len(recoverMasters) > 0 {
+			//Now we have got a list of  masters which needs recovery we should recover only when the current master count is less than the expected number of masters to reach quorum
+			//If there is a quorum then we should not recover the masters and let the cluster recover by itself
+			if len(curMasters) > ((c.expectedMasterNum / 2) + 1) {
+				c.log.Info("Current masters are more than quorum, no need to recover the cluster", "Current Master Count", len(curMasters))
+				return HealReconcile.New("quorum available, Wait for cluster to recover")
+			}
+			c.log.Info("Recovering the cluster", "RecoverMasters", recoverMasters)
+			for _, rnode := range recoverMasters {
+				if rnode.GetRole() != redisv1alpha1.RedisClusterNodeRoleSlave {
+					c.log.Error(fmt.Errorf("node to recover is not a slave"), "Node is not a slave", "Node IP", rnode.IP)
+					return HealFailure.New("node to recover is not a slave")
+				}
+				//Here we are assuming that slave chosen by ranking algorithm is the best slave to promote as master
+				err := admin.FailoverSlaveToMaster(ctx, rnode, redisutil.RedisFailoverTakeover)
+				if err != nil {
+					c.log.Error(err, "Error while recovering the cluster by failover a slave to master", "Slave IP", rnode.IP)
+					return HealFailure.Wrap(err, "Failover Takeover Failed")
+				}
+				//Wait for some time for the cluster to recover
+				time.Sleep(time.Second)
+				_, rplInfo, err := admin.GetReplicationStatus(rnode.IP, ctx)
+				if err != nil {
+					c.log.Error(err, "Error while getting replication status or Recovery Failed", "Slave IP", rnode.IP)
+					return HealReconcile.Wrap(err, "Get Replication Status Failed or Recovery Failover Failed")
+				} else if rplInfo.Role != string(redisv1alpha1.RedisClusterNodeRoleMaster) {
+					c.log.Error(fmt.Errorf("replica Failover Failed"), "Recovery Failed - Replica Failover Failed", "Slave IP", rnode.IP)
+					return HealFailure.New("Replica Failover Failed")
+				} else {
+					c.log.Info("Recovery Success", "Recovered Master IP", rnode.IP)
+					isRecoveryDone = true
+				}
+
+			}
+		}
+
+	}
+	if isRecoveryDone {
+		err := fmt.Errorf("cluster Recovery Sucessful")
+		return HealReconcile.Wrap(err, "checkAndHealCluster - cluster Recovery Sucessful by failover")
+	}
+
+	return nil
 }

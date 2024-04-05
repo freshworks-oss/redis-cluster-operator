@@ -167,14 +167,10 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 		cluster:   instance,
 		reqLogger: reqLogger,
 	}
-	var isStsCreated bool = false
+	var STSEnsureStatus rediskunv1alpha1.StsEnsureStatus = rediskunv1alpha1.STSNotEnsured
 	var haStatus rediskunv1alpha1.HaStatus = rediskunv1alpha1.HaStatusUnknown
-	isStsCreated, err = r.ensureCluster(syncCtx)
-	if !isStsCreated {
-		if err != nil {
-			r.MetricsClient.EnsureCluster(request.Namespace, request.Name, metrics.FAIL, "STS_CREATION", err.Error())
-		}
-	}
+	STSEnsureStatus, err = r.ensureCluster(syncCtx)
+
 	// set p0 metric if err is StopRetry
 	if err != nil {
 		switch GetType(err) {
@@ -184,7 +180,8 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 		}
 		reqLogger.WithValues("err", err).Info("ensureCluster")
 		newStatus := instance.Status.DeepCopy()
-		UpdateHaStatus(instance, newStatus, isStsCreated)
+		UpdateHaStatus(instance, newStatus, "", STSEnsureStatus)
+		reqLogger.Info("ensureCluster", "STSEnsureStatus", STSEnsureStatus, "HaStatus", newStatus.HAStatus)
 		SetClusterScaling(newStatus, err.Error())
 		r.updateClusterIfNeed(instance, newStatus, reqLogger)
 		return reconcile.Result{RequeueAfter: requeueAfter}, nil
@@ -195,7 +192,8 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 		if err != nil {
 			r.MetricsClient.EnsureCluster(request.Namespace, request.Name, metrics.FAIL, "GET_SECRETVERSION", err.Error())
 		}
-		UpdateHaStatus(instance, newStatus, isStsCreated)
+		UpdateHaStatus(instance, newStatus, "", STSEnsureStatus)
+		reqLogger.Info("ensureCluster", "STSEnsureStatus", STSEnsureStatus, "HaStatus", newStatus.HAStatus)
 		r.updateClusterIfNeed(instance, newStatus, reqLogger)
 	}
 
@@ -265,59 +263,55 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 	//reqLogger.WithValues("adminpassword:", password).Info("please check adminpass")
 	// Setting this context for request flow
 
-	clusterInfos, clusterinfoerr := admin.GetClusterInfos(context)
-	if clusterinfoerr != nil {
-		r.MetricsClient.EnsureCluster(request.Namespace, request.Name, metrics.MISC, "BUILD_CLUSTER_INFO", clusterinfoerr.Error())
-		if clusterErr, ok := clusterinfoerr.(redisutil.ClusterInfosError); ok {
-			if clusterErr.Partial() {
-				reqLogger.Info("GetClusterInfos", "clusterInfos Error", clusterinfoerr)
-				return reconcile.Result{RequeueAfter: requeueAfter}, nil
-			}
-		} else {
-			return reconcile.Result{}, Redis.Wrap(clusterinfoerr, "GetClusterInfos")
-		}
-	}
 	// check if the cluster is in a state where it needs healing
-	requeue, err := syncCtx.healer.Heal(instance, clusterInfos, admin, context)
+	requeue, err := syncCtx.healer.Heal(instance, admin, context)
 	if err != nil {
 		r.MetricsClient.EnsureCluster(instance.Namespace, instance.Name, metrics.MISC, metrics.HEAL, err.Error())
 		// raise alert if a particular tenant is in heal loop for more than 5 mins (rateof incr 5m)
-		return reconcile.Result{}, Redis.Wrap(err, "Heal")
+		if !requeue {
+			return reconcile.Result{}, Redis.Wrap(err, "Heal")
+		}
 	}
+
 	if requeue {
 		return reconcile.Result{RequeueAfter: requeueAfter}, nil
 	}
 
-	syncCtx.admin = admin
-	syncCtx.clusterInfos = clusterInfos
-	reqLogger.V(6).Info("debug waitForClusterJoin", "cluster infos", syncCtx.clusterInfos)
-	//cluster view inconsistent, wait for cluster join
+	clusterInfos, clusterinfoerr := admin.GetClusterInfos(context)
 	if clusterinfoerr != nil {
+		reqLogger.V(6).Info("debug waitForClusterJoin", "cluster infos", syncCtx.clusterInfos)
+		r.MetricsClient.EnsureCluster(request.Namespace, request.Name, metrics.MISC, "BUILD_CLUSTER_INFO", clusterinfoerr.Error())
+
 		clusterErr := clusterinfoerr.(redisutil.ClusterInfosError)
-		if clusterErr.Inconsistent() {
+		if clusterErr.Partial() {
+			reqLogger.Info("GetClusterInfos", "clusterInfos Error", clusterinfoerr)
+			return reconcile.Result{RequeueAfter: requeueAfter}, nil
+		} else if clusterErr.Inconsistent() {
 			reqLogger.Info("ClusterInfosError", "Cluster View inconsistent", "calling waitForClusterJoin")
-			err = r.waitForClusterJoin(syncCtx, context, instance)
-			if err != nil {
+			syncCtx.admin = admin
+			syncCtx.clusterInfos = clusterInfos
+			if err := r.waitForClusterJoin(syncCtx, context, instance); err != nil {
 				r.MetricsClient.EnsureCluster(instance.Namespace, instance.Name, metrics.FAIL, metrics.CLUSTER_JOIN_FAILURE, err.Error())
 				newStatus := instance.Status.DeepCopy()
 				SetClusterFailed(newStatus, err.Error())
 				r.updateClusterIfNeed(instance, newStatus, reqLogger)
 				return reconcile.Result{}, err
 			}
-			clusterInfos, err = syncCtx.admin.GetClusterInfos(context)
-			if clusterInfos.Status == redisutil.ClusterInfosPartial {
-				reqLogger.Info("GetClusterInfos", "clusterInfos Error", err)
-				return reconcile.Result{RequeueAfter: requeueAfter}, nil
-			}
-			if err != nil {
+
+			if clusterInfos, err = syncCtx.admin.GetClusterInfos(context); err != nil || clusterInfos.Status == redisutil.ClusterInfosPartial {
 				r.MetricsClient.EnsureCluster(instance.Namespace, instance.Name, metrics.MISC, metrics.REQUEUE, err.Error())
-				// raise alert if a particular tenant is in REQUEUE loop for more than 5 mins (rateof incr 5m)
-				reqLogger.Info("ClusterInfosError", "Cluster View inconsistent after waitForClusterJoin", "requeing")
+				reqLogger.Info("Cluster view remains inconsistent or partial after waiting for join", "error", err)
 				return reconcile.Result{RequeueAfter: requeueAfter}, nil
 			}
+
+		} else {
+			return reconcile.Result{}, Redis.Wrap(clusterinfoerr, "GetClusterInfos")
 		}
 	}
+
+	syncCtx.admin = admin
 	syncCtx.clusterInfos = clusterInfos
+
 	err1 := UpdateClusterInfos(clusterInfos, syncCtx.pods, r.Client, reqLogger)
 	if err1 != nil {
 		r.MetricsClient.RecordRedisOperation(instance.Namespace, instance.Name, metrics.GET_CLUSTER_NODES_ALL, "NA", metrics.FAIL, err1.Error())
@@ -385,6 +379,10 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 		reqLogger.Info(">>>>>> clustering")
 		err = r.syncCluster(syncCtx, context, instance)
 		if err != nil {
+			if GetType(err) == Requeue {
+				reqLogger.Info("syncCluster", "Requeue - Possibly for Trying to self heal the cluster", err)
+				return reconcile.Result{RequeueAfter: requeueAfter}, nil
+			}
 			r.MetricsClient.EnsureCluster(instance.Namespace, instance.Name, metrics.FAIL, metrics.CLUSTERING, err.Error())
 			newStatus := instance.Status.DeepCopy()
 			SetClusterFailed(newStatus, err.Error())

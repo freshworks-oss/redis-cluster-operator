@@ -26,13 +26,15 @@ const (
 type clusterstate string
 
 const (
-	ClusterStateUnknown      = "Unknown"
-	ClusterStateNOK          = "NOK"
-	ClusterStateOK           = "OK"
-	ClusterReasonScaling     = "Scaling"
-	ClusterReasonReplicaNOK  = "ReplicaNotReady"
-	ClusterStatusFail        = "ClusterStatusFail"
-	ClusterStatusNotRetrived = "ClusterStatusNotRetrived"
+	ClusterStateUnknown     = "ClusterStateUnknown"
+	ClusterStateFail        = "ClusterStateFail"
+	ClusterStateOK          = "ClusterStateOK"
+	ClusterStateGetFailed   = "ClusterStateGetFailed"
+	ClusterReasonScaling    = "ClusterScaling"
+	ClusterReasonReplicaNOK = "ReplicaNotReady"
+	ClusterStatusNOK        = "ClusterStatusNOK"
+	ClusterStatusOK         = "ClusterStatusOK"
+	ClusterStatusUnknown    = "ClusterStatusUnknown"
 )
 
 // NodeInfos representation of a node info, i.e. data returned by the CLUSTER NODE redis command
@@ -64,7 +66,7 @@ func NewClusterInfos() *ClusterInfos {
 	return &ClusterInfos{
 		Infos:            make(map[string]*NodeInfos),
 		Status:           ClusterInfosUnset,
-		ClusterState:     ClusterStateUnknown,
+		ClusterState:     ClusterStatusUnknown,
 		ClusterNokReason: make(map[string]string),
 	}
 }

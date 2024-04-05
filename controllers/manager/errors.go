@@ -22,6 +22,10 @@ const (
 	Cluster
 	// StopRetry stop retry error
 	StopRetry
+	//Ensure PDB error
+	EnsurePDB
+	//Ensure STS error
+	EnsureSTS
 )
 
 type customError struct {
