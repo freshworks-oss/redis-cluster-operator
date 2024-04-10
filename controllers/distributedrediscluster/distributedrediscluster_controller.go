@@ -408,12 +408,9 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 	newStatus := buildClusterStatus(newClusterInfos, syncCtx.pods, instance, reqLogger)
 	if instance.Spec.HaConfig.HaEnabled {
 		haRanking := clustering.CreateRankingFromClusterInfo(instance.Spec.HaConfig, newClusterInfos, instance.Spec.MasterSize, instance.Spec.ClusterReplicas, instance.Name, reqLogger)
-		BestRankedMasters, rankerr := haRanking.GetBestRankedMasters()
-		if rankerr != nil {
-			reqLogger.Error(rankerr, "GetBestRankedMasters", "Error when getting best ranked masters", rankerr)
-			return reconcile.Result{RequeueAfter: 20 * time.Second}, nil
-		}
-		haStatus, _, _ = buildHAStatus(newClusterInfos, instance, BestRankedMasters, reqLogger)
+		haRanking.SetCurrentMastersZoneRank()
+
+		haStatus, _, _ = buildHAStatus(newClusterInfos, instance, reqLogger)
 		SetHAStatus(newStatus, haStatus)
 	}
 	clusterHealthOk := CheackandUpdateClusterHealth(newStatus, newClusterInfos, instance, reqLogger)
@@ -494,29 +491,47 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 					r.DeletePodsForHA(instance, delNodes, reqLogger)
 					return reconcile.Result{RequeueAfter: time.Duration(reconcileTime) * time.Second}, nil
 				}
-				BestRankedMasters, rankerr := haRanking.GetBestRankedMasters()
-				if rankerr != nil {
-					reqLogger.Error(rankerr, "GetBestRankedMasters", "Error when getting best ranked masters", rankerr)
-					return reconcile.Result{RequeueAfter: 20 * time.Second}, nil
-				}
+				haRanking.SetCurrentMastersZoneRank()
+
 				//check if any masters needs to be failedover
-				haStatus, displacedMasters, _ := buildHAStatus(newClusterInfos, instance, BestRankedMasters, reqLogger)
+				haStatus, displacedMasters, _ := buildHAStatus(newClusterInfos, instance, reqLogger)
 				if haStatus == rediskunv1alpha1.HaStatusFailed {
+
 					reqLogger.Error(fmt.Errorf("unexpected Error - HaStatusFailed"), "HaStatusFailed When trying to Distribute Masters")
+					return reconcile.Result{RequeueAfter: time.Duration(reconcileTime) * time.Second}, nil
+
 				} else if haStatus == rediskunv1alpha1.HaStatusRedistribute && len(displacedMasters) > 0 {
 					reqLogger.Info("HaStatusRedistribute - Distribute Masters", "displacedMasters", displacedMasters)
-					//Distribute Masters
-					err := r.FailoverMastersbySTS(instance, displacedMasters, newClusterInfos, BestRankedMasters, admin, context, reqLogger)
-					if err != nil {
-						reqLogger.Error(err, "HaStatusRedistribute - FailoverMastersbySTS", err)
-						return reconcile.Result{RequeueAfter: time.Duration(reconcileTime) * time.Second}, nil
+					//Re Distribute Masters by Failover
+					for _, master := range displacedMasters {
+
+						reqLogger.Info("HaStatusRedistribute - Distribute Masters", "master", master)
+						BestRankedMaster, _ := haRanking.GetBestRankedMasterinSTS(master.StatefulSet)
+
+						if BestRankedMaster == nil {
+							reqLogger.Error(fmt.Errorf("unexpected Error - BestRankedMaster is nil"), "HaStatusRedistribute - BestRankedMaster")
+							return reconcile.Result{RequeueAfter: time.Duration(reconcileTime) * time.Second}, nil
+						} else if BestRankedMaster == master {
+							reqLogger.Info("HaStatusRedistribute - BestRankedMaster is same as displacedMaster so no failover needed", "master", master)
+							continue
+						}
+
+						err := r.FailoverMastersbySTS(instance, master, newClusterInfos, BestRankedMaster, admin, context, reqLogger)
+						if err != nil {
+							reqLogger.Error(err, "HaStatusRedistribute - FailoverMastersbySTS", "Failed", err)
+							if GetType(err) == Requeue {
+								return reconcile.Result{RequeueAfter: time.Duration(reconcileTime) * time.Second}, nil
+							} else {
+								return reconcile.Result{}, err
+							}
+						}
 					}
 					reqLogger.Info("HaStatusHealthy - HaHealing Completed")
 					//Update the annotation reDistributeNode to false in cluster CRD to stop selfheal.
 					//Selfheal should occur only if human operator sets annotation reDistributeNode as true on cluster crd.
 					//Once selfheal is completed, setting this annotation to false to stop auto selfheal as it is doesn't consider production traffic.
 					if err := r.CrController.UpdateCrdAnnotations(instance, "reDistributeNode", "false"); err != nil {
-						reqLogger.Error(err, "UpdateCrdAnnotations - Failed to update annotation", err)
+						reqLogger.Error(err, "UpdateCrdAnnotations", "Failed to update annotation", err)
 						return reconcile.Result{}, err
 					}
 					return reconcile.Result{RequeueAfter: time.Duration(reconcileTime) * time.Second}, nil
@@ -558,7 +573,7 @@ func (r *DistributedRedisClusterReconciler) isScalingDown(cluster *rediskunv1alp
 // This function is called to identify the list of replica nodes to delete per stateful set to bring back the HA distribution
 // This function assumes that its called only when all the zone have become active again and there is atleast one node available
 // per zone , even without any pods scheduled
-// This function would return a list of nodes to be deleted per statefulset if there is a need along with number of nodes to be deleted
+// This function would return a list of nodes to be deleted per statefulset if there is a need, along with number of nodes to be deleted
 // if there is no need for nodes to be deleted the list would be empty and the count would be zero
 func (r *DistributedRedisClusterReconciler) getListofNodestoDelete(cluster *rediskunv1alpha1.DistributedRedisCluster, haRanking *clustering.RankingInfo, reqLogger logr.Logger) (int32, map[string][]*redisutil.Node, error) {
 	var nodesToDelete map[string][]*redisutil.Node = make(map[string][]*redisutil.Node)
@@ -573,8 +588,7 @@ func (r *DistributedRedisClusterReconciler) getListofNodestoDelete(cluster *redi
 	sort.Strings(zones)
 
 	//In cases where the number of zones is greater than the number of redis replicas + master,
-	//each zone is expected to have min 0 or 1 redis nodes only , so its good enough the get the number of nodes to delete
-	//based on the maxnumber of nodes avaiable in the zone, and min number of nodes expecected per zone is not needed
+	//each zone is expected to have min 0 or 1 redis nodes only , so its good enough the get the number of nodes to delete based on the maxnumber of nodes avaiable in the zone, and min number of nodes expecected per zone is not needed
 	if int(1+cluster.Spec.ClusterReplicas) > len(zones) {
 		isDeleteNodesbyMinNodecnt = true
 	}
@@ -661,32 +675,31 @@ func (r *DistributedRedisClusterReconciler) getListofNodestoDelete(cluster *redi
 
 }
 
-func (r *DistributedRedisClusterReconciler) FailoverMastersbySTS(cluster *rediskunv1alpha1.DistributedRedisCluster, displacedMasters redisutil.Nodes, clusterinfos *redisutil.ClusterInfos, BestRankedMasters map[string]*redisutil.Node, admin redisutil.IAdmin, context context.Context, reqLogger logr.Logger) error {
+func (r *DistributedRedisClusterReconciler) FailoverMastersbySTS(cluster *rediskunv1alpha1.DistributedRedisCluster, displacedMaster *redisutil.Node, clusterinfos *redisutil.ClusterInfos, BestRankedMaster *redisutil.Node, admin redisutil.IAdmin, context context.Context, reqLogger logr.Logger) error {
 
-	for _, node := range displacedMasters {
-		stsname := node.StatefulSet
-		failoverNode := BestRankedMasters[stsname]
+	failoverNode := BestRankedMaster
 
-		if failoverNode.Role == redisutil.RedisMasterRole {
-			if failoverNode.TotalSlots() > 0 {
-				// Possibility of Multimaster scenario Manual operator involment needed
-				reqLogger.Error(fmt.Errorf("possible Multimaster"), "Node already master in appropriate zone Possibility of Multimaster", "nodeID", node.ID, "nodeIP", node.IP, "nodeRole", node.Role, "nodeStatefulSet", node.StatefulSet, "nodeZone", node.Zonename, "nodePodName", node.PodName, "nodeNodeName", node.NodeName)
-			} else {
-				reqLogger.Error(fmt.Errorf("possible dataloss"), "Node to be promoted to master has no slots associated possibility of data loss", "nodeID", node.ID, "nodeIP", node.IP, "nodeRole", node.Role, "nodeStatefulSet", node.StatefulSet, "nodeZone", node.Zonename, "nodePodName", node.PodName, "nodeNodeName", node.NodeName)
-			}
+	if failoverNode.Role == redisutil.RedisMasterRole {
+		if failoverNode.TotalSlots() > 0 {
+			// Possibility of Multimaster scenario Manual operator involment needed
+			reqLogger.Error(fmt.Errorf("possible Multimaster"), "Node already master in appropriate zone Possibility of Multimaster", "nodeID", failoverNode.ID, "nodeIP", failoverNode.IP, "nodeRole", failoverNode.Role, "nodeStatefulSet", failoverNode.StatefulSet, "nodeZone", failoverNode.Zonename, "nodePodName", failoverNode.PodName, "nodeNodeName", failoverNode.NodeName)
 
-		} else if failoverNode.Role == redisutil.RedisSlaveRole && failoverNode.LinkState == redisutil.RedisLinkStateConnected {
-			reqLogger.Info("Node to be promoted to master", "nodeID", failoverNode.ID, "nodeIP", failoverNode.IP, "nodeRole", failoverNode.Role, "nodeStatefulSet", failoverNode.StatefulSet, "nodeZone", failoverNode.Zonename, "nodePodName", failoverNode.PodName, "nodeNodeName", failoverNode.NodeName)
-			//promote node to master
-			err := admin.FailoverSlaveToMaster(context, failoverNode, redisutil.RedisFailoverDefault)
-			if err != nil {
-				reqLogger.Error(err, "FailoverSlaveToMaster Failed", err)
-				return err
-			}
 		} else {
-			return fmt.Errorf("invalid Role %s", node.Role)
+			reqLogger.Error(fmt.Errorf("possible dataloss"), "Node to be promoted to master has no slots associated possibility of data loss", "nodeID", failoverNode.ID, "nodeIP", failoverNode.IP, "nodeRole", failoverNode.Role, "nodeStatefulSet", failoverNode.StatefulSet, "nodeZone", failoverNode.Zonename, "nodePodName", failoverNode.PodName, "nodeNodeName", failoverNode.NodeName)
 		}
+		return StopRetry.New("possible Multimaster or Dataloss by failover")
 
+	} else if failoverNode.Role == redisutil.RedisSlaveRole && failoverNode.LinkState == redisutil.RedisLinkStateConnected {
+		reqLogger.Info("Node to be promoted to master", "nodeID", failoverNode.ID, "nodeIP", failoverNode.IP, "nodeRole", failoverNode.Role, "nodeStatefulSet", failoverNode.StatefulSet, "nodeZone", failoverNode.Zonename, "nodePodName", failoverNode.PodName, "nodeNodeName", failoverNode.NodeName)
+		//promote node to master
+		err := admin.FailoverSlaveToMaster(context, failoverNode, redisutil.RedisFailoverDefault)
+		if err != nil {
+			reqLogger.Error(err, "FailoverSlaveToMaster", "Failed", err)
+			return Requeue.Wrap(err, "FailoverSlaveToMaster Failed")
+		}
+	} else {
+		err1 := fmt.Errorf("invalid Role %s", failoverNode.Role)
+		return StopRetry.Wrap(err1, "FailoverMastersbySTS")
 	}
 
 	return nil

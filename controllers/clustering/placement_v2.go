@@ -296,7 +296,7 @@ func (c *Ctx) CheckAndHealCluster(admin redisutil.IAdmin, ctx context.Context) e
 				}
 				//Wait for some time for the cluster to recover
 				time.Sleep(time.Second)
-				_, rplInfo, err := admin.GetReplicationStatus(rnode.IP, ctx)
+				_, rplInfo, err := admin.GetReplicationStatus(rnode.IPPort(), ctx)
 				if err != nil {
 					c.log.Error(err, "Error while getting replication status or Recovery Failed", "Slave IP", rnode.IP)
 					return HealReconcile.Wrap(err, "Get Replication Status Failed or Recovery Failover Failed")

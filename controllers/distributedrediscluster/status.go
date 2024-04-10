@@ -13,6 +13,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	redisv1alpha1 "github.com/dinesh-murugiah/rediscluster-operator/api/v1alpha1"
+	"github.com/dinesh-murugiah/rediscluster-operator/controllers/clustering"
 	"github.com/dinesh-murugiah/rediscluster-operator/resources/configmaps"
 	utils "github.com/dinesh-murugiah/rediscluster-operator/utils/commonutils"
 	"github.com/dinesh-murugiah/rediscluster-operator/utils/k8sutil"
@@ -123,7 +124,7 @@ func CheckallZonesActive(cluster *redisv1alpha1.DistributedRedisCluster, reqLogg
 	}
 }
 
-func buildHAStatus(clusterInfos *redisutil.ClusterInfos, cluster *redisv1alpha1.DistributedRedisCluster, rankedMasters map[string]*redisutil.Node, reqLogger logr.Logger) (redisv1alpha1.HaStatus, redisutil.Nodes, error) {
+func buildHAStatus(clusterInfos *redisutil.ClusterInfos, cluster *redisv1alpha1.DistributedRedisCluster, reqLogger logr.Logger) (redisv1alpha1.HaStatus, redisutil.Nodes, error) {
 
 	var haPlacedMasterCount int32 = 0
 	var misplacedMasters redisutil.Nodes = make([]*redisutil.Node, 0)
@@ -144,8 +145,8 @@ func buildHAStatus(clusterInfos *redisutil.ClusterInfos, cluster *redisv1alpha1.
 	}
 
 	for _, node := range masterNodes {
-		reqLogger.Info("buildHAStatus", "stsname", node.StatefulSet, "zone", node.Zonename)
-		if rankedMasters[node.StatefulSet].ID == node.ID {
+
+		if node.ZoneDistributionRank >= clustering.HaplacedMasterRankThreshold {
 			haPlacedMasterCount++
 		} else {
 			misplacedMasters = append(misplacedMasters, node)
@@ -387,6 +388,11 @@ func UpdateHaStatus(instance *redisv1alpha1.DistributedRedisCluster, newStatus *
 			SetHAStatus(newStatus, redisv1alpha1.HaStatusCreating)
 		} else if stsStatus == redisv1alpha1.STSUpdated {
 			SetHAStatus(newStatus, redisv1alpha1.HaStatusUpdating)
+		} else {
+			if newStatus.HAStatus == "" {
+				SetHAStatus(newStatus, redisv1alpha1.HaStatusCreating)
+			}
+
 		}
 	}
 

@@ -243,7 +243,7 @@ func (c *Ctx) retrieveSlotToMigrateFromRemovedNodes(newMasterNodes, oldMasterNod
 	slotToMigrateByNode := make(map[string][]redisutil.Slot)
 	var removedNodes redisutil.Nodes
 	for _, old := range oldMasterNodes {
-		c.log.V(6).Info("--- oldMasterNode:", old.ID)
+		c.log.V(6).Info("retrieveSlotToMigrateFromRemovedNodes", "--- oldMasterNode:", old.ID)
 		isPresent := false
 		for _, new := range newMasterNodes {
 			if old.ID == new.ID {

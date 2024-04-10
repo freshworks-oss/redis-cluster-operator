@@ -53,6 +53,7 @@ type Node struct {
 	MasterReferent   string
 	LastIOSecs       int64
 	SlaveReplOffset  int64
+	MasterLinkStatus string
 	MasterReplOffset int64
 	FailStatus       []string
 	PingSent         int64

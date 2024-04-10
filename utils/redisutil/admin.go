@@ -23,6 +23,10 @@ const (
 	ResetHard = "HARD"
 	// ResetSoft SOFT mode for RESET command
 	ResetSoft = "SOFT"
+	//Timeout in seconds waiting for role change after failover
+	RoleChangeTimeout = 20
+	//Interval in seconds to check for role change after failover
+	RoleChangeInterval = 1
 )
 
 // Redis Status Redis server status
@@ -209,6 +213,7 @@ func (a *Admin) GetClusterInfos(ctx context.Context) (*ClusterInfos, error) {
 				nodeinfos.Node.LastIOSecs = replinfo.LastIoSecondsAgo
 				nodeinfos.Node.SlaveReplOffset = replinfo.SlaveReplicationOffset
 				nodeinfos.Node.MasterReplOffset = replinfo.MasterReplicationOffset
+				nodeinfos.Node.MasterLinkStatus = replinfo.MasterLinkStatus
 
 			}
 			//Check for Flags and if any failed update the cluster status
@@ -353,10 +358,28 @@ func (a *Admin) FailoverSlaveToMaster(ctx context.Context, slave *Node, option R
 	if resp.Err() != nil {
 		return err
 	}
-	slave.SetReferentMaster("")
-	slave.SetRole(RedisMasterRole)
+	// Wait for the node to become a master or timeout.
+	timeout := time.After(RoleChangeTimeout * time.Second)
+	ticker := time.NewTicker(RoleChangeInterval * time.Second)
+	defer ticker.Stop()
 
-	return nil
+	for {
+		select {
+		case <-timeout:
+			return fmt.Errorf("timeout waiting for node %s to become master", slave.IPPort())
+		case <-ticker.C:
+			_, info, err := a.GetReplicationStatus(slave.IPPort(), ctx)
+			if err != nil {
+				return fmt.Errorf("error checking role of node %s: %w", slave.IPPort(), err)
+			}
+
+			if info.Role == RedisMasterRole {
+				slave.SetRole(RedisMasterRole)
+				slave.SetReferentMaster("")
+				return nil
+			}
+		}
+	}
 }
 
 // AttachSlaveToMaster attach a slave to a master node
@@ -534,6 +557,7 @@ func (a *Admin) GetAllConfig(ctx context.Context, c *redis.Client, addr string) 
 	return convertedMap, err
 }
 
+/*
 var parseConfigMap = map[string]int8{
 	"maxmemory":                  0,
 	"proto-max-bulk-len":         0,
@@ -551,6 +575,7 @@ var parseConfigMap = map[string]int8{
 	// TODO parse client-output-buffer-limit
 	//"client-output-buffer-limit": 0,
 }
+*/
 
 // SetConfigIfNeed set redis config
 func (a *Admin) SetConfigIfNeed(ctx context.Context, newConfig map[string]string) error {
@@ -896,6 +921,6 @@ func (a *Admin) GetReplicationStatus(ip string, ctx context.Context) (string, Re
 	} else {
 		status = status + "-" + ReplicaStatusUnknown
 	}
-	return status, replInfo, fmt.Errorf("Replica status NOK")
+	return status, replInfo, fmt.Errorf("replica status NOK")
 
 }
