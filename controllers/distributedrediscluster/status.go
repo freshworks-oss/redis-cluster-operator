@@ -5,7 +5,6 @@ import (
 	"math"
 	"reflect"
 	"sort"
-	"strconv"
 	"strings"
 
 	"github.com/go-logr/logr"
@@ -105,6 +104,7 @@ func CheackandUpdateClusterHealth(clusterStatus *redisv1alpha1.DistributedRedisC
 func CheckallZonesActive(cluster *redisv1alpha1.DistributedRedisCluster, reqLogger logr.Logger, Client client.Client) (bool, int32, error) {
 
 	var activeZones int32 = 0
+	var activeZonenames []string = make([]string, 0, len(cluster.Spec.HaConfig.ZonesInfo))
 	nodectrl := k8sutil.NewNodeController(Client)
 	for zone, _ := range cluster.Spec.HaConfig.ZonesInfo {
 		zoneactive, err := nodectrl.CheckZoneAvailable(zone)
@@ -112,22 +112,27 @@ func CheckallZonesActive(cluster *redisv1alpha1.DistributedRedisCluster, reqLogg
 			reqLogger.Error(err, "unable to check zone availability for", "zone", zone)
 			return false, 0, err
 		}
-		reqLogger.Info("CheckallZonesActive", "Zone name:", zone, "zoneactive:", zoneactive)
 		if zoneactive {
 			activeZones = activeZones + 1
+			activeZonenames = append(activeZonenames, zone)
 		}
 	}
 	if activeZones == int32(len(cluster.Spec.HaConfig.ZonesInfo)) {
+		reqLogger.Info("CheckallZonesActive - All Zones Active", "Active Zones:", activeZonenames)
 		return true, activeZones, nil
 	} else {
+		reqLogger.Info("CheckallZonesActive - Not all Zones Active", "Active Zones:", activeZonenames)
 		return false, activeZones, nil
 	}
 }
 
-func buildHAStatus(clusterInfos *redisutil.ClusterInfos, cluster *redisv1alpha1.DistributedRedisCluster, reqLogger logr.Logger) (redisv1alpha1.HaStatus, redisutil.Nodes, error) {
+func buildHAStatus(clusterInfos *redisutil.ClusterInfos, cluster *redisv1alpha1.DistributedRedisCluster, reqLogger logr.Logger) (*clustering.RankingInfo, redisv1alpha1.HaStatus, redisutil.Nodes, error) {
 
 	var haPlacedMasterCount int32 = 0
 	var misplacedMasters redisutil.Nodes = make([]*redisutil.Node, 0)
+
+	haRanking := clustering.CreateRankingFromClusterInfo(cluster.Spec.HaConfig, clusterInfos, cluster.Spec.MasterSize, cluster.Spec.ClusterReplicas, cluster.Name, reqLogger)
+	haRanking.SetCurrentMastersZoneRank()
 
 	zones := make([]string, 0, len(cluster.Spec.HaConfig.ZonesInfo))
 	for zone := range cluster.Spec.HaConfig.ZonesInfo {
@@ -141,7 +146,7 @@ func buildHAStatus(clusterInfos *redisutil.ClusterInfos, cluster *redisv1alpha1.
 
 	if err != nil || len(masterNodes) != int(cluster.Spec.MasterSize) {
 		reqLogger.Error(err, "unable to retrieve sufficient redis node with the role master")
-		return redisv1alpha1.HaStatusFailed, nil, err
+		return haRanking, redisv1alpha1.HaStatusFailed, nil, err
 	}
 
 	for _, node := range masterNodes {
@@ -158,30 +163,10 @@ func buildHAStatus(clusterInfos *redisutil.ClusterInfos, cluster *redisv1alpha1.
 		for _, node := range misplacedMasters {
 			reqLogger.Info("buildHAStatus", "misplaced master", node.PodName, "misplaced zone", node.Zonename)
 		}
-		return redisv1alpha1.HaStatusRedistribute, misplacedMasters, err
+		return haRanking, redisv1alpha1.HaStatusRedistribute, misplacedMasters, err
 	}
-	return redisv1alpha1.HaStatusHealthy, nil, nil
+	return haRanking, redisv1alpha1.HaStatusHealthy, nil, nil
 
-}
-
-func getSTSindex(stsName string) (int, error) {
-	// Find the last index of '-'
-	lastIndex := strings.LastIndex(stsName, "-")
-	if lastIndex == -1 {
-		err := fmt.Errorf("unable to find the last index of '-' in %s", stsName)
-		return -1, err
-	}
-
-	// Extract the substring after the last '-'
-	stsindexstr := stsName[lastIndex+1:]
-
-	// Check if the substring is a number and return the sts index
-	if stsindex, err := strconv.Atoi(stsindexstr); err == nil {
-		return stsindex, nil
-	} else {
-		err := fmt.Errorf("invalid statefulset index in %s", stsName)
-		return -1, err
-	}
 }
 
 func buildClusterStatus(clusterInfos *redisutil.ClusterInfos, pods []*corev1.Pod,

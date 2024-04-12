@@ -318,24 +318,25 @@ func GetAclStringFromSecrets(conflog logr.Logger, client client.Client, cluster 
 }
 
 // Extract the auth,acldata from secrets.
-func GetAcldataFromSecrets(client client.Client, cluster *redisv1alpha1.DistributedRedisCluster, secretname string) (map[string]string, string, error) {
+func GetAcldataFromSecrets(client client.Client, cluster *redisv1alpha1.DistributedRedisCluster, secretName string) (map[string]string, string, error) {
 	values := make(map[string]string)
 	secret := &corev1.Secret{}
 	err := client.Get(context.TODO(), types.NamespacedName{
-		Name:      secretname,
+		Name:      secretName,
 		Namespace: cluster.Namespace,
 	}, secret)
 	if err != nil {
 		return values, "", err
 	}
-	if len(string(secret.Data["username"])) == 0 ||
-		len(string(secret.Data["password"])) == 0 ||
-		len(string(secret.Data["acl"])) == 0 {
-		return values, secret.ResourceVersion, fmt.Errorf("secret has missing data")
+
+	// Check required fields in the secret
+	requiredFields := []string{"username", "password", "acl"}
+	for _, field := range requiredFields {
+		if data, ok := secret.Data[field]; !ok || len(data) == 0 {
+			return nil, secret.ResourceVersion, fmt.Errorf("secret '%s' is missing data for '%s'", secretName, field)
+		}
+		values[field] = strings.TrimSpace(string(secret.Data[field]))
 	}
-	values["username"] = strings.TrimSpace(string(secret.Data["username"]))
-	values["password"] = strings.TrimSpace(string(secret.Data["password"]))
-	values["acl"] = strings.TrimSpace(string(secret.Data["acl"]))
 
 	return values, secret.ResourceVersion, nil
 }

@@ -188,7 +188,7 @@ func (c *RankingInfo) SetCurrentMastersZoneRank() {
 	}
 }
 
-func (c *RankingInfo) GetBestRankedMasterinSTS(stsname string) (*redisutil.Node, error) {
+func (c *RankingInfo) GetHAPlacedNodeinSTS(stsname string) (*redisutil.Node, error) {
 
 	var bestRankedNode *redisutil.Node = nil
 

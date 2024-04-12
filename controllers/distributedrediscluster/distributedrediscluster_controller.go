@@ -404,13 +404,12 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 		r.MetricsClient.RecordRedisOperation(instance.Namespace, instance.Name, metrics.GET_CLUSTER_NODES_ALL, "NA", metrics.FAIL, err2.Error())
 		reqLogger.Error(err1, "UpdateClusterInfos", "Error when updating cluster infos", err1)
 		return reconcile.Result{RequeueAfter: 10 * time.Second}, nil
+
 	}
+
 	newStatus := buildClusterStatus(newClusterInfos, syncCtx.pods, instance, reqLogger)
 	if instance.Spec.HaConfig.HaEnabled {
-		haRanking := clustering.CreateRankingFromClusterInfo(instance.Spec.HaConfig, newClusterInfos, instance.Spec.MasterSize, instance.Spec.ClusterReplicas, instance.Name, reqLogger)
-		haRanking.SetCurrentMastersZoneRank()
-
-		haStatus, _, _ = buildHAStatus(newClusterInfos, instance, reqLogger)
+		_, haStatus, _, _ = buildHAStatus(newClusterInfos, instance, reqLogger)
 		SetHAStatus(newStatus, haStatus)
 	}
 	clusterHealthOk := CheackandUpdateClusterHealth(newStatus, newClusterInfos, instance, reqLogger)
@@ -479,34 +478,33 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 			// 3. If all zones not active , then check if we need to add annotations to not evict master pods
 			// Inorder for self heal to occur, set reDitributeNodes=true as annotation in respective cluster CRD.
 			if isAllactive && reDitributeNodes {
-				haRanking := clustering.CreateRankingFromClusterInfo(instance.Spec.HaConfig, newClusterInfos, instance.Spec.MasterSize, instance.Spec.ClusterReplicas, instance.Name, reqLogger)
+
+				//check if any masters needs to be failedover
+				haRanking, haStatus, displacedMasters, _ := buildHAStatus(newClusterInfos, instance, reqLogger)
+				if haStatus == rediskunv1alpha1.HaStatusFailed {
+
+					reqLogger.Error(fmt.Errorf("unexpected Error - HaStatusFailed"), "HaStatusFailed When trying to Distribute Masters")
+					return reconcile.Result{RequeueAfter: time.Duration(reconcileTime) * time.Second}, nil
+
+				}
 
 				numofNodestoDel, delNodes, err1 := r.getListofNodestoDelete(instance, haRanking, reqLogger)
 				if err1 != nil {
 					reqLogger.Error(err1, "HaRedistribute - getListofNodestoDelete")
 					return reconcile.Result{RequeueAfter: time.Duration(reconcileTime) * time.Second}, nil
 
-				}
-				if numofNodestoDel > 0 {
+				} else if numofNodestoDel > 0 {
 					r.DeletePodsForHA(instance, delNodes, reqLogger)
 					return reconcile.Result{RequeueAfter: time.Duration(reconcileTime) * time.Second}, nil
 				}
-				haRanking.SetCurrentMastersZoneRank()
 
-				//check if any masters needs to be failedover
-				haStatus, displacedMasters, _ := buildHAStatus(newClusterInfos, instance, reqLogger)
-				if haStatus == rediskunv1alpha1.HaStatusFailed {
-
-					reqLogger.Error(fmt.Errorf("unexpected Error - HaStatusFailed"), "HaStatusFailed When trying to Distribute Masters")
-					return reconcile.Result{RequeueAfter: time.Duration(reconcileTime) * time.Second}, nil
-
-				} else if haStatus == rediskunv1alpha1.HaStatusRedistribute && len(displacedMasters) > 0 {
+				if haStatus == rediskunv1alpha1.HaStatusRedistribute && len(displacedMasters) > 0 {
 					reqLogger.Info("HaStatusRedistribute - Distribute Masters", "displacedMasters", displacedMasters)
 					//Re Distribute Masters by Failover
 					for _, master := range displacedMasters {
 
 						reqLogger.Info("HaStatusRedistribute - Distribute Masters", "master", master)
-						BestRankedMaster, _ := haRanking.GetBestRankedMasterinSTS(master.StatefulSet)
+						BestRankedMaster, _ := haRanking.GetHAPlacedNodeinSTS(master.StatefulSet)
 
 						if BestRankedMaster == nil {
 							reqLogger.Error(fmt.Errorf("unexpected Error - BestRankedMaster is nil"), "HaStatusRedistribute - BestRankedMaster")
@@ -524,9 +522,20 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 							} else {
 								return reconcile.Result{}, err
 							}
+						} else {
+							reqLogger.Info("HaStatusRedistribute - FailoverMastersbySTS - Success", "NewMaster", BestRankedMaster.IP, "zone", BestRankedMaster.Zonename)
+							return reconcile.Result{RequeueAfter: time.Duration(reconcileTime) * time.Second}, nil
 						}
+
 					}
-					reqLogger.Info("HaStatusHealthy - HaHealing Completed")
+					return reconcile.Result{RequeueAfter: time.Duration(reconcileTime) * time.Second}, nil
+
+				} else if haStatus == rediskunv1alpha1.HaStatusHealthy && len(displacedMasters) == 0 {
+					newStatus := instance.Status.DeepCopy()
+					SetHAStatus(newStatus, rediskunv1alpha1.HaStatusHealthy)
+					haStatus = rediskunv1alpha1.HaStatusHealthy
+					r.updateClusterIfNeed(instance, newStatus, reqLogger)
+					reqLogger.Info("HaStatusHealthy - HaHealing Completed , Updating annotation reDistributeNode to false in cluster CRD to stop selfheal.")
 					//Update the annotation reDistributeNode to false in cluster CRD to stop selfheal.
 					//Selfheal should occur only if human operator sets annotation reDistributeNode as true on cluster crd.
 					//Once selfheal is completed, setting this annotation to false to stop auto selfheal as it is doesn't consider production traffic.
@@ -534,12 +543,6 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 						reqLogger.Error(err, "UpdateCrdAnnotations", "Failed to update annotation", err)
 						return reconcile.Result{}, err
 					}
-					return reconcile.Result{RequeueAfter: time.Duration(reconcileTime) * time.Second}, nil
-				} else if haStatus == rediskunv1alpha1.HaStatusHealthy && len(displacedMasters) == 0 {
-					newStatus := instance.Status.DeepCopy()
-					SetHAStatus(newStatus, rediskunv1alpha1.HaStatusHealthy)
-					haStatus = rediskunv1alpha1.HaStatusHealthy
-					r.updateClusterIfNeed(instance, newStatus, reqLogger)
 					return reconcile.Result{RequeueAfter: time.Duration(reconcileTime) * time.Second}, nil
 				}
 			} else {
@@ -551,6 +554,10 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 		} else {
 			reqLogger.Info("HAhealing not required", "haStatus", haStatus)
 			r.MetricsClient.SetClusterOK(instance.Namespace, instance.Name, float64(3))
+			if err := r.CrController.UpdateCrdAnnotations(instance, "reDistributeNode", "false"); err != nil {
+				reqLogger.Error(err, "UpdateCrdAnnotations", "Failed to update annotation", err)
+				return reconcile.Result{}, err
+			}
 		}
 	} else {
 		r.MetricsClient.SetClusterOK(instance.Namespace, instance.Name, float64(1))

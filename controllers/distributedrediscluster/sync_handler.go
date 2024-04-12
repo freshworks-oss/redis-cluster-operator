@@ -91,7 +91,7 @@ func (r *DistributedRedisClusterReconciler) ensureCluster(ctx *syncContext) (red
 }
 
 func (r *DistributedRedisClusterReconciler) waitPodReady(ctx *syncContext) error {
-	if _, err := ctx.healer.FixTerminatingPods(ctx.cluster, 5*time.Minute); err != nil {
+	if _, err := ctx.healer.FixTerminatingPods(ctx.cluster, time.Duration(*ctx.cluster.Spec.TerminationGracePeriod)); err != nil {
 		return Kubernetes.Wrap(err, "FixTerminatingPods")
 	}
 	if err := r.Checker.CheckRedisNodeNum(ctx.cluster); err != nil {
@@ -127,8 +127,8 @@ func (r *DistributedRedisClusterReconciler) validateAndSetDefault(cluster *redis
 
 	// TODO: DR-1173 Move this to validation webhook
 	for _, container := range *cluster.Spec.Monitor {
-		if container.Image == "" || container.Prometheus == nil || container.Prometheus.Port == 0 {
-			err = fmt.Errorf("required fields missing for monitor")
+		if container.Image == "" || container.Prometheus == nil || (container.Prometheus.Port < 1024 || container.Prometheus.Port > 49151) {
+			err = fmt.Errorf("incorrect / required fields missing for monitor")
 			return err
 		}
 	}
@@ -398,45 +398,32 @@ func (r *DistributedRedisClusterReconciler) checkandUpdatePassword(admin redisut
 	SetClusterResetPassword(&ctx.cluster.Status, "Updating ACL's")
 	r.CrController.UpdateCRStatus(ctx.cluster)
 
-	if err := r.Checker.CheckRedisNodeNum(ctx.cluster); err == nil {
-		aclcommands, err := statefulsets.GenerateAclcommands(ctx.reqLogger, r.Client, ctx.cluster, newaclconf, newsecretver)
+	if err := r.Checker.CheckRedisNodeNum(ctx.cluster); err != nil {
+		return nil, err
+	}
+	aclcommands, err := statefulsets.GenerateAclcommands(ctx.reqLogger, r.Client, ctx.cluster, newaclconf, newsecretver)
 
-		if err != nil {
-			return newsecretver, err
+	if err != nil {
+		return newsecretver, err
 
-		} else {
-			if len(aclcommands) != 0 {
-				for _, acl := range aclcommands {
-					for addr, c := range admin.Connections().GetAll() {
-						ctx.reqLogger.Info("Setting ACL for", "address", addr)
-						cmd := strings.Fields(acl)
-						args := make([]interface{}, len(cmd))
-						for i, cm := range cmd {
-							args[i] = cm
-						}
-						resp := c.Do(context, args...)
-						if err := admin.Connections().ValidateResp(context, resp, addr, "unable to set ACL"); err != nil {
-							r.MetricsClient.RecordRedisOperation(cluster.Namespace, cluster.Name, metrics.SET_ACL, addr, metrics.FAIL, err.Error())
-							return nil, err
-						}
-					}
-				}
+	}
+
+	for _, acl := range aclcommands {
+		for addr, c := range admin.Connections().GetAll() {
+			ctx.reqLogger.Info("Setting ACL for", "address", addr)
+			cmd := strings.Fields(acl)
+			args := make([]interface{}, len(cmd))
+			for i, cm := range cmd {
+				args[i] = cm
+			}
+			resp := c.Do(context, args...)
+			if err := admin.Connections().ValidateResp(context, resp, addr, "unable to set ACL"); err != nil {
+				r.MetricsClient.RecordRedisOperation(cluster.Namespace, cluster.Name, metrics.SET_ACL, addr, metrics.FAIL, err.Error())
+				return nil, err
 			}
 		}
-		/*
-			// Update the password recorded in the file /data/redis_password, redis pod preStop hook
-			// need /data/redis_password do CLUSTER FAILOVER
-			cmd := fmt.Sprintf("echo %s > /data/redis_password", adminPassword)
-			if err := r.execer.ExecCommandInPodSet(podSet, "/bin/sh", "-c", cmd); err != nil {
-				return err
-			}
-
-			// Reset all redis pod's password.
-			if err := admin.ResetPassword(newPassword); err != nil {
-				return err
-			}
-		*/
 	}
+
 	return newsecretver, nil
 }
 

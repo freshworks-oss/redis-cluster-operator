@@ -348,7 +348,7 @@ func (a *Admin) FailoverSlaveToMaster(ctx context.Context, slave *Node, option R
 	}
 	var resp *redis.Cmd
 	if option != RedisFailoverDefault {
-		resp = c.Do(ctx, "CLUSTER", "FAILOVER", option)
+		resp = c.Do(ctx, "CLUSTER", "FAILOVER", string(option))
 	} else {
 		resp = c.Do(ctx, "CLUSTER", "FAILOVER")
 	}
@@ -368,7 +368,7 @@ func (a *Admin) FailoverSlaveToMaster(ctx context.Context, slave *Node, option R
 		case <-timeout:
 			return fmt.Errorf("timeout waiting for node %s to become master", slave.IPPort())
 		case <-ticker.C:
-			_, info, err := a.GetReplicationStatus(slave.IPPort(), ctx)
+			info, err := a.GetInfoReplication(slave.IPPort(), ctx)
 			if err != nil {
 				return fmt.Errorf("error checking role of node %s: %w", slave.IPPort(), err)
 			}
@@ -860,19 +860,17 @@ func (a *Admin) ResetPassword(ctx context.Context, newPassword string) error {
 	}
 	return nil
 }
-
-func (a *Admin) GetReplicationStatus(ip string, ctx context.Context) (string, ReplicationInfo, error) {
+func (a *Admin) GetInfoReplication(ipPort string, ctx context.Context) (ReplicationInfo, error) {
 
 	var replInfo ReplicationInfo = ReplicationInfo{}
-	var status string = ReplicaStatusUnknown
 
-	c, err := a.Connections().Get(ctx, ip)
+	c, err := a.Connections().Get(ctx, ipPort)
 	if err != nil {
-		return status, replInfo, err
+		return replInfo, err
 	}
 	info, err := c.Info(context.TODO(), "replication").Result()
 	if err != nil {
-		return status, replInfo, err
+		return replInfo, err
 	}
 
 	lines := strings.Split(info, "\n")
@@ -906,9 +904,22 @@ func (a *Admin) GetReplicationStatus(ip string, ctx context.Context) (string, Re
 		}
 
 		if err != nil {
-			return status, ReplicationInfo{}, fmt.Errorf("failed to parse value for key %s: %v", key, err)
+			return ReplicationInfo{}, fmt.Errorf("failed to parse value for key %s: %v", key, err)
 		}
 	}
+	return replInfo, nil
+}
+func (a *Admin) GetReplicationStatus(ip string, ctx context.Context) (string, ReplicationInfo, error) {
+
+	var replInfo ReplicationInfo = ReplicationInfo{}
+	var status string = ReplicaStatusUnknown
+
+	replInfo, err := a.GetInfoReplication(ip, ctx)
+	if err != nil {
+		a.log.Error(err, "GetInfoReplication failed")
+		return status, replInfo, err
+	}
+
 	if replInfo.MasterLinkStatus == "up" && !replInfo.MasterSyncInProgress && replInfo.MasterHost != "127.0.0.1" {
 		status = ReplicaStatusReady
 		return status, replInfo, nil
@@ -921,6 +932,7 @@ func (a *Admin) GetReplicationStatus(ip string, ctx context.Context) (string, Re
 	} else {
 		status = status + "-" + ReplicaStatusUnknown
 	}
+	a.log.Info("Replica status NOK", "status", status)
 	return status, replInfo, fmt.Errorf("replica status NOK")
 
 }

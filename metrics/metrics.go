@@ -31,6 +31,7 @@ const (
 	SET_ACL                      = "SET_ACL"
 	CLUSTER_MEET                 = "CLUSTER_MEET"
 	GET_CLUSTER_NODES_ALL        = "GET_CLUSTER_NODES_ALL"
+	GET_CLUSTER_INFOS            = "GET_CLUSTER_INFOS"
 	REQUEUE                      = "REQUEUE"
 	HEAL                         = "HEAL"
 	CLUSTER_JOIN_FAILURE         = "CLUSTER_JOIN_FAILURE"

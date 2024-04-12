@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"sort"
-	"time"
 
 	"github.com/go-logr/logr"
 
@@ -222,6 +221,7 @@ func (c *Ctx) GetNodestoScaledandRecover(newMasters redisutil.Nodes, curMasters 
 	isSlaveinSTS := false
 	recoverMasters := make(redisutil.Nodes, 0)
 	scaleUpMasters := make(redisutil.Nodes, 0)
+	var stsNodes redisutil.Nodes = make(redisutil.Nodes, 0)
 
 	for _, newMaster := range newMasters {
 		//First check if the new master is already in the current masters if so continue to the next new master
@@ -230,7 +230,8 @@ func (c *Ctx) GetNodestoScaledandRecover(newMasters redisutil.Nodes, curMasters 
 		}
 		isSlaveinSTS = false
 		//If the new master is not in the current masters, then check if there are any slaves in the STS where the new master is placed
-		for _, node := range c.nodes[newMaster.StatefulSet] {
+		stsNodes = c.nodes[newMaster.StatefulSet]
+		for _, node := range stsNodes {
 
 			if node.GetRole() == redisv1alpha1.RedisClusterNodeRoleSlave {
 				isSlaveinSTS = true
@@ -255,7 +256,6 @@ func (c *Ctx) CheckAndHealCluster(admin redisutil.IAdmin, ctx context.Context) e
 	curMasters := c.GetCurrentMasters()
 	newMasters := c.GetNewMasters()
 	curSlaves := c.GetAllSlaves()
-	var isRecoveryDone bool = false
 
 	//If GetCurrentMasters is equal to expected master , then healings are not required
 	if len(curMasters) == c.expectedMasterNum {
@@ -275,47 +275,40 @@ func (c *Ctx) CheckAndHealCluster(admin redisutil.IAdmin, ctx context.Context) e
 
 		_, recoverMasters := c.GetNodestoScaledandRecover(newMasters, curMasters)
 
-		if len(recoverMasters) > 0 {
-			//Now we have got a list of  masters which needs recovery we should recover only when the current master count is less than the expected number of masters to reach quorum
-			//If there is a quorum then we should not recover the masters and let the cluster recover by itself
-			if len(curMasters) > ((c.expectedMasterNum / 2) + 1) {
-				c.log.Info("Current masters are more than quorum, no need to recover the cluster", "Current Master Count", len(curMasters))
-				return HealReconcile.New("quorum available, Wait for cluster to recover")
-			}
-			c.log.Info("Recovering the cluster", "RecoverMasters", recoverMasters)
-			for _, rnode := range recoverMasters {
-				if rnode.GetRole() != redisv1alpha1.RedisClusterNodeRoleSlave {
-					c.log.Error(fmt.Errorf("node to recover is not a slave"), "Node is not a slave", "Node IP", rnode.IP)
-					return HealFailure.New("node to recover is not a slave")
-				}
-				//Here we are assuming that slave chosen by ranking algorithm is the best slave to promote as master
-				err := admin.FailoverSlaveToMaster(ctx, rnode, redisutil.RedisFailoverTakeover)
-				if err != nil {
-					c.log.Error(err, "Error while recovering the cluster by failover a slave to master", "Slave IP", rnode.IP)
-					return HealFailure.Wrap(err, "Failover Takeover Failed")
-				}
-				//Wait for some time for the cluster to recover
-				time.Sleep(time.Second)
-				_, rplInfo, err := admin.GetReplicationStatus(rnode.IPPort(), ctx)
-				if err != nil {
-					c.log.Error(err, "Error while getting replication status or Recovery Failed", "Slave IP", rnode.IP)
-					return HealReconcile.Wrap(err, "Get Replication Status Failed or Recovery Failover Failed")
-				} else if rplInfo.Role != string(redisv1alpha1.RedisClusterNodeRoleMaster) {
-					c.log.Error(fmt.Errorf("replica Failover Failed"), "Recovery Failed - Replica Failover Failed", "Slave IP", rnode.IP)
-					return HealFailure.New("Replica Failover Failed")
-				} else {
-					c.log.Info("Recovery Success", "Recovered Master IP", rnode.IP)
-					isRecoveryDone = true
-				}
+		if len(recoverMasters) == 0 {
+			return nil
+		}
+		//Now we have got a list of  masters which needs recovery we should recover only when the current master count is less than the expected number of masters to reach quorum
+		//If there is a quorum then we should not recover the masters and let the cluster recover by itself
+		if len(curMasters) > ((c.expectedMasterNum / 2) + 1) {
+			c.log.Info("Current masters are more than quorum, no need to recover the cluster", "Current Master Count", len(curMasters))
+			return HealReconcile.New("quorum available, Wait for cluster to recover")
+		}
+		c.log.Info("Recovering the cluster", "RecoverMasters", recoverMasters)
+		zoneRankingInfo := NewRankingInfo(c.haconfig, c.nodes, int32(c.expectedMasterNum), int32(c.expectedReplicaCount), c.clusterName, c.log)
+		zoneRankingInfo.ApplyZoneRankingPerNodeDistribution()
+		for _, rnode := range recoverMasters {
 
+			promoteNode, err := zoneRankingInfo.GetBestRankedNodeinAllZonesPerSTS(rnode.StatefulSet)
+			if err != nil {
+				c.log.Error(err, "Error when trying to get master node with best rank ")
+				return HealFailure.Wrap(err, "Error when trying to get master node with best rank")
 			}
+			if promoteNode.GetRole() != redisv1alpha1.RedisClusterNodeRoleSlave {
+				c.log.Error(fmt.Errorf("node to recover is not a slave"), "Node is not a slave", "Node IP", rnode.IP)
+				return HealFailure.New("node to recover is not a slave")
+			}
+			//Here we are assuming that slave chosen by ranking algorithm is the best slave to promote as master
+			errFailover := admin.FailoverSlaveToMaster(ctx, promoteNode, redisutil.RedisFailoverTakeover)
+			if errFailover != nil {
+				c.log.Error(err, "Error while recovering the cluster by failover a slave to master", "Slave IP", rnode.IP)
+				return HealFailure.Wrap(errFailover, "Failover Takeover Failed")
+			}
+			c.log.Info("Cluster Recovery Sucessful by failover", "New Master IP", rnode.IP)
+
 		}
 
 	}
-	if isRecoveryDone {
-		err := fmt.Errorf("cluster Recovery Sucessful")
-		return HealReconcile.Wrap(err, "checkAndHealCluster - cluster Recovery Sucessful by failover")
-	}
-
-	return nil
+	err := fmt.Errorf("cluster Recovery Sucessful")
+	return HealReconcile.Wrap(err, "checkAndHealCluster - cluster Recovery Sucessful by failover")
 }

@@ -14,7 +14,7 @@ import (
 const (
 	minMasterSize       = 3
 	minClusterReplicas  = 1
-	defaultRedisImage   = "redis:5.0.4-alpine"
+	defaultRedisImage   = "redis:6.2.14-alpine"
 	defaultMonitorImage = "oliver006/redis_exporter:latest"
 )
 
