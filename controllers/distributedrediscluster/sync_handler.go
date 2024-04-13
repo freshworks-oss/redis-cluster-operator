@@ -245,15 +245,18 @@ func (r *DistributedRedisClusterReconciler) syncCluster(ctx *syncContext, contex
 		return Cluster.Wrap(err, "DispatchMasters")
 	}
 	//Check if there is any masters that needs to be recovered from failure before we proceed with cluster operations
-	if err := clusterCtx.CheckAndHealCluster(admin, context); err != nil {
-		if clustering.ErrorType(GetType(err)) == clustering.HealReconcile {
-			//We need alert for this metric if its hapenning continually for more than a minute
-			r.MetricsClient.RecordRedisOperation(instance.Namespace, instance.Name, metrics.SELFHEAL_CLUSTER, "NA", metrics.SUCCESS, err.Error())
-			return Requeue.Wrap(err, "HealCluster")
+	/*
+		if err := clusterCtx.CheckAndHealCluster(admin, context); err != nil {
+			if clustering.ErrorType(GetType(err)) == clustering.HealReconcile {
+				//We need alert for this metric if its hapenning continually for more than a minute
+				r.MetricsClient.RecordRedisOperation(instance.Namespace, instance.Name, metrics.SELFHEAL_CLUSTER, "NA", metrics.SUCCESS, err.Error())
+				return Requeue.Wrap(err, "HealCluster")
+			}
+			r.MetricsClient.RecordRedisOperation(instance.Namespace, instance.Name, metrics.SELFHEAL_CLUSTER, "NA", metrics.FAIL, err.Error())
+			ctx.reqLogger.Error(err, "HealCluster", "Error while healing cluster", "Manual intervention required")
+			return StopRetry.Wrap(err, "HealCluster")
 		}
-		r.MetricsClient.RecordRedisOperation(instance.Namespace, instance.Name, metrics.SELFHEAL_CLUSTER, "NA", metrics.FAIL, err.Error())
-		return Cluster.Wrap(err, "HealCluster")
-	}
+	*/
 	curMasters := clusterCtx.GetCurrentMasters()
 	newMasters := clusterCtx.GetNewMasters()
 	ctx.reqLogger.Info("masters", "newMasters", len(newMasters), "curMasters", len(curMasters))

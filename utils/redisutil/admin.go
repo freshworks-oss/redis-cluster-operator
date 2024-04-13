@@ -124,6 +124,8 @@ type IAdmin interface {
 	FailoverSlaveToMaster(ctx context.Context, slave *Node, option RedisFailover) error
 
 	GetReplicationStatus(ip string, ctx context.Context) (string, ReplicationInfo, error)
+
+	GetInfoReplication(ipPort string, ctx context.Context) (ReplicationInfo, error)
 }
 
 // AdminOptions optional options for redis admin
@@ -355,9 +357,11 @@ func (a *Admin) FailoverSlaveToMaster(ctx context.Context, slave *Node, option R
 	if err := a.Connections().ValidateResp(ctx, resp, slave.IPPort(), "unable to run command FAILOVER"); err != nil {
 		return err
 	}
-	if resp.Err() != nil {
+	result, err := resp.Result()
+	if err != nil {
 		return err
 	}
+	a.log.Info("FailoverSlaveToMaster", "slave", slave.IPPort(), "option", option, "resp", result)
 	// Wait for the node to become a master or timeout.
 	timeout := time.After(RoleChangeTimeout * time.Second)
 	ticker := time.NewTicker(RoleChangeInterval * time.Second)
@@ -368,15 +372,19 @@ func (a *Admin) FailoverSlaveToMaster(ctx context.Context, slave *Node, option R
 		case <-timeout:
 			return fmt.Errorf("timeout waiting for node %s to become master", slave.IPPort())
 		case <-ticker.C:
-			info, err := a.GetInfoReplication(slave.IPPort(), ctx)
+
+			nodeInfo, err := a.GetClusterNodeInfos(ctx, slave.IPPort())
 			if err != nil {
 				return fmt.Errorf("error checking role of node %s: %w", slave.IPPort(), err)
 			}
-
-			if info.Role == RedisMasterRole {
+			if nodeInfo.Node.Role == RedisMasterRole && nodeInfo.Node.TotalSlots() > 0 {
 				slave.SetRole(RedisMasterRole)
 				slave.SetReferentMaster("")
 				return nil
+			} else {
+				failoverErr := fmt.Errorf("FailoverSlaveToMaster failed for node %s", slave.IPPort())
+				a.log.Error(failoverErr, "FailoverSlaveToMaster", "failed over node role", nodeInfo.Node.Role, "slots", nodeInfo.Node.TotalSlots())
+				return failoverErr
 			}
 		}
 	}
@@ -860,6 +868,15 @@ func (a *Admin) ResetPassword(ctx context.Context, newPassword string) error {
 	}
 	return nil
 }
+
+func (a *Admin) GetClusterNodeInfos(ctx context.Context, addr string) (*NodeInfos, error) {
+	c, err := a.Connections().Get(ctx, addr)
+	if err != nil {
+		return nil, err
+	}
+	return a.getInfos(ctx, c, addr)
+}
+
 func (a *Admin) GetInfoReplication(ipPort string, ctx context.Context) (ReplicationInfo, error) {
 
 	var replInfo ReplicationInfo = ReplicationInfo{}

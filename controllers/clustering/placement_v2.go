@@ -90,7 +90,7 @@ func (c *Ctx) DispatchMasters() error {
 			var master *redisutil.Node = nil
 			if c.haconfig.HaEnabled {
 				if c.hastatus != redisv1alpha1.HaStatusCreating {
-					c.log.Error(fmt.Errorf("ha status not as expected when creating master %s", stsName), "ha status", "unexpected", c.hastatus)
+					c.log.Info("DispatchMasters", "HA Satus Not desired when creating cluster", c.hastatus)
 				}
 				master = c.PlaceMastersHA(stsName, zoneRankingInfo)
 			} else {
@@ -284,7 +284,6 @@ func (c *Ctx) CheckAndHealCluster(admin redisutil.IAdmin, ctx context.Context) e
 			c.log.Info("Current masters are more than quorum, no need to recover the cluster", "Current Master Count", len(curMasters))
 			return HealReconcile.New("quorum available, Wait for cluster to recover")
 		}
-		c.log.Info("Recovering the cluster", "RecoverMasters", recoverMasters)
 		zoneRankingInfo := NewRankingInfo(c.haconfig, c.nodes, int32(c.expectedMasterNum), int32(c.expectedReplicaCount), c.clusterName, c.log)
 		zoneRankingInfo.ApplyZoneRankingPerNodeDistribution()
 		for _, rnode := range recoverMasters {
@@ -298,6 +297,7 @@ func (c *Ctx) CheckAndHealCluster(admin redisutil.IAdmin, ctx context.Context) e
 				c.log.Error(fmt.Errorf("node to recover is not a slave"), "Node is not a slave", "Node IP", rnode.IP)
 				return HealFailure.New("node to recover is not a slave")
 			}
+			c.log.Info("Recovering the cluster by failover", "RecoverNode IP", rnode.IP, "Recover Node role", rnode.GetRole(), "Promote Node IP", promoteNode.IP, "Promote Node role", promoteNode.GetRole(), "STS", rnode.StatefulSet, "promote Node zone", promoteNode.Zonename)
 			//Here we are assuming that slave chosen by ranking algorithm is the best slave to promote as master
 			errFailover := admin.FailoverSlaveToMaster(ctx, promoteNode, redisutil.RedisFailoverTakeover)
 			if errFailover != nil {

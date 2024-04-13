@@ -20,6 +20,7 @@ const (
 	K8S_NOT_FOUND                = "RESOURCE_NOT_FOUND"
 	SUCCESS                      = "SUCCESS"
 	FAIL                         = "FAIL"
+	FATAL                        = "FATAL"
 	NOT_APPLICABLE               = "NA"
 	MISC                         = "MISC_ERROR"
 	GET_CLUSTERADMIN_PASSWORD    = "GET_CLUSTERADMIN_PASSWORD"

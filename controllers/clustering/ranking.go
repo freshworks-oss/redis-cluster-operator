@@ -5,6 +5,7 @@ import (
 	"sort"
 
 	redisv1alpha1 "github.com/dinesh-murugiah/rediscluster-operator/api/v1alpha1"
+	"github.com/dinesh-murugiah/rediscluster-operator/resources/statefulsets"
 	"github.com/dinesh-murugiah/rediscluster-operator/utils/redisutil"
 	"github.com/go-logr/logr"
 )
@@ -45,7 +46,7 @@ func CreateRankingFromClusterInfo(haconf *redisv1alpha1.HAspec, clusterinfo *red
 		return nil
 	}
 
-	stsnodes, err = sortRedisNodeByStatefulSet(nodes)
+	stsnodes, err = sortRedisNodeByStatefulSet(nodes, log)
 	if err != nil {
 		log.Error(err, "unable to sort the nodes by statefulset")
 		return nil
@@ -293,6 +294,10 @@ func (c *RankingInfo) GetBestRankedNodeinAllZonesPerSTS(stsname string) (*redisu
 	bestRankedNode = GetTopRankedNodeorTieBreak(rankedNodes, c.zoneList, c.log)
 	if bestRankedNode == nil {
 		return nil, fmt.Errorf("failed to determine the best ranked node for statefulset %s", stsname)
+	} else if bestRankedNode.GetRole() == redisv1alpha1.RedisClusterNodeRoleMaster && bestRankedNode.TotalSlots() == 0 {
+		c.log.Info("GetBestRankedNodeinAllZonesPerSTS", "Master with no slots", bestRankedNode.ID, "Statefulset", bestRankedNode.StatefulSet, "IP", bestRankedNode.IP)
+	} else if bestRankedNode.GetRole() == redisv1alpha1.RedisClusterNodeRoleSlave {
+		c.log.Info("GetBestRankedNodeinAllZonesPerSTS", "Selected Slave with least replication offset difference", bestRankedNode.ID, "Statefulset", bestRankedNode.StatefulSet, "IP", bestRankedNode.IP, "MasterReplOffset", bestRankedNode.MasterReplOffset, "SlaveReplOffset", bestRankedNode.SlaveReplOffset)
 	}
 
 	return bestRankedNode, nil
@@ -350,15 +355,17 @@ func GetTopRankedNodeorTieBreak(rankedNodesMap map[int][]*redisutil.Node, zoneLi
 
 	if bestrankedNode == nil {
 		log.Error(fmt.Errorf("node not found"), "GetTopRankedNodeorTieBreak", "No node found in tiebreakernodes", "this is ideally not expected")
-	} else {
-
-		if bestrankedNode.GetRole() == redisv1alpha1.RedisClusterNodeRoleMaster && bestrankedNode.TotalSlots() == 0 {
-			log.Info("GetTopRankedNodeorTieBreak", "Possibility of selecting master with no slots", bestrankedNode.IP, "Statefulset", bestrankedNode.StatefulSet, "pod", bestrankedNode.PodName, "Zone", bestrankedNode.Zonename, "Rank", bestrankedNode.ZoneDistributionRank)
-		} else if bestrankedNode.GetRole() == redisv1alpha1.RedisClusterNodeRoleSlave {
-			log.Info("GetTopRankedNodeorTieBreak", "Selected Slave with least replication offset difference", bestrankedNode.StatefulSet, "pod", bestrankedNode.PodName, "Zone", bestrankedNode.Zonename, "Rank", bestrankedNode.ZoneDistributionRank, "MasterReplOffset", bestrankedNode.MasterReplOffset, "SlaveReplOffset", bestrankedNode.SlaveReplOffset)
-		}
 	}
+	/*
+		 else {
 
+			if bestrankedNode.GetRole() == redisv1alpha1.RedisClusterNodeRoleMaster && bestrankedNode.TotalSlots() == 0 {
+				log.Info("GetTopRankedNodeorTieBreak", "Possibility of selecting master with no slots", bestrankedNode.IP, "Statefulset", bestrankedNode.StatefulSet, "pod", bestrankedNode.PodName, "Zone", bestrankedNode.Zonename, "Rank", bestrankedNode.ZoneDistributionRank)
+			} else if bestrankedNode.GetRole() == redisv1alpha1.RedisClusterNodeRoleSlave {
+				log.Info("GetTopRankedNodeorTieBreak", "Selected Slave with least replication offset difference", bestrankedNode.StatefulSet, "pod", bestrankedNode.PodName, "Zone", bestrankedNode.Zonename, "Rank", bestrankedNode.ZoneDistributionRank, "MasterReplOffset", bestrankedNode.MasterReplOffset, "SlaveReplOffset", bestrankedNode.SlaveReplOffset)
+			}
+		}
+	*/
 	return bestrankedNode
 }
 
@@ -385,10 +392,12 @@ func (c *RankingInfo) getBestRankedNodeinZonePerSTS(stsName string, zoneName str
 	//If there are more than one node in the zone, then select the best ranked node from the zone
 	//If there are more than one node with same rank, then select the node with least replication offset difference with the master
 	bestNode := GetTopRankedNodeorTieBreak(rankedNodes, c.zoneList, log)
-	if bestNode != nil && bestNode.GetRole() == redisv1alpha1.RedisClusterNodeRoleMaster && bestNode.TotalSlots() == 0 {
-		c.log.Info("Selected master node with no slots", "NodeID", bestNode.ID, "Zone", zoneName, "StatefulSet", stsName)
-	}
 
+	/*
+		if bestNode != nil && bestNode.GetRole() == redisv1alpha1.RedisClusterNodeRoleMaster && bestNode.TotalSlots() == 0 {
+			c.log.Info("Selected master node with no slots", "NodeID", bestNode.ID, "Zone", zoneName, "StatefulSet", stsName)
+		}
+	*/
 	return bestNode
 }
 
@@ -410,11 +419,15 @@ func (c *RankingInfo) AddWeightToBrokenClusterReplicas(replicaNodes redisutil.No
 	}
 }
 
-func sortRedisNodeByStatefulSet(nodes redisutil.Nodes) (map[string]redisutil.Nodes, error) {
+func sortRedisNodeByStatefulSet(nodes redisutil.Nodes, log logr.Logger) (map[string]redisutil.Nodes, error) {
 
 	nodesByStatefulSet := make(map[string]redisutil.Nodes)
 
 	for _, rNode := range nodes {
+		if len(rNode.FailStatus) > 0 {
+			log.Info("sortRedisNodeByStatefulSet From InitHAranking", "Node has fail status", rNode.ID, "FailStatus", rNode.FailStatus)
+			continue
+		}
 		ssName := unknownVMName
 		if rNode.StatefulSet != "" {
 			ssName = rNode.StatefulSet
@@ -428,4 +441,40 @@ func sortRedisNodeByStatefulSet(nodes redisutil.Nodes) (map[string]redisutil.Nod
 	}
 
 	return nodesByStatefulSet, nil
+}
+
+func (c *RankingInfo) IsClusterNeedsRecovery() (bool, []string) {
+
+	var shardRecoverycount int = 0
+	var activeMasters int = 0
+	var stsList []string = []string{}
+
+	for i := 0; i < c.desieredMasterCount; i++ {
+
+		stsName := statefulsets.ClusterStatefulSetName(c.clusterName, i)
+
+		if c.masternodeBySTS[stsName] != nil && c.masternodeBySTS[stsName].TotalSlots() > 0 {
+			activeMasters = activeMasters + 1
+			continue
+		} else if c.masternodeBySTS[stsName] == nil && (c.replicaNodesBySTS[stsName] != nil && len(c.replicaNodesBySTS[stsName]) > 0) {
+			shardRecoverycount = shardRecoverycount + 1
+			stsList = append(stsList, stsName)
+		}
+	}
+	if shardRecoverycount > 0 {
+
+		if activeMasters < ((c.desieredMasterCount / 2) + 1) {
+			minStsToRecover := ((c.desieredMasterCount / 2) + 1) - activeMasters
+			minStsRecoverList := make([]string, minStsToRecover)
+			copy(minStsRecoverList, stsList[:minStsToRecover])
+			c.log.Info("IsClusterNeedsRecovery", "Cluster need recovery,Minimum required shard recovery count-", minStsToRecover, "ActiveMasters", activeMasters, "MinSTSList", minStsRecoverList)
+			return true, minStsRecoverList
+		} else {
+			c.log.Info("IsClusterNeedsRecovery", "Quorum Available waiting for cluster to healitself", shardRecoverycount, "ActiveMasters", activeMasters, "STSList", stsList)
+			return true, nil
+
+		}
+	}
+	c.log.Info("IsClusterNeedsRecovery", "Cluster does not need recovery,shard recovery count-", shardRecoverycount, "ActiveMasters", activeMasters, "STSList", stsList)
+	return false, nil
 }
