@@ -116,9 +116,6 @@ func (c *RankingInfo) InitRankingInfo(nodes map[string]redisutil.Nodes) {
 				c.masternodeBySTS[rNode.StatefulSet] = rNode
 				c.CurrentMastersbyZone[rNode.Zonename] = append(c.CurrentMastersbyZone[rNode.Zonename], rNode)
 
-			} else if rNode.GetRole() == redisv1alpha1.RedisClusterNodeRoleMaster && rNode.TotalSlots() == 0 {
-				c.log.Info("InitRankingInfo", "Master with no slots", rNode.ID)
-				c.masternodeBySTS[rNode.StatefulSet] = nil
 			}
 			//Update the replica nodes per STS
 			if _, ok := c.replicaNodesBySTS[rNode.StatefulSet]; !ok {
@@ -195,51 +192,62 @@ func (c *RankingInfo) GetHAPlacedNodeinSTS(stsname string) (*redisutil.Node, err
 
 	var leastMastersZone = make(map[int][]string)
 	var leastNodesZone = make(map[int][]string)
+	var masterCount int = 0
+	var leastNodeCount int = 0
+
+	masterCountSlice := make([]int, 0)
 	//For a given Statefulset, find the zone with least number of masters
 	//If there are more than one zone with least number of masters, then select the zone with least number of redis nodes
 	for _, zone := range c.zoneList {
 		if len(c.NodesIndexedbyZoneAndSTS[zone][stsname]) == 0 {
 			continue
 		}
-		leastMastersZone[len(c.CurrentMastersbyZone[zone])] = append(leastMastersZone[len(c.CurrentMastersbyZone[zone])], zone)
+		masterCount = len(c.CurrentMastersbyZone[zone])
+		// Extract the counts from the leastMastersZone map to get a slice of counts so that it can be sorted.
+		masterCountSlice = append(masterCountSlice, masterCount)
+		leastMastersZone[masterCount] = append(leastMastersZone[masterCount], zone)
 	}
 
-	// Extract the counts from the leastMastersZone map to get a slice of counts so that it can be sorted.
-	mastercounts := make([]int, 0, len(leastMastersZone))
-	for mastercount := range leastMastersZone {
-		mastercounts = append(mastercounts, mastercount)
-	}
 	// Sort the slice of counts in ascending order.
-	sort.Slice(mastercounts, func(i, j int) bool {
-		return mastercounts[i] < mastercounts[j]
+	sort.SliceStable(masterCountSlice, func(i, j int) bool {
+		return masterCountSlice[i] < masterCountSlice[j]
 	})
 
-	if len(leastMastersZone[mastercounts[0]]) == 1 {
-		bestRankedNode = c.NodesIndexedbyZoneAndSTS[leastMastersZone[mastercounts[0]][0]][stsname][0]
+	leastmasterCnt := masterCountSlice[0]
+
+	if len(leastMastersZone[leastmasterCnt]) == 1 {
+		bestRankedNode = c.NodesIndexedbyZoneAndSTS[leastMastersZone[leastmasterCnt][0]][stsname][0]
 		return bestRankedNode, nil
 	}
 	//If there is a tie in the number of masters in the zone, then select the zone with least number of nodes
-	for _, zone := range leastMastersZone[mastercounts[0]] {
-		leastNodesZone[len(c.NodesIndexedbyZoneAndSTS[zone][stsname])] = append(leastNodesZone[len(c.NodesIndexedbyZoneAndSTS[zone][stsname])], zone)
+	ZonesList := leastMastersZone[leastmasterCnt]
+
+	for _, zone := range ZonesList {
+		if len(c.NodesIndexedbyZoneAndSTS[zone][stsname]) == 0 {
+			continue
+		}
+		leastNodeCount = len(c.NodesIndexedbyZoneAndSTS[zone][stsname])
+		leastNodesZone[leastNodeCount] = append(leastNodesZone[leastNodeCount], zone)
 	}
 
 	// Extract the counts from the leastMastersZone map to get a slice of counts so that it can be sorted.
 	nodecounts := make([]int, 0, len(leastNodesZone))
-	for nodecount := range leastMastersZone {
+	for nodecount := range leastNodesZone {
 		nodecounts = append(nodecounts, nodecount)
 	}
 	// Sort the slice of counts in ascending order.
-	sort.Slice(nodecounts, func(i, j int) bool {
+	sort.SliceStable(nodecounts, func(i, j int) bool {
 		return nodecounts[i] < nodecounts[j]
 	})
+	leastNodeCount = nodecounts[0]
 
-	if len(leastNodesZone[nodecounts[0]]) == 1 {
-		bestRankedNode = c.NodesIndexedbyZoneAndSTS[leastNodesZone[nodecounts[0]][0]][stsname][0]
+	if len(leastNodesZone[leastNodeCount]) == 1 {
+		bestRankedNode = c.NodesIndexedbyZoneAndSTS[leastNodesZone[leastNodeCount][0]][stsname][0]
 		return bestRankedNode, nil
 	}
 
 	//if still there is a tie , select a node from the first zone
-	bestRankedNode = c.NodesIndexedbyZoneAndSTS[leastNodesZone[nodecounts[0]][0]][stsname][0]
+	bestRankedNode = c.NodesIndexedbyZoneAndSTS[leastNodesZone[leastNodeCount][0]][stsname][0]
 	return bestRankedNode, nil
 
 }
@@ -452,6 +460,9 @@ func (c *RankingInfo) IsClusterNeedsRecovery() (bool, []string) {
 	for i := 0; i < c.desieredMasterCount; i++ {
 
 		stsName := statefulsets.ClusterStatefulSetName(c.clusterName, i)
+		if c.masternodeBySTS[stsName] != nil {
+			c.log.Info("IsClusterNeedsRecovery", "Checking STS", stsName, "MasterNode IP", c.masternodeBySTS[stsName].IP, "MasterSlots", c.masternodeBySTS[stsName].TotalSlots())
+		}
 
 		if c.masternodeBySTS[stsName] != nil && c.masternodeBySTS[stsName].TotalSlots() > 0 {
 			activeMasters = activeMasters + 1
