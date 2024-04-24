@@ -288,9 +288,8 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 			return reconcile.Result{}, nil
 		}
 		// raise alert if a particular tenant is in heal loop for more than 5 mins (rateof incr 5m)
-		if !requeue {
-			return reconcile.Result{}, Redis.Wrap(err, "Heal")
-		}
+		return reconcile.Result{RequeueAfter: 20 * time.Second}, nil
+
 	}
 
 	if requeue {
