@@ -22,7 +22,8 @@ import (
 )
 
 type IEnsureResource interface {
-	EnsureRedisStatefulsets(cluster *redisv1alpha1.DistributedRedisCluster, labels map[string]string) (bool, error)
+	EnsureRedisStatefulsets(cluster *redisv1alpha1.DistributedRedisCluster, labels map[string]string) (redisv1alpha1.StsEnsureStatus, error)
+	EnsureRedisPDB(cluster *redisv1alpha1.DistributedRedisCluster, labels map[string]string) error
 	EnsureClusterShardsHeadLessSvcs(cluster *redisv1alpha1.DistributedRedisCluster, labels map[string]string) error
 	EnsureClusterHeadLessSvc(cluster *redisv1alpha1.DistributedRedisCluster, labels map[string]string) error
 	EnsureRedisConfigMap(cluster *redisv1alpha1.DistributedRedisCluster, labels map[string]string) error
@@ -53,40 +54,74 @@ func NewEnsureResource(client client.Client, logger logr.Logger, metricsRecorder
 		metricsRecorder:   metricsRecorder,
 	}
 }
+func (r *realEnsureResource) EnsureRedisPDB(cluster *redisv1alpha1.DistributedRedisCluster, labels map[string]string) error {
+	if cluster.Spec.PdbEnabled {
+		for i := 0; i < int(cluster.Spec.MasterSize); i++ {
+			name := statefulsets.ClusterStatefulSetName(cluster.Name, i)
+			labels[redisv1alpha1.StatefulSetLabel] = name
+			labels[redisv1alpha1.ShardLabel] = strconv.Itoa(i)
 
-func (r *realEnsureResource) EnsureRedisStatefulsets(cluster *redisv1alpha1.DistributedRedisCluster, labels map[string]string) (bool, error) {
+			if err := r.ensureRedisPDB(cluster, name, labels); err != nil {
+				return EnsurePDB.Wrap(err, "Ensure PDB failed")
+			}
+
+		}
+	}
+	return nil
+}
+func (r *realEnsureResource) EnsureRedisStatefulsets(cluster *redisv1alpha1.DistributedRedisCluster, labels map[string]string) (redisv1alpha1.StsEnsureStatus, error) {
+
 	var StsCreatedcount int = 0
-	var isSTScreated bool = false
+	var StsUpdateCount int = 0
+	var StsNoUpdateCount int = 0
+	var ensureSTSStatus redisv1alpha1.StsEnsureStatus = redisv1alpha1.STSNotEnsured
+
 	for i := 0; i < int(cluster.Spec.MasterSize); i++ {
 		name := statefulsets.ClusterStatefulSetName(cluster.Name, i)
 		svcName := statefulsets.ClusterHeadlessSvcName(cluster.Spec.ServiceName, i)
 		// assign label
 		labels[redisv1alpha1.StatefulSetLabel] = name
 		labels[redisv1alpha1.ShardLabel] = strconv.Itoa(i)
-		stsStatus, err := r.ensureRedisStatefulset(cluster, name, svcName, labels)
+
+		ensureSTSStatus, err := r.ensureRedisStatefulset(cluster, name, svcName, labels)
 		if err != nil {
-			return isSTScreated, err
+			return ensureSTSStatus, EnsureSTS.Wrap(err, "Ensure STS failed")
+		} else {
+			switch ensureSTSStatus {
+			case redisv1alpha1.STSCreated:
+				StsCreatedcount++
+			case redisv1alpha1.STSUpdated:
+				StsUpdateCount++
+			case redisv1alpha1.STSNochange:
+				StsNoUpdateCount++
+			default:
+				r.logger.WithValues("StatefulSet.Namespace", cluster.Namespace, "StatefulSet.Name", name).Error(fmt.Errorf("ensure sts unexpected status: %v", ensureSTSStatus), "Ensure STS failed")
+
+			}
 		}
-		if err == nil && !stsStatus {
-			StsCreatedcount++
-			isSTScreated = true
-		}
+
 	}
-	if StsCreatedcount > 0 {
-		return isSTScreated, nil
-	} else {
-		return isSTScreated, nil
+
+	//r.logger.WithValues("StatefulSet.Namespace", cluster.Namespace, "StatefulSet.Name", cluster.Name).Info("StatefulSet Ensure status", "Created", StsCreatedcount, "Updated", StsUpdateCount, "Nochange", StsNoUpdateCount)
+
+	//if both creation and updation of sts is success then return created and updated status
+	if StsCreatedcount > 0 && StsUpdateCount > 0 {
+		ensureSTSStatus = redisv1alpha1.STSCreateUpadate
+	} else if StsCreatedcount > 0 {
+		//if only creation of sts is success and possibly along with nochange then return created status
+		ensureSTSStatus = redisv1alpha1.STSCreated
+	} else if StsUpdateCount > 0 {
+		//if only updation of sts is success and possibly along with nochange then return updated status
+		ensureSTSStatus = redisv1alpha1.STSUpdated
 	}
+
+	return ensureSTSStatus, nil
 
 }
 
 func (r *realEnsureResource) ensureRedisStatefulset(cluster *redisv1alpha1.DistributedRedisCluster, ssName, svcName string,
-	labels map[string]string) (bool, error) {
-	if cluster.Spec.PdbEnabled {
-		if err := r.ensureRedisPDB(cluster, ssName, labels); err != nil {
-			return false, err
-		}
-	}
+	labels map[string]string) (redisv1alpha1.StsEnsureStatus, error) {
+
 	ss, err := r.statefulSetClient.GetStatefulSet(cluster.Namespace, ssName)
 	k8sutil.RecordMetrics(cluster.Namespace, "StatefulSet", ss.Name, "GET", err, r.metricsRecorder)
 	if err == nil {
@@ -95,24 +130,35 @@ func (r *realEnsureResource) ensureRedisStatefulset(cluster *redisv1alpha1.Distr
 				Info("updating statefulSet")
 			newSS, err := statefulsets.NewStatefulSetForCR(cluster, ssName, svcName, labels)
 			if err != nil {
-				return false, err
+				return redisv1alpha1.STSUpdateError, EnsureSTS.Wrap(err, "Error creating StatefulSet for Update")
 			}
 			ssErr := r.statefulSetClient.UpdateStatefulSet(newSS)
 			k8sutil.RecordMetrics(cluster.Namespace, "StatefulSet", newSS.Name, "UPDATE", ssErr, r.metricsRecorder)
-			return true, ssErr
+			if ssErr != nil {
+				return redisv1alpha1.STSUpdateError, EnsureSTS.Wrap(ssErr, "Error updating StatefulSet")
+			}
+
+			return redisv1alpha1.STSUpdated, nil
+		} else {
+			//r.logger.WithValues("StatefulSet.Namespace", cluster.Namespace, "StatefulSet.Name", ssName).Info("statefulSet is up to date")
+			return redisv1alpha1.STSNochange, nil
 		}
+
 	} else if err != nil && errors.IsNotFound(err) {
 		r.logger.WithValues("StatefulSet.Namespace", cluster.Namespace, "StatefulSet.Name", ssName).
 			Info("creating a new statefulSet")
 		newSS, err := statefulsets.NewStatefulSetForCR(cluster, ssName, svcName, labels)
 		if err != nil {
-			return false, err
+			return redisv1alpha1.STSCreateError, EnsureSTS.Wrap(err, "Error creating StatefulSet for Create")
 		}
 		ssErr := r.statefulSetClient.CreateStatefulSet(newSS)
 		k8sutil.RecordMetrics(cluster.Namespace, "StatefulSet", newSS.Name, "CREATE", ssErr, r.metricsRecorder)
-		return false, err
+		if ssErr != nil {
+			return redisv1alpha1.STSCreateError, EnsureSTS.Wrap(ssErr, "Error creating StatefulSet")
+		}
+		return redisv1alpha1.STSCreated, nil
 	}
-	return false, err
+	return redisv1alpha1.STSgetError, EnsureSTS.Wrap(err, "Error getting StatefulSet")
 }
 
 func shouldUpdateRedis(cluster *redisv1alpha1.DistributedRedisCluster, sts *appsv1.StatefulSet) bool {

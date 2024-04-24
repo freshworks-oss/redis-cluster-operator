@@ -36,6 +36,10 @@ func UpdateClusterInfos(clusterInfos *redisutil.ClusterInfos, pods []*corev1.Pod
 	nodectrl := k8sutil.NewNodeController(Client)
 	nodes := clusterInfos.GetNodes()
 	for _, node := range nodes {
+		if len(node.FailStatus) > 0 {
+			reqLogger.Info("UpdateClusterInfos", "Skipping Node Update for Failed Node", node.ID, "FailStatus", node.FailStatus)
+			continue
+		}
 		pod := getpodFromlist(pods, node.IP)
 		if pod == nil {
 			return fmt.Errorf("pod not found for node %s", node.IP)

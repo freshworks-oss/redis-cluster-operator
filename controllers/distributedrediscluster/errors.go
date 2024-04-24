@@ -22,6 +22,16 @@ const (
 	Cluster
 	// StopRetry stop retry error
 	StopRetry
+	// InvalidSpec invalid spec error
+	InvalidSpec
+	//PDB ensure pdb error
+	EnsurePDB
+	//Ensure ConfigMap error
+	EnsureConfigMap
+	//Ensure STS error
+	EnsureSTS
+	//Ensure Service error
+	EnsureService
 )
 
 type customError struct {

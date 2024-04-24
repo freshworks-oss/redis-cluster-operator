@@ -23,11 +23,25 @@ const (
 	ResetHard = "HARD"
 	// ResetSoft SOFT mode for RESET command
 	ResetSoft = "SOFT"
+	//Timeout in seconds waiting for role change after failover
+	RoleChangeTimeout = 20
+	//Interval in seconds to check for role change after failover
+	RoleChangeInterval = 1
 )
 
 // Redis Status Redis server status
 type RedisReplStatus string
 type RedisFailover string
+
+type ReplicationInfo struct {
+	Role                    string
+	MasterLinkStatus        string
+	MasterHost              string
+	LastIoSecondsAgo        int64
+	SlaveReplicationOffset  int64
+	MasterReplicationOffset int64
+	MasterSyncInProgress    bool
+}
 
 const (
 	RedisFailoverForce    RedisFailover = "FORCE"
@@ -42,9 +56,9 @@ const (
 	RedisLinkUp            RedisReplStatus = "master_link_status:up"
 )
 const (
-	ReplicaStatusUnknown   = "unknown"
-	ReplicaStatusReady     = "ready"
-	ReplicaStatusNOK       = "NOK"
+	ReplicaStatusUnknown   = "ReplicaStatusunknown"
+	ReplicaStatusReady     = "ReplicaSatusready"
+	ReplicaLinkDown        = "MasterLinkDown"
 	ReplicaStatusSyncing   = "ReplicaSyncing"
 	ReplicaStatusMasterNil = "ReplicaMasterNil"
 	ClusterStatusMigrating = "SlotsMigrating"
@@ -108,6 +122,10 @@ type IAdmin interface {
 	ResetPassword(ctx context.Context, newPassword string) error
 
 	FailoverSlaveToMaster(ctx context.Context, slave *Node, option RedisFailover) error
+
+	GetReplicationStatus(ip string, ctx context.Context) (string, ReplicationInfo, error)
+
+	GetInfoReplication(ipPort string, ctx context.Context) (ReplicationInfo, error)
 }
 
 // AdminOptions optional options for redis admin
@@ -165,33 +183,63 @@ func (a *Admin) GetClusterInfos(ctx context.Context) (*ClusterInfos, error) {
 		}
 		if nodeinfos.Node != nil && nodeinfos.Node.IPPort() == addr {
 			infos.Infos[addr] = nodeinfos
-			cstatus, err1 := a.clusterGetStatus(ctx, c, addr)
-			if err1 != nil {
-				CheckandUpdateClusterState(infos, ClusterStateNOK, nodeinfos.Node.IP, nodeinfos.Node.IP, ClusterStatusNotRetrived)
-			}
-			if cstatus != "ok" {
-				CheckandUpdateClusterState(infos, ClusterStateNOK, nodeinfos.Node.IP, nodeinfos.Node.IP, ClusterStatusFail)
+
+			//Check for the cluster state and update the cluster status
+			cstatus, err := a.clusterGetState(ctx, c, addr)
+			if err != nil {
+				//a.log.WithValues("err", err).Info("get redis cluster status failed")
+				if updateErr := CheckandUpdateClusterState(infos, ClusterStatusNOK, nodeinfos.Node.IP, "", cstatus); updateErr != nil {
+					a.log.WithValues("err", updateErr).Info("update cluster state failed")
+				}
+
+			} else {
+				if updateErr := CheckandUpdateClusterState(infos, ClusterStatusOK, "", "", cstatus); updateErr != nil {
+					a.log.WithValues("err", updateErr).Info("update cluster state failed")
+				}
 			}
 
+			//Check for the replication status and update the cluster status if its broken
 			if nodeinfos.Node.Role == RedisSlaveRole {
-				SlaveState, Err := a.GetSlaveStatus(addr, ctx)
-				if Err != nil {
-					CheckandUpdateClusterState(infos, ClusterStateNOK, nodeinfos.Node.IP, nodeinfos.Node.IP, ReplicaStatusUnknown)
+				replicaStatus, replinfo, err := a.GetReplicationStatus(addr, ctx)
+				if err != nil {
+					//a.log.WithValues("err", err).Info("get redis slave replication status failed")
+					if updateErr := CheckandUpdateClusterState(infos, ClusterStatusNOK, nodeinfos.Node.IP, nodeinfos.Node.IP, replicaStatus); updateErr != nil {
+						a.log.WithValues("err", updateErr).Info("update cluster state failed")
+					}
+				} else {
+					if updateErr := CheckandUpdateClusterState(infos, ClusterStatusOK, "", "", replicaStatus); updateErr != nil {
+						a.log.WithValues("err", updateErr).Info("update cluster state failed")
+					}
 				}
-				if SlaveState != ReplicaStatusReady {
-					CheckandUpdateClusterState(infos, ClusterStateNOK, nodeinfos.Node.IP, nodeinfos.Node.IP, SlaveState)
-				}
+
+				nodeinfos.Node.LastIOSecs = replinfo.LastIoSecondsAgo
+				nodeinfos.Node.SlaveReplOffset = replinfo.SlaveReplicationOffset
+				nodeinfos.Node.MasterReplOffset = replinfo.MasterReplicationOffset
+				nodeinfos.Node.MasterLinkStatus = replinfo.MasterLinkStatus
+
 			}
+			//Check for Flags and if any failed update the cluster status
 			if nodeinfos.Friends != nil {
+				isFail := false
 				for _, friend := range nodeinfos.Friends {
 					if len(friend.FailStatus) > 0 {
-						CheckandUpdateClusterState(infos, ClusterStateNOK, nodeinfos.Node.IP, friend.IP, strings.Join(friend.FailStatus, ","))
+						if updateErr := CheckandUpdateClusterState(infos, ClusterStatusNOK, nodeinfos.Node.IP, friend.IP, strings.Join(friend.FailStatus, ",")); updateErr != nil {
+							a.log.WithValues("err", updateErr).Info("update cluster state failed")
+						}
+						isFail = true
+					}
+				}
+				if !isFail {
+					if updateErr := CheckandUpdateClusterState(infos, ClusterStatusOK, "", "", "NoFailedNodes"); updateErr != nil {
+						a.log.WithValues("err", updateErr).Info("update cluster state failed")
 					}
 				}
 			}
-
+			//Check for Migrating Slots and upadte the cluster status
 			if len(nodeinfos.Node.MigratingSlots) != 0 || len(nodeinfos.Node.ImportingSlots) != 0 {
-				CheckandUpdateClusterState(infos, ClusterStateNOK, nodeinfos.Node.IP, nodeinfos.Node.IP, ClusterStatusMigrating)
+				CheckandUpdateClusterState(infos, ClusterStatusNOK, nodeinfos.Node.IP, "", ClusterStatusMigrating)
+			} else {
+				CheckandUpdateClusterState(infos, ClusterStatusOK, "", "", "NoMigratingSlots")
 			}
 		} else {
 			a.log.Info("bad node info retrieved from", "addr", addr)
@@ -250,47 +298,46 @@ func (a *Admin) clusterKnowNodes(ctx context.Context, client *redis.Client, addr
 }
 
 func CheckandUpdateClusterState(cinfos *ClusterInfos, cs clusterstate, fromip string, nip string, reason string) error {
-	if cs == ClusterStateUnknown {
-		err := fmt.Errorf("cluster state is unknown")
+
+	if (cs != ClusterStatusOK && cs != ClusterStatusNOK) || (cs == ClusterStatusNOK && reason == "") || (cs == ClusterStatusNOK && fromip == "") || cinfos == nil {
+		err := fmt.Errorf("invalid Arguments for CheckandUpdateClusterState")
 		return err
 
 	}
-	if cinfos.ClusterState == ClusterStateUnknown {
-		cinfos.ClusterState = cs
-		if cs == ClusterStateNOK {
-			cinfos.ClusterNokReason[fromip] = nip + "-" + string(reason)
-		}
-		return nil
-	}
 
-	if cs == ClusterStateNOK && cinfos.ClusterState == ClusterStateOK {
+	if cs == ClusterStatusNOK {
 		cinfos.ClusterState = cs
-		cinfos.ClusterNokReason[fromip] = nip + "- " + string(reason)
-		return nil
-	} else if cs == ClusterStateNOK && cinfos.ClusterState == ClusterStateNOK {
-		cinfos.ClusterNokReason[fromip] = nip + "- " + string(reason)
-		return nil
-	} else {
-		return nil
+		if nip == "" {
+			cinfos.ClusterNokReason[fromip] = string(reason) + ": "
+		} else {
+			cinfos.ClusterNokReason[fromip] = nip + "-" + string(reason) + ": "
+		}
+	} else if cs == ClusterStatusOK && cinfos.ClusterState == ClusterStatusUnknown {
+		cinfos.ClusterState = cs
 	}
+	return nil
 }
 
-func (a *Admin) clusterGetStatus(ctx context.Context, client *redis.Client, addr string) (string, error) {
+func (a *Admin) clusterGetState(ctx context.Context, client *redis.Client, addr string) (string, error) {
 	resp := client.Do(ctx, "CLUSTER", "INFO")
 	if err := a.Connections().ValidateResp(ctx, resp, addr, "unable to retrieve cluster info"); err != nil {
-		return "", err
+		return ClusterStateGetFailed, err
 	}
 	raw := resp.String()
 	if raw != "" {
 		match := clusterStateRE.FindStringSubmatch(raw)
 		if len(match) == 0 {
-			return "", fmt.Errorf("cluster_state not found")
+			return ClusterStateUnknown, fmt.Errorf("cluster_state not found")
 		} else {
 			//a.log.Info("cluster state", "state", match[1])
-			return match[1], nil
+			if match[1] == "fail" {
+				return ClusterStateFail, fmt.Errorf("cluster_state is fail")
+			} else {
+				return ClusterStateOK, nil
+			}
 		}
 	} else {
-		return "", fmt.Errorf("cluster_state not found")
+		return ClusterStateUnknown, fmt.Errorf("cluster_state not found")
 
 	}
 }
@@ -303,20 +350,44 @@ func (a *Admin) FailoverSlaveToMaster(ctx context.Context, slave *Node, option R
 	}
 	var resp *redis.Cmd
 	if option != RedisFailoverDefault {
-		resp = c.Do(ctx, "CLUSTER", "FAILOVER", option)
+		resp = c.Do(ctx, "CLUSTER", "FAILOVER", string(option))
 	} else {
 		resp = c.Do(ctx, "CLUSTER", "FAILOVER")
 	}
-	if err := a.Connections().ValidateResp(ctx, resp, slave.IPPort(), "unable to run command REPLICATE"); err != nil {
+	if err := a.Connections().ValidateResp(ctx, resp, slave.IPPort(), "unable to run command FAILOVER"); err != nil {
 		return err
 	}
-	if resp.Err() != nil {
+	result, err := resp.Result()
+	if err != nil {
 		return err
 	}
-	slave.SetReferentMaster("")
-	slave.SetRole(RedisMasterRole)
+	a.log.Info("FailoverSlaveToMaster", "slave", slave.IPPort(), "option", option, "resp", result)
+	// Wait for the node to become a master or timeout.
+	timeout := time.After(RoleChangeTimeout * time.Second)
+	ticker := time.NewTicker(RoleChangeInterval * time.Second)
+	defer ticker.Stop()
 
-	return nil
+	for {
+		select {
+		case <-timeout:
+			return fmt.Errorf("timeout waiting for node %s to become master", slave.IPPort())
+		case <-ticker.C:
+
+			nodeInfo, err := a.GetClusterNodeInfos(ctx, slave.IPPort())
+			if err != nil {
+				return fmt.Errorf("error checking role of node %s: %w", slave.IPPort(), err)
+			}
+			if nodeInfo.Node.Role == RedisMasterRole && nodeInfo.Node.TotalSlots() > 0 {
+				slave.SetRole(RedisMasterRole)
+				slave.SetReferentMaster("")
+				return nil
+			} else {
+				failoverErr := fmt.Errorf("FailoverSlaveToMaster failed for node %s", slave.IPPort())
+				a.log.Error(failoverErr, "FailoverSlaveToMaster", "failed over node role", nodeInfo.Node.Role, "slots", nodeInfo.Node.TotalSlots())
+				return failoverErr
+			}
+		}
+	}
 }
 
 // AttachSlaveToMaster attach a slave to a master node
@@ -494,6 +565,7 @@ func (a *Admin) GetAllConfig(ctx context.Context, c *redis.Client, addr string) 
 	return convertedMap, err
 }
 
+/*
 var parseConfigMap = map[string]int8{
 	"maxmemory":                  0,
 	"proto-max-bulk-len":         0,
@@ -511,6 +583,7 @@ var parseConfigMap = map[string]int8{
 	// TODO parse client-output-buffer-limit
 	//"client-output-buffer-limit": 0,
 }
+*/
 
 // SetConfigIfNeed set redis config
 func (a *Admin) SetConfigIfNeed(ctx context.Context, newConfig map[string]string) error {
@@ -796,24 +869,87 @@ func (a *Admin) ResetPassword(ctx context.Context, newPassword string) error {
 	return nil
 }
 
-func (a *Admin) GetSlaveStatus(ip string, ctx context.Context) (string, error) {
-	c, err := a.Connections().Get(ctx, ip)
+func (a *Admin) GetClusterNodeInfos(ctx context.Context, addr string) (*NodeInfos, error) {
+	c, err := a.Connections().Get(ctx, addr)
 	if err != nil {
-		return ReplicaStatusUnknown, err
+		return nil, err
+	}
+	return a.getInfos(ctx, c, addr)
+}
+
+func (a *Admin) GetInfoReplication(ipPort string, ctx context.Context) (ReplicationInfo, error) {
+
+	var replInfo ReplicationInfo = ReplicationInfo{}
+
+	c, err := a.Connections().Get(ctx, ipPort)
+	if err != nil {
+		return replInfo, err
 	}
 	info, err := c.Info(context.TODO(), "replication").Result()
 	if err != nil {
-		return ReplicaStatusUnknown, err
+		return replInfo, err
 	}
 
-	if strings.Contains(info, string(RedisSyncing)) {
-		return ReplicaStatusSyncing, nil
-	} else if strings.Contains(info, string(RedisMasterSillPending)) {
-		return ReplicaStatusMasterNil, nil
-	} else if strings.Contains(info, string(RedisLinkUp)) {
-		return ReplicaStatusReady, nil
-	} else {
-		return ReplicaStatusUnknown, nil
+	lines := strings.Split(info, "\n")
+	for _, line := range lines {
+		parts := strings.SplitN(line, ":", 2)
+		if len(parts) != 2 {
+			continue
+		}
+
+		key := strings.TrimSpace(parts[0])
+		value := strings.TrimSpace(parts[1])
+
+		var err error
+		switch key {
+		case "role":
+			replInfo.Role = value
+		case "master_link_status":
+			replInfo.MasterLinkStatus = value
+		case "master_host":
+			replInfo.MasterHost = value
+		case "master_last_io_seconds_ago":
+			replInfo.LastIoSecondsAgo, err = strconv.ParseInt(value, 10, 64)
+		case "slave_repl_offset":
+			replInfo.SlaveReplicationOffset, err = strconv.ParseInt(value, 10, 64)
+		case "master_repl_offset":
+			replInfo.MasterReplicationOffset, err = strconv.ParseInt(value, 10, 64)
+		case "master_sync_in_progress":
+			var val int
+			val, err = strconv.Atoi(value)
+			replInfo.MasterSyncInProgress = (val != 0)
+		}
+
+		if err != nil {
+			return ReplicationInfo{}, fmt.Errorf("failed to parse value for key %s: %v", key, err)
+		}
 	}
+	return replInfo, nil
+}
+func (a *Admin) GetReplicationStatus(ip string, ctx context.Context) (string, ReplicationInfo, error) {
+
+	var replInfo ReplicationInfo = ReplicationInfo{}
+	var status string = ReplicaStatusUnknown
+
+	replInfo, err := a.GetInfoReplication(ip, ctx)
+	if err != nil {
+		a.log.Error(err, "GetInfoReplication failed")
+		return status, replInfo, err
+	}
+
+	if replInfo.MasterLinkStatus == "up" && !replInfo.MasterSyncInProgress && replInfo.MasterHost != "127.0.0.1" {
+		status = ReplicaStatusReady
+		return status, replInfo, nil
+	} else if replInfo.MasterHost == "127.0.0.1" {
+		status = status + "-" + ReplicaStatusMasterNil
+	} else if replInfo.MasterLinkStatus == "down" {
+		status = status + "-" + ReplicaLinkDown
+	} else if replInfo.MasterSyncInProgress {
+		status = status + "-" + ReplicaStatusSyncing
+	} else {
+		status = status + "-" + ReplicaStatusUnknown
+	}
+	a.log.Info("Replica status NOK", "status", status)
+	return status, replInfo, fmt.Errorf("replica status NOK")
 
 }

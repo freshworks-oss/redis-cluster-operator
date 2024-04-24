@@ -167,14 +167,10 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 		cluster:   instance,
 		reqLogger: reqLogger,
 	}
-	var isStsCreated bool = false
+	var STSEnsureStatus rediskunv1alpha1.StsEnsureStatus = rediskunv1alpha1.STSNotEnsured
 	var haStatus rediskunv1alpha1.HaStatus = rediskunv1alpha1.HaStatusUnknown
-	isStsCreated, err = r.ensureCluster(syncCtx)
-	if !isStsCreated {
-		if err != nil {
-			r.MetricsClient.EnsureCluster(request.Namespace, request.Name, metrics.FAIL, "STS_CREATION", err.Error())
-		}
-	}
+	STSEnsureStatus, err = r.ensureCluster(syncCtx)
+
 	// set p0 metric if err is StopRetry
 	if err != nil {
 		switch GetType(err) {
@@ -184,7 +180,8 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 		}
 		reqLogger.WithValues("err", err).Info("ensureCluster")
 		newStatus := instance.Status.DeepCopy()
-		UpdateHaStatus(instance, newStatus, isStsCreated)
+		UpdateHaStatus(instance, newStatus, "", STSEnsureStatus)
+		reqLogger.Info("ensureCluster", "STSEnsureStatus", STSEnsureStatus, "HaStatus", newStatus.HAStatus)
 		SetClusterScaling(newStatus, err.Error())
 		r.updateClusterIfNeed(instance, newStatus, reqLogger)
 		return reconcile.Result{RequeueAfter: requeueAfter}, nil
@@ -195,7 +192,8 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 		if err != nil {
 			r.MetricsClient.EnsureCluster(request.Namespace, request.Name, metrics.FAIL, "GET_SECRETVERSION", err.Error())
 		}
-		UpdateHaStatus(instance, newStatus, isStsCreated)
+		UpdateHaStatus(instance, newStatus, "", STSEnsureStatus)
+		reqLogger.Info("ensureCluster", "STSEnsureStatus", STSEnsureStatus, "HaStatus", newStatus.HAStatus)
 		r.updateClusterIfNeed(instance, newStatus, reqLogger)
 	}
 
@@ -265,59 +263,75 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 	//reqLogger.WithValues("adminpassword:", password).Info("please check adminpass")
 	// Setting this context for request flow
 
-	clusterInfos, clusterinfoerr := admin.GetClusterInfos(context)
-	if clusterinfoerr != nil {
-		r.MetricsClient.EnsureCluster(request.Namespace, request.Name, metrics.MISC, "BUILD_CLUSTER_INFO", clusterinfoerr.Error())
-		if clusterErr, ok := clusterinfoerr.(redisutil.ClusterInfosError); ok {
+	healClusterInfo, infoErr := admin.GetClusterInfos(context)
+	if infoErr != nil {
+		if clusterErr, ok := infoErr.(redisutil.ClusterInfosError); ok {
+			r.MetricsClient.EnsureCluster(request.Namespace, request.Name, metrics.MISC, "BUILD_CLUSTER_INFO", infoErr.Error())
 			if clusterErr.Partial() {
-				reqLogger.Info("GetClusterInfos", "clusterInfos Error", clusterinfoerr)
-				return reconcile.Result{RequeueAfter: requeueAfter}, nil
+				reqLogger.Info("GetClusterInfos", "clusterInfos Error", clusterErr)
+				return reconcile.Result{RequeueAfter: 10 * time.Second}, nil
 			}
-		} else {
-			return reconcile.Result{}, Redis.Wrap(clusterinfoerr, "GetClusterInfos")
 		}
 	}
+	updateErr := UpdateClusterInfos(healClusterInfo, syncCtx.pods, r.Client, reqLogger)
+	if updateErr != nil {
+		r.MetricsClient.RecordRedisOperation(instance.Namespace, instance.Name, metrics.GET_CLUSTER_NODES_ALL, "NA", metrics.FAIL, updateErr.Error())
+		reqLogger.Error(updateErr, "UpdateClusterInfos", "Error when updating cluster infos", updateErr)
+		return reconcile.Result{RequeueAfter: 10 * time.Second}, nil
+	}
 	// check if the cluster is in a state where it needs healing
-	requeue, err := syncCtx.healer.Heal(instance, clusterInfos, admin, context)
+	stopReconcile, requeue, err := syncCtx.healer.Heal(instance, healClusterInfo, admin, context)
 	if err != nil {
 		r.MetricsClient.EnsureCluster(instance.Namespace, instance.Name, metrics.MISC, metrics.HEAL, err.Error())
+		if stopReconcile {
+			reqLogger.Error(err, "StopReconcile", "Irrecoverable Error Manual Heal Required ", err)
+			return reconcile.Result{}, nil
+		}
 		// raise alert if a particular tenant is in heal loop for more than 5 mins (rateof incr 5m)
-		return reconcile.Result{}, Redis.Wrap(err, "Heal")
+		return reconcile.Result{RequeueAfter: 20 * time.Second}, nil
+
 	}
+
 	if requeue {
+		//ToDo : need Metrics for heal loop and other cluster heal functions
 		return reconcile.Result{RequeueAfter: requeueAfter}, nil
 	}
 
-	syncCtx.admin = admin
-	syncCtx.clusterInfos = clusterInfos
-	reqLogger.V(6).Info("debug waitForClusterJoin", "cluster infos", syncCtx.clusterInfos)
-	//cluster view inconsistent, wait for cluster join
+	clusterInfos, clusterinfoerr := admin.GetClusterInfos(context)
 	if clusterinfoerr != nil {
+		reqLogger.V(6).Info("debug waitForClusterJoin", "cluster infos", syncCtx.clusterInfos)
+		r.MetricsClient.EnsureCluster(request.Namespace, request.Name, metrics.MISC, "BUILD_CLUSTER_INFO", clusterinfoerr.Error())
+
 		clusterErr := clusterinfoerr.(redisutil.ClusterInfosError)
-		if clusterErr.Inconsistent() {
+		if clusterErr.Partial() {
+			reqLogger.Info("GetClusterInfos", "clusterInfos Error", clusterinfoerr)
+			return reconcile.Result{RequeueAfter: requeueAfter}, nil
+		} else if clusterErr.Inconsistent() {
 			reqLogger.Info("ClusterInfosError", "Cluster View inconsistent", "calling waitForClusterJoin")
-			err = r.waitForClusterJoin(syncCtx, context, instance)
-			if err != nil {
+			syncCtx.admin = admin
+			syncCtx.clusterInfos = clusterInfos
+			if err := r.waitForClusterJoin(syncCtx, context, instance); err != nil {
 				r.MetricsClient.EnsureCluster(instance.Namespace, instance.Name, metrics.FAIL, metrics.CLUSTER_JOIN_FAILURE, err.Error())
 				newStatus := instance.Status.DeepCopy()
 				SetClusterFailed(newStatus, err.Error())
 				r.updateClusterIfNeed(instance, newStatus, reqLogger)
 				return reconcile.Result{}, err
 			}
-			clusterInfos, err = syncCtx.admin.GetClusterInfos(context)
-			if clusterInfos.Status == redisutil.ClusterInfosPartial {
-				reqLogger.Info("GetClusterInfos", "clusterInfos Error", err)
-				return reconcile.Result{RequeueAfter: requeueAfter}, nil
-			}
-			if err != nil {
+
+			if clusterInfos, err = syncCtx.admin.GetClusterInfos(context); err != nil || clusterInfos.Status == redisutil.ClusterInfosPartial {
 				r.MetricsClient.EnsureCluster(instance.Namespace, instance.Name, metrics.MISC, metrics.REQUEUE, err.Error())
-				// raise alert if a particular tenant is in REQUEUE loop for more than 5 mins (rateof incr 5m)
-				reqLogger.Info("ClusterInfosError", "Cluster View inconsistent after waitForClusterJoin", "requeing")
+				reqLogger.Info("Cluster view remains inconsistent or partial after waiting for join", "error", err)
 				return reconcile.Result{RequeueAfter: requeueAfter}, nil
 			}
+
+		} else {
+			return reconcile.Result{}, Redis.Wrap(clusterinfoerr, "GetClusterInfos")
 		}
 	}
+
+	syncCtx.admin = admin
 	syncCtx.clusterInfos = clusterInfos
+
 	err1 := UpdateClusterInfos(clusterInfos, syncCtx.pods, r.Client, reqLogger)
 	if err1 != nil {
 		r.MetricsClient.RecordRedisOperation(instance.Namespace, instance.Name, metrics.GET_CLUSTER_NODES_ALL, "NA", metrics.FAIL, err1.Error())
@@ -385,6 +399,15 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 		reqLogger.Info(">>>>>> clustering")
 		err = r.syncCluster(syncCtx, context, instance)
 		if err != nil {
+			if GetType(err) == Requeue {
+				r.MetricsClient.EnsureCluster(instance.Namespace, instance.Name, metrics.FAIL, metrics.CLUSTERING, err.Error())
+				reqLogger.Info("syncCluster", "Requeue - Possibly for Trying to self heal the cluster", err)
+				return reconcile.Result{RequeueAfter: requeueAfter}, nil
+			} else if GetType(err) == StopRetry {
+				r.MetricsClient.EnsureCluster(instance.Namespace, instance.Name, metrics.FATAL, metrics.CLUSTERING, err.Error())
+				reqLogger.Error(err, "StopReconcile", "Irrecoverable Error Manual Heal Required ", err)
+				return reconcile.Result{}, nil
+			}
 			r.MetricsClient.EnsureCluster(instance.Namespace, instance.Name, metrics.FAIL, metrics.CLUSTERING, err.Error())
 			newStatus := instance.Status.DeepCopy()
 			SetClusterFailed(newStatus, err.Error())
@@ -406,16 +429,12 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 		r.MetricsClient.RecordRedisOperation(instance.Namespace, instance.Name, metrics.GET_CLUSTER_NODES_ALL, "NA", metrics.FAIL, err2.Error())
 		reqLogger.Error(err1, "UpdateClusterInfos", "Error when updating cluster infos", err1)
 		return reconcile.Result{RequeueAfter: 10 * time.Second}, nil
+
 	}
+
 	newStatus := buildClusterStatus(newClusterInfos, syncCtx.pods, instance, reqLogger)
 	if instance.Spec.HaConfig.HaEnabled {
-		haRanking := clustering.CreateRankingFromClusterInfo(instance.Spec.HaConfig, newClusterInfos, instance.Spec.MasterSize, instance.Spec.ClusterReplicas, instance.Name, reqLogger)
-		BestRankedMasters, rankerr := haRanking.GetBestRankedMasters()
-		if rankerr != nil {
-			reqLogger.Error(rankerr, "GetBestRankedMasters", "Error when getting best ranked masters", rankerr)
-			return reconcile.Result{RequeueAfter: 20 * time.Second}, nil
-		}
-		haStatus, _, _ = buildHAStatus(newClusterInfos, instance, BestRankedMasters, reqLogger)
+		_, haStatus, _, _ = buildHAStatus(newClusterInfos, instance, reqLogger)
 		SetHAStatus(newStatus, haStatus)
 	}
 	clusterHealthOk := CheackandUpdateClusterHealth(newStatus, newClusterInfos, instance, reqLogger)
@@ -484,49 +503,73 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 			// 3. If all zones not active , then check if we need to add annotations to not evict master pods
 			// Inorder for self heal to occur, set reDitributeNodes=true as annotation in respective cluster CRD.
 			if isAllactive && reDitributeNodes {
-				haRanking := clustering.CreateRankingFromClusterInfo(instance.Spec.HaConfig, newClusterInfos, instance.Spec.MasterSize, instance.Spec.ClusterReplicas, instance.Name, reqLogger)
+
+				//check if any masters needs to be failedover
+				haRanking, haStatus, displacedMasters, _ := buildHAStatus(newClusterInfos, instance, reqLogger)
+				if haStatus == rediskunv1alpha1.HaStatusFailed {
+
+					reqLogger.Error(fmt.Errorf("unexpected Error - HaStatusFailed"), "HaStatusFailed When trying to Distribute Masters")
+					return reconcile.Result{RequeueAfter: time.Duration(reconcileTime) * time.Second}, nil
+
+				}
 
 				numofNodestoDel, delNodes, err1 := r.getListofNodestoDelete(instance, haRanking, reqLogger)
 				if err1 != nil {
 					reqLogger.Error(err1, "HaRedistribute - getListofNodestoDelete")
 					return reconcile.Result{RequeueAfter: time.Duration(reconcileTime) * time.Second}, nil
 
-				}
-				if numofNodestoDel > 0 {
+				} else if numofNodestoDel > 0 {
 					r.DeletePodsForHA(instance, delNodes, reqLogger)
 					return reconcile.Result{RequeueAfter: time.Duration(reconcileTime) * time.Second}, nil
 				}
-				BestRankedMasters, rankerr := haRanking.GetBestRankedMasters()
-				if rankerr != nil {
-					reqLogger.Error(rankerr, "GetBestRankedMasters", "Error when getting best ranked masters", rankerr)
-					return reconcile.Result{RequeueAfter: 20 * time.Second}, nil
-				}
-				//check if any masters needs to be failedover
-				haStatus, displacedMasters, _ := buildHAStatus(newClusterInfos, instance, BestRankedMasters, reqLogger)
-				if haStatus == rediskunv1alpha1.HaStatusFailed {
-					reqLogger.Error(fmt.Errorf("unexpected Error - HaStatusFailed"), "HaStatusFailed When trying to Distribute Masters")
-				} else if haStatus == rediskunv1alpha1.HaStatusRedistribute && len(displacedMasters) > 0 {
+
+				if haStatus == rediskunv1alpha1.HaStatusRedistribute && len(displacedMasters) > 0 {
 					reqLogger.Info("HaStatusRedistribute - Distribute Masters", "displacedMasters", displacedMasters)
-					//Distribute Masters
-					err := r.FailoverMastersbySTS(instance, displacedMasters, newClusterInfos, BestRankedMasters, admin, context, reqLogger)
-					if err != nil {
-						reqLogger.Error(err, "HaStatusRedistribute - FailoverMastersbySTS", err)
-						return reconcile.Result{RequeueAfter: time.Duration(reconcileTime) * time.Second}, nil
-					}
-					reqLogger.Info("HaStatusHealthy - HaHealing Completed")
-					//Update the annotation reDistributeNode to false in cluster CRD to stop selfheal.
-					//Selfheal should occur only if human operator sets annotation reDistributeNode as true on cluster crd.
-					//Once selfheal is completed, setting this annotation to false to stop auto selfheal as it is doesn't consider production traffic.
-					if err := r.CrController.UpdateCrdAnnotations(instance, "reDistributeNode", "false"); err != nil {
-						reqLogger.Error(err, "UpdateCrdAnnotations - Failed to update annotation", err)
-						return reconcile.Result{}, err
+					//Re Distribute Masters by Failover
+					for _, master := range displacedMasters {
+
+						reqLogger.Info("HaStatusRedistribute - Distribute Masters", "master", master)
+						BestRankedMaster, _ := haRanking.GetHAPlacedNodeinSTS(master.StatefulSet)
+
+						if BestRankedMaster == nil {
+							reqLogger.Error(fmt.Errorf("unexpected Error - BestRankedMaster is nil"), "HaStatusRedistribute - BestRankedMaster")
+							return reconcile.Result{RequeueAfter: time.Duration(reconcileTime) * time.Second}, nil
+						} else if BestRankedMaster == master {
+							reqLogger.Info("HaStatusRedistribute - BestRankedMaster is same as displacedMaster so no failover needed", "master", master)
+							continue
+						}
+
+						err := r.FailoverMastersbySTS(instance, master, newClusterInfos, BestRankedMaster, admin, context, reqLogger)
+						if err != nil {
+
+							if GetType(err) == Requeue {
+								reqLogger.Error(err, "HaStatusRedistribute - FailoverMastersbySTS", "Failed Retrying", err)
+								return reconcile.Result{RequeueAfter: time.Duration(reconcileTime) * time.Second}, nil
+							} else if GetType(err) == StopRetry {
+								reqLogger.Error(err, "HaStatusRedistribute - FailoverMastersbySTS", "Failed", err)
+								return reconcile.Result{}, nil
+							}
+						} else {
+							reqLogger.Info("HaStatusRedistribute - FailoverMastersbySTS - Success", "NewMaster", BestRankedMaster.IP, "zone", BestRankedMaster.Zonename)
+							return reconcile.Result{RequeueAfter: time.Duration(reconcileTime) * time.Second}, nil
+						}
+
 					}
 					return reconcile.Result{RequeueAfter: time.Duration(reconcileTime) * time.Second}, nil
+
 				} else if haStatus == rediskunv1alpha1.HaStatusHealthy && len(displacedMasters) == 0 {
 					newStatus := instance.Status.DeepCopy()
 					SetHAStatus(newStatus, rediskunv1alpha1.HaStatusHealthy)
 					haStatus = rediskunv1alpha1.HaStatusHealthy
 					r.updateClusterIfNeed(instance, newStatus, reqLogger)
+					reqLogger.Info("HaStatusHealthy - HaHealing Completed , Updating annotation reDistributeNode to false in cluster CRD to stop selfheal.")
+					//Update the annotation reDistributeNode to false in cluster CRD to stop selfheal.
+					//Selfheal should occur only if human operator sets annotation reDistributeNode as true on cluster crd.
+					//Once selfheal is completed, setting this annotation to false to stop auto selfheal as it is doesn't consider production traffic.
+					if err := r.CrController.UpdateCrdAnnotations(instance, "reDistributeNode", "false"); err != nil {
+						reqLogger.Error(err, "UpdateCrdAnnotations", "Failed to update annotation", err)
+						return reconcile.Result{}, err
+					}
 					return reconcile.Result{RequeueAfter: time.Duration(reconcileTime) * time.Second}, nil
 				}
 			} else {
@@ -538,6 +581,10 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 		} else {
 			reqLogger.Info("HAhealing not required", "haStatus", haStatus)
 			r.MetricsClient.SetClusterOK(instance.Namespace, instance.Name, float64(3))
+			if err := r.CrController.UpdateCrdAnnotations(instance, "reDistributeNode", "false"); err != nil {
+				reqLogger.Error(err, "UpdateCrdAnnotations", "Failed to update annotation", err)
+				return reconcile.Result{}, err
+			}
 		}
 	} else {
 		r.MetricsClient.SetClusterOK(instance.Namespace, instance.Name, float64(1))
@@ -560,7 +607,7 @@ func (r *DistributedRedisClusterReconciler) isScalingDown(cluster *rediskunv1alp
 // This function is called to identify the list of replica nodes to delete per stateful set to bring back the HA distribution
 // This function assumes that its called only when all the zone have become active again and there is atleast one node available
 // per zone , even without any pods scheduled
-// This function would return a list of nodes to be deleted per statefulset if there is a need along with number of nodes to be deleted
+// This function would return a list of nodes to be deleted per statefulset if there is a need, along with number of nodes to be deleted
 // if there is no need for nodes to be deleted the list would be empty and the count would be zero
 func (r *DistributedRedisClusterReconciler) getListofNodestoDelete(cluster *rediskunv1alpha1.DistributedRedisCluster, haRanking *clustering.RankingInfo, reqLogger logr.Logger) (int32, map[string][]*redisutil.Node, error) {
 	var nodesToDelete map[string][]*redisutil.Node = make(map[string][]*redisutil.Node)
@@ -575,8 +622,7 @@ func (r *DistributedRedisClusterReconciler) getListofNodestoDelete(cluster *redi
 	sort.Strings(zones)
 
 	//In cases where the number of zones is greater than the number of redis replicas + master,
-	//each zone is expected to have min 0 or 1 redis nodes only , so its good enough the get the number of nodes to delete
-	//based on the maxnumber of nodes avaiable in the zone, and min number of nodes expecected per zone is not needed
+	//each zone is expected to have min 0 or 1 redis nodes only , so its good enough the get the number of nodes to delete based on the maxnumber of nodes avaiable in the zone, and min number of nodes expecected per zone is not needed
 	if int(1+cluster.Spec.ClusterReplicas) > len(zones) {
 		isDeleteNodesbyMinNodecnt = true
 	}
@@ -663,32 +709,31 @@ func (r *DistributedRedisClusterReconciler) getListofNodestoDelete(cluster *redi
 
 }
 
-func (r *DistributedRedisClusterReconciler) FailoverMastersbySTS(cluster *rediskunv1alpha1.DistributedRedisCluster, displacedMasters redisutil.Nodes, clusterinfos *redisutil.ClusterInfos, BestRankedMasters map[string]*redisutil.Node, admin redisutil.IAdmin, context context.Context, reqLogger logr.Logger) error {
+func (r *DistributedRedisClusterReconciler) FailoverMastersbySTS(cluster *rediskunv1alpha1.DistributedRedisCluster, displacedMaster *redisutil.Node, clusterinfos *redisutil.ClusterInfos, BestRankedMaster *redisutil.Node, admin redisutil.IAdmin, context context.Context, reqLogger logr.Logger) error {
 
-	for _, node := range displacedMasters {
-		stsname := node.StatefulSet
-		failoverNode := BestRankedMasters[stsname]
+	failoverNode := BestRankedMaster
 
-		if failoverNode.Role == redisutil.RedisMasterRole {
-			if failoverNode.TotalSlots() > 0 {
-				// Possibility of Multimaster scenario Manual operator involment needed
-				reqLogger.Error(fmt.Errorf("possible Multimaster"), "Node already master in appropriate zone Possibility of Multimaster", "nodeID", node.ID, "nodeIP", node.IP, "nodeRole", node.Role, "nodeStatefulSet", node.StatefulSet, "nodeZone", node.Zonename, "nodePodName", node.PodName, "nodeNodeName", node.NodeName)
-			} else {
-				reqLogger.Error(fmt.Errorf("possible dataloss"), "Node to be promoted to master has no slots associated possibility of data loss", "nodeID", node.ID, "nodeIP", node.IP, "nodeRole", node.Role, "nodeStatefulSet", node.StatefulSet, "nodeZone", node.Zonename, "nodePodName", node.PodName, "nodeNodeName", node.NodeName)
-			}
+	if failoverNode.Role == redisutil.RedisMasterRole {
+		if failoverNode.TotalSlots() > 0 {
+			// Possibility of Multimaster scenario Manual operator involment needed
+			reqLogger.Error(fmt.Errorf("possible Multimaster"), "Node already master in appropriate zone Possibility of Multimaster", "nodeID", failoverNode.ID, "nodeIP", failoverNode.IP, "nodeRole", failoverNode.Role, "nodeStatefulSet", failoverNode.StatefulSet, "nodeZone", failoverNode.Zonename, "nodePodName", failoverNode.PodName, "nodeNodeName", failoverNode.NodeName)
 
-		} else if failoverNode.Role == redisutil.RedisSlaveRole && failoverNode.LinkState == redisutil.RedisLinkStateConnected {
-			reqLogger.Info("Node to be promoted to master", "nodeID", failoverNode.ID, "nodeIP", failoverNode.IP, "nodeRole", failoverNode.Role, "nodeStatefulSet", failoverNode.StatefulSet, "nodeZone", failoverNode.Zonename, "nodePodName", failoverNode.PodName, "nodeNodeName", failoverNode.NodeName)
-			//promote node to master
-			err := admin.FailoverSlaveToMaster(context, failoverNode, redisutil.RedisFailoverDefault)
-			if err != nil {
-				reqLogger.Error(err, "FailoverSlaveToMaster Failed", err)
-				return err
-			}
 		} else {
-			return fmt.Errorf("invalid Role %s", node.Role)
+			reqLogger.Error(fmt.Errorf("possible dataloss"), "Node to be promoted to master has no slots associated possibility of data loss", "nodeID", failoverNode.ID, "nodeIP", failoverNode.IP, "nodeRole", failoverNode.Role, "nodeStatefulSet", failoverNode.StatefulSet, "nodeZone", failoverNode.Zonename, "nodePodName", failoverNode.PodName, "nodeNodeName", failoverNode.NodeName)
 		}
+		return StopRetry.New("possible Multimaster or Dataloss by failover")
 
+	} else if failoverNode.Role == redisutil.RedisSlaveRole && failoverNode.LinkState == redisutil.RedisLinkStateConnected {
+		reqLogger.Info("Node to be promoted to master", "nodeID", failoverNode.ID, "nodeIP", failoverNode.IP, "nodeRole", failoverNode.Role, "nodeStatefulSet", failoverNode.StatefulSet, "nodeZone", failoverNode.Zonename, "nodePodName", failoverNode.PodName, "nodeNodeName", failoverNode.NodeName)
+		//promote node to master
+		err := admin.FailoverSlaveToMaster(context, failoverNode, redisutil.RedisFailoverDefault)
+		if err != nil {
+			reqLogger.Error(err, "FailoverSlaveToMaster", "Failed", err)
+			return Requeue.Wrap(err, "FailoverSlaveToMaster Failed")
+		}
+	} else {
+		err1 := fmt.Errorf("invalid Role %s", failoverNode.Role)
+		return StopRetry.Wrap(err1, "FailoverMastersbySTS")
 	}
 
 	return nil

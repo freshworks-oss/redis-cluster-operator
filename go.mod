@@ -39,9 +39,11 @@ require (
 	github.com/ncw/swift v1.0.49 // indirect
 	github.com/nxadm/tail v1.4.8 // indirect
 	github.com/spf13/cobra v1.7.0 // indirect
+	github.com/timonwong/loggercheck v0.9.4 // indirect
 	go.opencensus.io v0.24.0 // indirect
 	golang.org/x/crypto v0.13.0 // indirect
 	golang.org/x/exp v0.0.0-20220722155223-a9213eeb770e // indirect
+	golang.org/x/mod v0.10.0 // indirect
 	google.golang.org/api v0.126.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20230530153820-e85fd2cbaebc // indirect
 	google.golang.org/grpc v1.55.0 // indirect
