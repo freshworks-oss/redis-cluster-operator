@@ -19,7 +19,7 @@ import (
 // 	backupRetry   = true
 // )
 
-func (r *RedisClusterBackupReconciler) reconcileUtilDeployment(reqLogger logr.Logger, backup *redisv1alpha1.RedisClusterBackup, cluster *redisv1alpha1.DistributedRedisCluster) error {
+func (r *RedisClusterBackupReconciler) reconcileUtilDeployment(reqLogger logr.Logger, backup *redisv1alpha1.RedisClusterBackup, cluster *redisv1alpha1.DistributedRedisCluster, update bool) error {
 	var secretName string
 	if cluster.Spec.AdminSecret != nil {
 		secretName = cluster.Spec.AdminSecret.Name
@@ -63,7 +63,7 @@ func (r *RedisClusterBackupReconciler) reconcileUtilDeployment(reqLogger logr.Lo
 		}
 	}
 	// Validate CR Spec against the current deployment spec, call Update Deployment if there is any change
-	if validateUtilCRandDeploymentSpec(backup, dp, cluster) {
+	if validateUtilCRandDeploymentSpec(backup, dp, cluster, update) {
 		deployment := deployments.UtilNewDeploymentForCR(backup, cluster, deplName, secretName)
 		err = r.DeploymentController.UpdateDeployment(deployment)
 		if err != nil {
@@ -73,37 +73,15 @@ func (r *RedisClusterBackupReconciler) reconcileUtilDeployment(reqLogger logr.Lo
 	return nil
 }
 
-func validateUtilCRandDeploymentSpec(backup *redisv1alpha1.RedisClusterBackup, deployment *appsv1.Deployment, cluster *redisv1alpha1.DistributedRedisCluster) bool {
+func validateUtilCRandDeploymentSpec(backup *redisv1alpha1.RedisClusterBackup, deployment *appsv1.Deployment, cluster *redisv1alpha1.DistributedRedisCluster, update bool) bool {
 	//Currently, we are comparing only image in CR vs actual Deployment Spec.
 	deploymentUpdate := false
 	masterSize := cluster.Spec.MasterSize
 	clusterReplicas := cluster.Spec.ClusterReplicas
 	var envs []corev1.EnvVar
-	expectedResources := backup.Spec.UtilSpec.Resources
-	for _, container := range deployment.Spec.Template.Spec.Containers {
-		if container.Name == "rediscluster-util-container" {
-			envs = container.Env
-			if backup.Spec.UtilSpec.Image != container.Image {
-				deploymentUpdate = true
-				break
-			}
-			if result := expectedResources.Requests.Memory().Cmp(*container.Resources.Requests.Memory()); result != 0 {
-				deploymentUpdate = true
-				break
-			}
-			if result := expectedResources.Requests.Cpu().Cmp(*container.Resources.Requests.Cpu()); result != 0 {
-				deploymentUpdate = true
-				break
-			}
-			if result := expectedResources.Limits.Memory().Cmp(*container.Resources.Limits.Memory()); result != 0 {
-				deploymentUpdate = true
-				break
-			}
-			if result := expectedResources.Limits.Cpu().Cmp(*container.Resources.Limits.Cpu()); result != 0 {
-				deploymentUpdate = true
-				break
-			}
-		}
+	// Update the deployment if the update predicate is set to true
+	if update {
+		deploymentUpdate = true
 	}
 
 	// This part to ensure master size and cluster replicas are same as the actual cluster. When cluster scaled up or down, same should be reflected in Util Deployment.

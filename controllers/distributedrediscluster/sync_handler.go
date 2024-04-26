@@ -34,7 +34,7 @@ type syncContext struct {
 	reqLogger    logr.Logger
 }
 
-func (r *DistributedRedisClusterReconciler) ensureCluster(ctx *syncContext) (redisv1alpha1.StsEnsureStatus, error) {
+func (r *DistributedRedisClusterReconciler) ensureCluster(ctx *syncContext, update bool) (redisv1alpha1.StsEnsureStatus, error) {
 
 	ensureSTSStatus := rediskunv1alpha1.STSNotEnsured
 
@@ -62,7 +62,7 @@ func (r *DistributedRedisClusterReconciler) ensureCluster(ctx *syncContext) (red
 		}
 	}
 
-	ensureSTSStatus, err := r.Ensurer.EnsureRedisStatefulsets(cluster, labels)
+	ensureSTSStatus, err := r.Ensurer.EnsureRedisStatefulsets(cluster, labels, update)
 	if err != nil {
 		ctx.reqLogger.Error(err, "EnsureRedisStatefulSets")
 		r.MetricsClient.EnsureCluster(ctx.cluster.Namespace, ctx.cluster.Name, metrics.FAIL, "ENSURE_STATEFULSET", err.Error())

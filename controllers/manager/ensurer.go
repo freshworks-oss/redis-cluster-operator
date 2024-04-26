@@ -2,13 +2,10 @@ package manager
 
 import (
 	"fmt"
-	"reflect"
-	"sort"
 	"strconv"
 	"strings"
 
 	"github.com/go-logr/logr"
-	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -22,7 +19,7 @@ import (
 )
 
 type IEnsureResource interface {
-	EnsureRedisStatefulsets(cluster *redisv1alpha1.DistributedRedisCluster, labels map[string]string) (redisv1alpha1.StsEnsureStatus, error)
+	EnsureRedisStatefulsets(cluster *redisv1alpha1.DistributedRedisCluster, labels map[string]string, update bool) (redisv1alpha1.StsEnsureStatus, error)
 	EnsureRedisPDB(cluster *redisv1alpha1.DistributedRedisCluster, labels map[string]string) error
 	EnsureClusterShardsHeadLessSvcs(cluster *redisv1alpha1.DistributedRedisCluster, labels map[string]string) error
 	EnsureClusterHeadLessSvc(cluster *redisv1alpha1.DistributedRedisCluster, labels map[string]string) error
@@ -69,7 +66,7 @@ func (r *realEnsureResource) EnsureRedisPDB(cluster *redisv1alpha1.DistributedRe
 	}
 	return nil
 }
-func (r *realEnsureResource) EnsureRedisStatefulsets(cluster *redisv1alpha1.DistributedRedisCluster, labels map[string]string) (redisv1alpha1.StsEnsureStatus, error) {
+func (r *realEnsureResource) EnsureRedisStatefulsets(cluster *redisv1alpha1.DistributedRedisCluster, labels map[string]string, update bool) (redisv1alpha1.StsEnsureStatus, error) {
 
 	var StsCreatedcount int = 0
 	var StsUpdateCount int = 0
@@ -83,7 +80,7 @@ func (r *realEnsureResource) EnsureRedisStatefulsets(cluster *redisv1alpha1.Dist
 		labels[redisv1alpha1.StatefulSetLabel] = name
 		labels[redisv1alpha1.ShardLabel] = strconv.Itoa(i)
 
-		ensureSTSStatus, err := r.ensureRedisStatefulset(cluster, name, svcName, labels)
+		ensureSTSStatus, err := r.ensureRedisStatefulset(cluster, name, svcName, labels, update)
 		if err != nil {
 			return ensureSTSStatus, EnsureSTS.Wrap(err, "Ensure STS failed")
 		} else {
@@ -120,12 +117,12 @@ func (r *realEnsureResource) EnsureRedisStatefulsets(cluster *redisv1alpha1.Dist
 }
 
 func (r *realEnsureResource) ensureRedisStatefulset(cluster *redisv1alpha1.DistributedRedisCluster, ssName, svcName string,
-	labels map[string]string) (redisv1alpha1.StsEnsureStatus, error) {
+	labels map[string]string, update bool) (redisv1alpha1.StsEnsureStatus, error) {
 
 	ss, err := r.statefulSetClient.GetStatefulSet(cluster.Namespace, ssName)
 	k8sutil.RecordMetrics(cluster.Namespace, "StatefulSet", ss.Name, "GET", err, r.metricsRecorder)
 	if err == nil {
-		if shouldUpdateRedis(cluster, ss) || shouldUpdateMonitor(cluster, ss) {
+		if update {
 			r.logger.WithValues("StatefulSet.Namespace", cluster.Namespace, "StatefulSet.Name", ssName).
 				Info("updating statefulSet")
 			newSS, err := statefulsets.NewStatefulSetForCR(cluster, ssName, svcName, labels)
@@ -161,70 +158,70 @@ func (r *realEnsureResource) ensureRedisStatefulset(cluster *redisv1alpha1.Distr
 	return redisv1alpha1.STSgetError, EnsureSTS.Wrap(err, "Error getting StatefulSet")
 }
 
-func shouldUpdateRedis(cluster *redisv1alpha1.DistributedRedisCluster, sts *appsv1.StatefulSet) bool {
-	if (cluster.Spec.ClusterReplicas + 1) != *sts.Spec.Replicas {
-		return true
-	}
-	if cluster.Spec.Image != sts.Spec.Template.Spec.Containers[0].Image {
-		return true
-	}
-	/* // TODO FIX it by adding a new user for probes
-	if statefulsets.IsPasswordChanged(cluster, sts) {
-		return true
-	}
-	*/
-	expectResource := cluster.Spec.Resources
-	currentResource := sts.Spec.Template.Spec.Containers[0].Resources
-	if result := expectResource.Requests.Memory().Cmp(*currentResource.Requests.Memory()); result != 0 {
-		return true
-	}
-	if result := expectResource.Requests.Cpu().Cmp(*currentResource.Requests.Cpu()); result != 0 {
-		return true
-	}
-	if result := expectResource.Limits.Memory().Cmp(*currentResource.Limits.Memory()); result != 0 {
-		return true
-	}
-	if result := expectResource.Limits.Cpu().Cmp(*currentResource.Limits.Cpu()); result != 0 {
-		return true
-	}
-	return false
-}
+// func shouldUpdateRedis(cluster *redisv1alpha1.DistributedRedisCluster, sts *appsv1.StatefulSet) bool {
+// 	if (cluster.Spec.ClusterReplicas + 1) != *sts.Spec.Replicas {
+// 		return true
+// 	}
+// 	if cluster.Spec.Image != sts.Spec.Template.Spec.Containers[0].Image {
+// 		return true
+// 	}
+// 	/* // TODO FIX it by adding a new user for probes
+// 	if statefulsets.IsPasswordChanged(cluster, sts) {
+// 		return true
+// 	}
+// 	*/
+// 	expectResource := cluster.Spec.Resources
+// 	currentResource := sts.Spec.Template.Spec.Containers[0].Resources
+// 	if result := expectResource.Requests.Memory().Cmp(*currentResource.Requests.Memory()); result != 0 {
+// 		return true
+// 	}
+// 	if result := expectResource.Requests.Cpu().Cmp(*currentResource.Requests.Cpu()); result != 0 {
+// 		return true
+// 	}
+// 	if result := expectResource.Limits.Memory().Cmp(*currentResource.Limits.Memory()); result != 0 {
+// 		return true
+// 	}
+// 	if result := expectResource.Limits.Cpu().Cmp(*currentResource.Limits.Cpu()); result != 0 {
+// 		return true
+// 	}
+// 	return false
+// }
 
-func shouldUpdateMonitor(cluster *redisv1alpha1.DistributedRedisCluster, sts *appsv1.StatefulSet) bool {
-	for _, crspec := range *cluster.Spec.Monitor {
-		for _, cspec := range sts.Spec.Template.Spec.Containers {
-			if crspec.Name == cspec.Name {
-				if crspec.Image != cspec.Image {
-					return true
-				}
+// func shouldUpdateMonitor(cluster *redisv1alpha1.DistributedRedisCluster, sts *appsv1.StatefulSet) bool {
+// 	for _, crspec := range *cluster.Spec.Monitor {
+// 		for _, cspec := range sts.Spec.Template.Spec.Containers {
+// 			if crspec.Name == cspec.Name {
+// 				if crspec.Image != cspec.Image {
+// 					return true
+// 				}
 
-				//compare arguments
-				sort.Strings(crspec.Args)
-				sort.Strings(cspec.Args)
-				if !reflect.DeepEqual(crspec.Args, cspec.Args) {
-					return true
-				}
+// 				//compare arguments
+// 				sort.Strings(crspec.Args)
+// 				sort.Strings(cspec.Args)
+// 				if !reflect.DeepEqual(crspec.Args, cspec.Args) {
+// 					return true
+// 				}
 
-				// Checking resources
-				expectedResource := crspec.Resources
-				currentResource := cspec.Resources
-				if result := expectedResource.Requests.Memory().Cmp(*currentResource.Requests.Memory()); result != 0 {
-					return true
-				}
-				if result := expectedResource.Requests.Cpu().Cmp(*currentResource.Requests.Cpu()); result != 0 {
-					return true
-				}
-				if result := expectedResource.Limits.Memory().Cmp(*currentResource.Limits.Memory()); result != 0 {
-					return true
-				}
-				if result := expectedResource.Limits.Cpu().Cmp(*currentResource.Limits.Cpu()); result != 0 {
-					return true
-				}
-			}
-		}
-	}
-	return false
-}
+// 				// Checking resources
+// 				expectedResource := crspec.Resources
+// 				currentResource := cspec.Resources
+// 				if result := expectedResource.Requests.Memory().Cmp(*currentResource.Requests.Memory()); result != 0 {
+// 					return true
+// 				}
+// 				if result := expectedResource.Requests.Cpu().Cmp(*currentResource.Requests.Cpu()); result != 0 {
+// 					return true
+// 				}
+// 				if result := expectedResource.Limits.Memory().Cmp(*currentResource.Limits.Memory()); result != 0 {
+// 					return true
+// 				}
+// 				if result := expectedResource.Limits.Cpu().Cmp(*currentResource.Limits.Cpu()); result != 0 {
+// 					return true
+// 				}
+// 			}
+// 		}
+// 	}
+// 	return false
+// }
 
 func (r *realEnsureResource) ensureRedisPDB(cluster *redisv1alpha1.DistributedRedisCluster, name string, labels map[string]string) error {
 	_, err := r.pdbClient.GetPodDisruptionBudget(cluster.Namespace, name)

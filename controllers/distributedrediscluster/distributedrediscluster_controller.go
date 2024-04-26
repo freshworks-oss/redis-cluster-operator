@@ -56,6 +56,8 @@ var (
 	// reconcileTime is the delay between reconciliations. Defaults to 60s.
 	reconcileTime int
 
+	updatePredicateCalled = false
+
 	pred predicate.Funcs
 )
 
@@ -104,6 +106,7 @@ func redisclustercontrollerPredfunction() predicate.Funcs {
 			if e.ObjectOld.GetGeneration() != e.ObjectNew.GetGeneration() {
 				logl.WithValues("namespace", e.ObjectNew.GetNamespace(), "name", e.ObjectNew.GetName()).Info("Generation change return true",
 					"old", e.ObjectOld, "new", e.ObjectNew)
+				updatePredicateCalled = true
 				return true
 			}
 			return false
@@ -169,8 +172,10 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 	}
 	var STSEnsureStatus rediskunv1alpha1.StsEnsureStatus = rediskunv1alpha1.STSNotEnsured
 	var haStatus rediskunv1alpha1.HaStatus = rediskunv1alpha1.HaStatusUnknown
-	STSEnsureStatus, err = r.ensureCluster(syncCtx)
+	STSEnsureStatus, err = r.ensureCluster(syncCtx, updatePredicateCalled)
 
+	// Make sure to update the predicate called flag to false
+	updatePredicateCalled = false
 	// set p0 metric if err is StopRetry
 	if err != nil {
 		switch GetType(err) {

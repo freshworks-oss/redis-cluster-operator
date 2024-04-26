@@ -50,6 +50,8 @@ var (
 
 	pred predicate.Funcs
 
+	updatePredicateCalled = false
+
 	//jobPred predicate.Funcs
 )
 
@@ -227,7 +229,7 @@ func (r *RedisClusterBackupReconciler) Reconcile(ctx context.Context, request ct
 	}
 
 	//Create Util Deployment
-	err = r.reconcileUtilDeployment(logl, instance, cluster)
+	err = r.reconcileUtilDeployment(logl, instance, cluster, updatePredicateCalled)
 	if err != nil {
 		logl.Error(err, "Unable to create Util Deployment due to the above erros, Kindly fix them!")
 	}
