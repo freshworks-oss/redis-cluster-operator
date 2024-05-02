@@ -167,8 +167,10 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 	}
 
 	syncCtx := &syncContext{
-		cluster:   instance,
-		reqLogger: reqLogger,
+		cluster:         instance,
+		reqLogger:       reqLogger,
+		client:          r.Client,
+		configMapClient: k8sutil.NewConfigMapController(r.Client),
 	}
 	var STSEnsureStatus rediskunv1alpha1.StsEnsureStatus = rediskunv1alpha1.STSNotEnsured
 	var haStatus rediskunv1alpha1.HaStatus = rediskunv1alpha1.HaStatusUnknown

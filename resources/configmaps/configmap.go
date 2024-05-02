@@ -64,7 +64,6 @@ exec "$@"`
 
 func NewACLConfigMap(conflog logr.Logger, client client.Client, cluster *redisv1alpha1.DistributedRedisCluster, labels map[string]string) (*corev1.ConfigMap, map[string]string, error, bool) {
 	//	secretversion := make(map[string]string)
-
 	aclfileContent, secretversion, err := GenerateAclconf(conflog, client, cluster)
 	if err != nil {
 		if errors.Is(err, ErrBadInput) {
@@ -313,7 +312,9 @@ func GetAclStringFromSecrets(conflog logr.Logger, client client.Client, cluster 
 	}
 	aclString := fmt.Sprintf("user %s on %s #%s", aclsecret["username"], aclsecret["acl"], GetHashedPassword(aclsecret["password"]))
 	//conflog.Info("GetAclStringFromSecrets", "aclstring", aclString)
-
+	if _, ok := aclsecret["old_password"]; ok {
+		aclString = aclString + fmt.Sprintf(" #%s", GetHashedPassword(aclsecret["old_password"]))
+	}
 	return aclString, versionId, nil
 }
 
@@ -337,7 +338,9 @@ func GetAcldataFromSecrets(client client.Client, cluster *redisv1alpha1.Distribu
 		}
 		values[field] = strings.TrimSpace(string(secret.Data[field]))
 	}
-
+	if data, ok := secret.Data["old_password"]; ok && len(data) != 0 {
+		values["old_password"] = strings.TrimSpace(string(secret.Data["old_password"]))
+	}
 	return values, secret.ResourceVersion, nil
 }
 

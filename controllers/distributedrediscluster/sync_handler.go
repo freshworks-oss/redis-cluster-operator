@@ -10,12 +10,14 @@ import (
 	"github.com/go-logr/logr"
 	v1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	rediskunv1alpha1 "github.com/dinesh-murugiah/rediscluster-operator/api/v1alpha1"
 	redisv1alpha1 "github.com/dinesh-murugiah/rediscluster-operator/api/v1alpha1"
 	"github.com/dinesh-murugiah/rediscluster-operator/controllers/clustering"
 	"github.com/dinesh-murugiah/rediscluster-operator/controllers/manager"
 	"github.com/dinesh-murugiah/rediscluster-operator/metrics"
+	"github.com/dinesh-murugiah/rediscluster-operator/resources/configmaps"
 	"github.com/dinesh-murugiah/rediscluster-operator/resources/statefulsets"
 	"github.com/dinesh-murugiah/rediscluster-operator/utils/k8sutil"
 	"github.com/dinesh-murugiah/rediscluster-operator/utils/redisutil"
@@ -26,12 +28,14 @@ const (
 )
 
 type syncContext struct {
-	cluster      *redisv1alpha1.DistributedRedisCluster
-	clusterInfos *redisutil.ClusterInfos
-	admin        redisutil.IAdmin
-	healer       manager.IHeal
-	pods         []*corev1.Pod
-	reqLogger    logr.Logger
+	cluster         *redisv1alpha1.DistributedRedisCluster
+	clusterInfos    *redisutil.ClusterInfos
+	admin           redisutil.IAdmin
+	healer          manager.IHeal
+	pods            []*corev1.Pod
+	reqLogger       logr.Logger
+	client          client.Client
+	configMapClient k8sutil.IConfigMapControl
 }
 
 func (r *DistributedRedisClusterReconciler) ensureCluster(ctx *syncContext, update bool) (redisv1alpha1.StsEnsureStatus, error) {
@@ -398,6 +402,23 @@ func (r *DistributedRedisClusterReconciler) checkandUpdatePassword(admin redisut
 		return nil, nil
 	}
 	ctx.reqLogger.Info("Difference in ACL found, trying to update..")
+	// Update configmap also is required here, so that when redis get restarted,
+	// it would come up with expected acl or else it would come up with old acl which is a disaster.
+	_, err2 := ctx.configMapClient.GetConfigMap(cluster.Namespace, configmaps.AclConfigMapName(cluster.Name))
+	if err2 == nil {
+		aclCmData, _, conferr, abortcr := configmaps.NewACLConfigMap(ctx.reqLogger, ctx.client, cluster, getLabels(cluster))
+		if conferr != nil || abortcr {
+			ctx.reqLogger.Error(conferr, "error while generating acl data for updating configmap")
+			return nil, conferr
+		}
+		err3 := ctx.configMapClient.UpdateConfigMap(aclCmData)
+		if err3 != nil {
+			return nil, err3
+		}
+	} else {
+		ctx.reqLogger.Error(err2, "error while getting ACL configmap")
+		return nil, err2
+	}
 	SetClusterResetPassword(&ctx.cluster.Status, "Updating ACL's")
 	r.CrController.UpdateCRStatus(ctx.cluster)
 
@@ -405,7 +426,6 @@ func (r *DistributedRedisClusterReconciler) checkandUpdatePassword(admin redisut
 		return nil, err
 	}
 	aclcommands, err := statefulsets.GenerateAclcommands(ctx.reqLogger, r.Client, ctx.cluster, newaclconf, newsecretver)
-
 	if err != nil {
 		return newsecretver, err
 
