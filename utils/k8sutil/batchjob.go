@@ -3,6 +3,8 @@ package k8sutil
 import (
 	"context"
 
+	"github.com/dinesh-murugiah/rediscluster-operator/metrics"
+	utils "github.com/dinesh-murugiah/rediscluster-operator/utils/commonutils"
 	batchv1 "k8s.io/api/batch/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -18,28 +20,35 @@ type IJobControl interface {
 }
 
 type JobController struct {
-	client client.Client
+	client  client.Client
+	metrics metrics.Recorder
 }
 
 // NewRealJobControl creates a concrete implementation of the
 // IJobControl.
-func NewJobController(client client.Client) IJobControl {
-	return &JobController{client: client}
+func NewJobController(client client.Client, metrics metrics.Recorder) IJobControl {
+	return &JobController{client: client, metrics: metrics}
 }
 
 // CreateJob implement the IJobControl.Interface.
 func (j *JobController) CreateJob(job *batchv1.Job) error {
-	return j.client.Create(context.TODO(), job)
+	err := j.client.Create(context.TODO(), job)
+	utils.RecordK8sMetrics(job.Namespace, "Job", job.Name, "CREATE", err, j.metrics)
+	return err
 }
 
 // UpdateJob implement the IJobControl.Interface.
 func (j *JobController) UpdateJob(job *batchv1.Job) error {
-	return j.client.Update(context.TODO(), job)
+	err := j.client.Update(context.TODO(), job)
+	utils.RecordK8sMetrics(job.Namespace, "Job", job.Name, "UPDATE", err, j.metrics)
+	return err
 }
 
 // DeleteJob implement the IJobControl.Interface.
 func (j *JobController) DeleteJob(job *batchv1.Job) error {
-	return j.client.Delete(context.TODO(), job)
+	err := j.client.Delete(context.TODO(), job)
+	utils.RecordK8sMetrics(job.Namespace, "Job", job.Name, "DELETE", err, j.metrics)
+	return err
 }
 
 // GetJob implement the IJobControl.Interface.
@@ -49,6 +58,7 @@ func (j *JobController) GetJob(namespace, name string) (*batchv1.Job, error) {
 		Name:      name,
 		Namespace: namespace,
 	}, job)
+	utils.RecordK8sMetrics(namespace, "Job", name, "GET", err, j.metrics)
 	return job, err
 }
 
@@ -59,6 +69,7 @@ func (j *JobController) ListJobByLabels(namespace string, labs client.MatchingLa
 		labs,
 	}
 	err := j.client.List(context.TODO(), jobList, opts...)
+	utils.RecordK8sMetrics(namespace, "Job", "NA", "GETJOBBYLABELS", err, j.metrics)
 	if err != nil {
 		return nil, err
 	}

@@ -33,8 +33,8 @@ type realCheck struct {
 
 func NewCheck(client client.Client, logger logr.Logger, metricsRecorder metrics.Recorder) ICheck {
 	return &realCheck{
-		statefulSetClient: k8sutil.NewStatefulSetController(client),
-		configMapClient:   k8sutil.NewConfigMapController(client),
+		statefulSetClient: k8sutil.NewStatefulSetController(client, metricsRecorder),
+		configMapClient:   k8sutil.NewConfigMapController(client, metricsRecorder),
 		logger:            logger,
 		client:            client,
 		metricsRecorder:   metricsRecorder,
@@ -45,7 +45,6 @@ func (c *realCheck) CheckPasswordChanged(cluster *redisv1alpha1.DistributedRedis
 	secretversion := make(map[string]string)
 	aclcmname := configmaps.AclConfigMapName(cluster.Name)
 	_, err := c.configMapClient.GetConfigMap(cluster.Namespace, aclcmname)
-	k8sutil.RecordMetrics(cluster.Namespace, "ConfigMap", aclcmname, "GET", err, c.metricsRecorder)
 	if err != nil {
 		if errors.IsNotFound(err) {
 			c.logger.WithValues("ConfigMap.Namespace", cluster.Namespace, "ConfigMap.Name", aclcmname).
@@ -64,7 +63,8 @@ func (c *realCheck) CheckPasswordChanged(cluster *redisv1alpha1.DistributedRedis
 	//acldata_new, secretversion, err2 := configmaps.GenerateAclconf(c.logger, c.client, cluster)
 	acldata_new, secretversion, err2 := configmaps.GenerateAclconf(c.logger, c.client, cluster)
 	if err2 != nil {
-		c.metricsRecorder.RecordRedisOperation(cluster.Namespace, cluster.Name, metrics.GEN_ACL_CONF, "NA", metrics.FAIL, err2.Error())
+		// add it under reconcile failure - not a redis operation - Pratheep
+		// c.metricsRecorder.RecordRedisOperation(cluster.Namespace, cluster.Name, metrics.GEN_ACL_CONF, "NA", metrics.FAIL, err2.Error())
 		c.logger.Error(err2, "unable to generate acl data from secrets")
 		return false, "", secretversion, err
 	}

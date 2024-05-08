@@ -6,6 +6,8 @@ import (
 
 	"k8s.io/apimachinery/pkg/types"
 
+	"github.com/dinesh-murugiah/rediscluster-operator/metrics"
+	utils "github.com/dinesh-murugiah/rediscluster-operator/utils/commonutils"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -23,29 +25,36 @@ type ICustomResource interface {
 }
 
 type clusterControl struct {
-	client client.Client
+	client  client.Client
+	metrics metrics.Recorder
 }
 
 // NewCRControl creates a concrete implementation of the
 // ICustomResource.
-func NewCRControl(client client.Client) ICustomResource {
-	return &clusterControl{client: client}
+func NewCRControl(client client.Client, metrics metrics.Recorder) ICustomResource {
+	return &clusterControl{client: client, metrics: metrics}
 }
 
 func (c *clusterControl) UpdateCRStatus(obj runtime.Object) error {
-	return c.client.Status().Update(context.TODO(), obj.(client.Object))
+	err := c.client.Status().Update(context.Background(), obj.(client.Object))
+	utils.RecordK8sMetrics(obj.(client.Object).GetNamespace(), "RedisClusterCR", obj.(client.Object).GetName(), "UPDATECRSTATUS", err, c.metrics)
+	return err
 }
 
 func (c *clusterControl) UpdateCR(obj runtime.Object) error {
-	return c.client.Update(context.TODO(), obj.(client.Object))
+	err := c.client.Update(context.Background(), obj.(client.Object))
+	utils.RecordK8sMetrics(obj.(client.Object).GetNamespace(), "RedisClusterCR", obj.(client.Object).GetName(), "UPDATECR", err, c.metrics)
+	return err
 }
 
 func (c *clusterControl) GetRedisClusterBackup(namespace, name string) (*redisv1alpha1.RedisClusterBackup, error) {
 	backup := &redisv1alpha1.RedisClusterBackup{}
-	if err := c.client.Get(context.TODO(), types.NamespacedName{
+	err := c.client.Get(context.TODO(), types.NamespacedName{
 		Name:      name,
 		Namespace: namespace,
-	}, backup); err != nil {
+	}, backup)
+	utils.RecordK8sMetrics(namespace, "RedisClusterBackup", name, "GET", err, c.metrics)
+	if err != nil {
 		return nil, err
 	}
 	return backup, nil
@@ -53,10 +62,12 @@ func (c *clusterControl) GetRedisClusterBackup(namespace, name string) (*redisv1
 
 func (c *clusterControl) GetDistributedRedisCluster(namespace, name string) (*redisv1alpha1.DistributedRedisCluster, error) {
 	drc := &redisv1alpha1.DistributedRedisCluster{}
-	if err := c.client.Get(context.TODO(), types.NamespacedName{
+	err := c.client.Get(context.TODO(), types.NamespacedName{
 		Name:      name,
 		Namespace: namespace,
-	}, drc); err != nil {
+	}, drc)
+	utils.RecordK8sMetrics(namespace, "DistributedRedisCluster", name, "GET", err, c.metrics)
+	if err != nil {
 		return nil, err
 	}
 	return drc, nil

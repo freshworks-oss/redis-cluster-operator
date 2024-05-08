@@ -3,6 +3,8 @@ package k8sutil
 import (
 	"context"
 
+	"github.com/dinesh-murugiah/rediscluster-operator/metrics"
+	utils "github.com/dinesh-murugiah/rediscluster-operator/utils/commonutils"
 	policyv1 "k8s.io/api/policy/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -22,28 +24,35 @@ type IPodDisruptionBudgetControl interface {
 }
 
 type PodDisruptionBudgetController struct {
-	client client.Client
+	client  client.Client
+	metrics metrics.Recorder
 }
 
 // NewRealPodDisruptionBudgetControl creates a concrete implementation of the
 // IPodDisruptionBudgetControl.
-func NewPodDisruptionBudgetController(client client.Client) IPodDisruptionBudgetControl {
-	return &PodDisruptionBudgetController{client: client}
+func NewPodDisruptionBudgetController(client client.Client, metrics metrics.Recorder) IPodDisruptionBudgetControl {
+	return &PodDisruptionBudgetController{client: client, metrics: metrics}
 }
 
 // CreatePodDisruptionBudget implement the IPodDisruptionBudgetControl.Interface.
 func (s *PodDisruptionBudgetController) CreatePodDisruptionBudget(pb *policyv1.PodDisruptionBudget) error {
-	return s.client.Create(context.TODO(), pb)
+	err := s.client.Create(context.TODO(), pb)
+	utils.RecordK8sMetrics(pb.Namespace, "PodDisruptionBudget", pb.Name, "CREATE", err, s.metrics)
+	return err
 }
 
 // UpdatePodDisruptionBudget implement the IPodDisruptionBudgetControl.Interface.
 func (s *PodDisruptionBudgetController) UpdatePodDisruptionBudget(pb *policyv1.PodDisruptionBudget) error {
-	return s.client.Update(context.TODO(), pb)
+	err := s.client.Update(context.TODO(), pb)
+	utils.RecordK8sMetrics(pb.Namespace, "PodDisruptionBudget", pb.Name, "UPDATE", err, s.metrics)
+	return err
 }
 
 // DeletePodDisruptionBudget implement the IPodDisruptionBudgetControl.Interface.
 func (s *PodDisruptionBudgetController) DeletePodDisruptionBudget(pb *policyv1.PodDisruptionBudget) error {
-	return s.client.Delete(context.TODO(), pb)
+	err := s.client.Delete(context.TODO(), pb)
+	utils.RecordK8sMetrics(pb.Namespace, "PodDisruptionBudget", pb.Name, "DELETE", err, s.metrics)
+	return err
 }
 
 func (s *PodDisruptionBudgetController) DeletePodDisruptionBudgetByName(namespace, name string) error {
@@ -61,5 +70,6 @@ func (s *PodDisruptionBudgetController) GetPodDisruptionBudget(namespace, name s
 		Name:      name,
 		Namespace: namespace,
 	}, pb)
+	utils.RecordK8sMetrics(namespace, "PodDisruptionBudget", name, "GET", err, s.metrics)
 	return pb, err
 }

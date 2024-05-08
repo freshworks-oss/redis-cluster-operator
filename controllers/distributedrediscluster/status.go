@@ -13,6 +13,7 @@ import (
 
 	redisv1alpha1 "github.com/dinesh-murugiah/rediscluster-operator/api/v1alpha1"
 	"github.com/dinesh-murugiah/rediscluster-operator/controllers/clustering"
+	"github.com/dinesh-murugiah/rediscluster-operator/metrics"
 	"github.com/dinesh-murugiah/rediscluster-operator/resources/configmaps"
 	utils "github.com/dinesh-murugiah/rediscluster-operator/utils/commonutils"
 	"github.com/dinesh-murugiah/rediscluster-operator/utils/k8sutil"
@@ -101,11 +102,11 @@ func CheackandUpdateClusterHealth(clusterStatus *redisv1alpha1.DistributedRedisC
 	return true
 }
 
-func CheckallZonesActive(cluster *redisv1alpha1.DistributedRedisCluster, reqLogger logr.Logger, Client client.Client) (bool, int32, error) {
+func CheckallZonesActive(cluster *redisv1alpha1.DistributedRedisCluster, reqLogger logr.Logger, Client client.Client, metrics metrics.Recorder) (bool, int32, error) {
 
 	var activeZones int32 = 0
 	var activeZonenames []string = make([]string, 0, len(cluster.Spec.HaConfig.ZonesInfo))
-	nodectrl := k8sutil.NewNodeController(Client)
+	nodectrl := k8sutil.NewNodeController(Client, metrics)
 	for zone, _ := range cluster.Spec.HaConfig.ZonesInfo {
 		zoneactive, err := nodectrl.CheckZoneAvailable(zone)
 		if err != nil {

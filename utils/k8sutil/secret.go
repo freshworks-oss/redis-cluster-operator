@@ -3,6 +3,8 @@ package k8sutil
 import (
 	"context"
 
+	"github.com/dinesh-murugiah/rediscluster-operator/metrics"
+	utils "github.com/dinesh-murugiah/rediscluster-operator/utils/commonutils"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -21,18 +23,21 @@ type ISecretControl interface {
 }
 
 type SecretController struct {
-	client client.Client
+	client  client.Client
+	metrics metrics.Recorder
 }
 
 // NewRealSecretControl creates a concrete implementation of the
 // ISecretControl.
-func NewSecretController(client client.Client) ISecretControl {
-	return &SecretController{client: client}
+func NewSecretController(client client.Client, metrics metrics.Recorder) ISecretControl {
+	return &SecretController{client: client, metrics: metrics}
 }
 
 // CreateSecret implement the ISecretControl.Interface.
 func (s *SecretController) CreateSecret(cm *corev1.Secret) error {
-	return s.client.Create(context.TODO(), cm)
+	err := s.client.Create(context.TODO(), cm)
+	utils.RecordK8sMetrics(cm.Namespace, "Secret", cm.Name, "CREATE", err, s.metrics)
+	return err
 }
 
 // UpdateSecret implement the ISecretControl.Interface.

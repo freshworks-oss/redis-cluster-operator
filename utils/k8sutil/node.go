@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/dinesh-murugiah/rediscluster-operator/metrics"
+	utils "github.com/dinesh-murugiah/rediscluster-operator/utils/commonutils"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
@@ -22,13 +24,14 @@ type INodeControl interface {
 }
 
 type NodeController struct {
-	client client.Client
+	client  client.Client
+	metrics metrics.Recorder
 }
 
 // NewNodeController creates a concrete implementation of the
 // INodeControl.
-func NewNodeController(client client.Client) INodeControl {
-	return &NodeController{client: client}
+func NewNodeController(client client.Client, metrics metrics.Recorder) INodeControl {
+	return &NodeController{client: client, metrics: metrics}
 }
 
 // GetNode with the node name obtained from podspec.
@@ -37,6 +40,7 @@ func (p *NodeController) GetNode(nodename string) (*corev1.Node, error) {
 	err := p.client.Get(context.TODO(), types.NamespacedName{
 		Name: nodename,
 	}, node)
+	utils.RecordK8sMetrics("NA", "Node", nodename, "GET", err, p.metrics)
 	return node, err
 }
 
@@ -53,6 +57,7 @@ func (p *NodeController) CheckZoneAvailable(zonename string) (bool, error) {
 			"topology.kubernetes.io/zone": zn,
 		})),
 	})
+	utils.RecordK8sMetrics("NA", "Node", zonename, "CHECKZONEAVAILABILITY", err, p.metrics)
 	if err != nil {
 		return false, err
 	}

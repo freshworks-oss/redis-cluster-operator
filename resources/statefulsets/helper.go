@@ -38,6 +38,7 @@ func GetRedisClusterAdminPassword(client client.Client, cluster *redisv1alpha1.D
 		return "", fmt.Errorf("admin secret missing in CR")
 	}
 	secret := &corev1.Secret{}
+	// TODO : DR-1638:This is not the right place to do this operation. This should be done in the controller. To be fixed in cleanup - PRATHEEP
 	err := client.Get(context.TODO(), types.NamespacedName{
 		Name:      cluster.Spec.AdminSecret.Name,
 		Namespace: cluster.Namespace,

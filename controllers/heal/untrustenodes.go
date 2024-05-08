@@ -7,7 +7,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/errors"
 
 	redisv1alpha1 "github.com/dinesh-murugiah/rediscluster-operator/api/v1alpha1"
-	"github.com/dinesh-murugiah/rediscluster-operator/metrics"
 	"github.com/dinesh-murugiah/rediscluster-operator/utils/redisutil"
 )
 
@@ -28,7 +27,7 @@ func (c *CheckAndHeal) FixUntrustedNodes(cluster *redisv1alpha1.DistributedRedis
 		}
 		node2, err := infos.GetNodes().GetNodesByFunc(getByIPFunc)
 		if err != nil && !redisutil.IsNodeNotFoundedError(err) {
-			c.MetricsClient.RecordRedisOperation(cluster.Namespace, cluster.Name, metrics.NODE_NOT_FOUND, uNode.IP, metrics.FAIL, err.Error())
+			// record this under heal failure or find right metric - Pratheep
 			c.Logger.Error(err, "error with GetNodesByFunc(getByIPFunc) search function")
 			errs = append(errs, err)
 			continue
@@ -41,15 +40,14 @@ func (c *CheckAndHeal) FixUntrustedNodes(cluster *redisv1alpha1.DistributedRedis
 		if exist && !reused {
 			c.Logger.Info("[FixUntrustedNodes] try to delete pod", "podName", uNode.PodName)
 			if err := c.PodControl.DeletePodByName(cluster.Namespace, uNode.PodName); err != nil {
-				c.MetricsClient.RecordRedisOperation(cluster.Namespace, cluster.Name, metrics.UNUSED_GHOST_NODE, uNode.IP, metrics.FAIL, err.Error())
+				// record this under heal failure or find right metric - Pratheep
 				errs = append(errs, err)
 			}
 		}
 		doneAnAction = true
 		if !c.DryRun {
 			c.Logger.Info("[FixUntrustedNodes] try to forget node", "nodeId", id)
-			if err := admin.ForgetNode(context, id); err != nil {
-				c.MetricsClient.RecordRedisOperation(cluster.Namespace, cluster.Name, metrics.FORGET_NODE, uNode.IP, metrics.FAIL, err.Error())
+			if err := admin.ForgetNode(context, id, cluster.Namespace, cluster.Name); err != nil {
 				errs = append(errs, err)
 			}
 		}

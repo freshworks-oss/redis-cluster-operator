@@ -3,6 +3,8 @@ package k8sutil
 import (
 	"context"
 
+	"github.com/dinesh-murugiah/rediscluster-operator/metrics"
+	utils "github.com/dinesh-murugiah/rediscluster-operator/utils/commonutils"
 	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -18,28 +20,35 @@ type IDeploymentControl interface {
 }
 
 type DeploymentController struct {
-	client client.Client
+	client  client.Client
+	metrics metrics.Recorder
 }
 
 // NewRealDeploymentControl creates a concrete implementation of the
 // IDeploymentControl.
-func NewDeploymentController(client client.Client) IDeploymentControl {
-	return &DeploymentController{client: client}
+func NewDeploymentController(client client.Client, metrics metrics.Recorder) IDeploymentControl {
+	return &DeploymentController{client: client, metrics: metrics}
 }
 
 // CreateDeployment implement the IDeploymentControl.Interface.
 func (d *DeploymentController) CreateDeployment(deployment *appsv1.Deployment) error {
-	return d.client.Create(context.TODO(), deployment)
+	err := d.client.Create(context.TODO(), deployment)
+	utils.RecordK8sMetrics(deployment.Namespace, "Deployment", deployment.Name, "CREATE", err, d.metrics)
+	return err
 }
 
 // UpdateDeployment implement the IDeploymentControl.Interface.
 func (d *DeploymentController) UpdateDeployment(deployment *appsv1.Deployment) error {
-	return d.client.Update(context.TODO(), deployment)
+	err := d.client.Update(context.TODO(), deployment)
+	utils.RecordK8sMetrics(deployment.Namespace, "Deployment", deployment.Name, "UPDATE", err, d.metrics)
+	return err
 }
 
 // DeleteDeployment implement the IDeploymentControl.Interface.
 func (d *DeploymentController) DeleteDeployment(deployment *appsv1.Deployment) error {
-	return d.client.Delete(context.TODO(), deployment)
+	err := d.client.Delete(context.TODO(), deployment)
+	utils.RecordK8sMetrics(deployment.Namespace, "Deployment", deployment.Name, "DELETE", err, d.metrics)
+	return err
 }
 
 // GetDeployment implement the IDeploymentControl.Interface.
@@ -49,6 +58,7 @@ func (d *DeploymentController) GetDeployment(namespace, name string) (*appsv1.De
 		Name:      name,
 		Namespace: namespace,
 	}, deployment)
+	utils.RecordK8sMetrics(namespace, "Deployment", name, "GET", err, d.metrics)
 	return deployment, err
 }
 
@@ -59,6 +69,7 @@ func (d *DeploymentController) ListDeploymentByLabels(namespace string, labs cli
 		labs,
 	}
 	err := d.client.List(context.TODO(), deploymentList, opts...)
+	utils.RecordK8sMetrics(namespace, "Deployment", "", "GETDEPLOYMENTBYLABELS", err, d.metrics)
 	if err != nil {
 		return nil, err
 	}

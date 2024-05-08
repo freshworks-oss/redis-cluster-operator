@@ -47,7 +47,7 @@ func (c *CheckAndHeal) CheckandRecoverCluster(cluster *redisv1alpha1.Distributed
 		}
 		c.Logger.Info("Recovering the cluster by failover", "Promote Node IP", promoteNode.IP, "Promote Node role", promoteNode.GetRole(), "STS", stsName, "promote Node zone", promoteNode.Zonename)
 		//Here we are assuming that slave chosen by ranking algorithm is the best slave to promote as master
-		errFailover := admin.FailoverSlaveToMaster(context, promoteNode, redisutil.RedisFailoverTakeover)
+		errFailover := admin.FailoverSlaveToMaster(context, promoteNode, redisutil.RedisFailoverTakeover, cluster.Namespace, cluster.Name)
 		if errFailover != nil {
 			c.Logger.Error(err, "Error while recovering the cluster by failover a slave to master", "Slave IP", promoteNode.IP)
 			stopReconcile = true

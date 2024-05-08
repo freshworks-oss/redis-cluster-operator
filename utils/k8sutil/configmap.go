@@ -3,6 +3,8 @@ package k8sutil
 import (
 	"context"
 
+	"github.com/dinesh-murugiah/rediscluster-operator/metrics"
+	utils "github.com/dinesh-murugiah/rediscluster-operator/utils/commonutils"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -21,28 +23,35 @@ type IConfigMapControl interface {
 }
 
 type ConfigMapController struct {
-	client client.Client
+	client  client.Client
+	metrics metrics.Recorder
 }
 
 // NewRealConfigMapControl creates a concrete implementation of the
 // IConfigMapControl.
-func NewConfigMapController(client client.Client) IConfigMapControl {
-	return &ConfigMapController{client: client}
+func NewConfigMapController(client client.Client, metrics metrics.Recorder) IConfigMapControl {
+	return &ConfigMapController{client: client, metrics: metrics}
 }
 
 // CreateConfigMap implement the IConfigMapControl.Interface.
 func (s *ConfigMapController) CreateConfigMap(cm *corev1.ConfigMap) error {
-	return s.client.Create(context.TODO(), cm)
+	err := s.client.Create(context.TODO(), cm)
+	utils.RecordK8sMetrics(cm.Namespace, "ConfigMap", cm.Name, "CREATE", err, s.metrics)
+	return err
 }
 
 // UpdateConfigMap implement the IConfigMapControl.Interface.
 func (s *ConfigMapController) UpdateConfigMap(cm *corev1.ConfigMap) error {
-	return s.client.Update(context.TODO(), cm)
+	err := s.client.Update(context.TODO(), cm)
+	utils.RecordK8sMetrics(cm.Namespace, "ConfigMap", cm.Name, "UPDATE", err, s.metrics)
+	return err
 }
 
 // DeleteConfigMap implement the IConfigMapControl.Interface.
 func (s *ConfigMapController) DeleteConfigMap(cm *corev1.ConfigMap) error {
-	return s.client.Delete(context.TODO(), cm)
+	err := s.client.Delete(context.TODO(), cm)
+	utils.RecordK8sMetrics(cm.Namespace, "ConfigMap", cm.Name, "DELETE", err, s.metrics)
+	return err
 }
 
 // GetConfigMap implement the IConfigMapControl.Interface.
@@ -52,5 +61,6 @@ func (s *ConfigMapController) GetConfigMap(namespace, name string) (*corev1.Conf
 		Name:      name,
 		Namespace: namespace,
 	}, cm)
+	utils.RecordK8sMetrics(namespace, "ConfigMap", name, "GET", err, s.metrics)
 	return cm, err
 }

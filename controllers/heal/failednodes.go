@@ -6,7 +6,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/errors"
 
 	redisv1alpha1 "github.com/dinesh-murugiah/rediscluster-operator/api/v1alpha1"
-	"github.com/dinesh-murugiah/rediscluster-operator/metrics"
 	"github.com/dinesh-murugiah/rediscluster-operator/utils/redisutil"
 	"github.com/go-logr/logr"
 )
@@ -22,9 +21,8 @@ func (c *CheckAndHeal) FixFailedNodes(cluster *redisv1alpha1.DistributedRedisClu
 		c.Logger.Info("[FixFailedNodes] Forgetting failed node, this command might fail, this is not an error", "node", id)
 		if !c.DryRun {
 			c.Logger.Info("[FixFailedNodes] try to forget node", "nodeId", id)
-			err := admin.ForgetNode(context, id)
+			err := admin.ForgetNode(context, id, cluster.Namespace, cluster.Name)
 			if err != nil {
-				c.MetricsClient.RecordRedisOperation(cluster.Namespace, cluster.Name, metrics.FORGET_NODE, id, metrics.FAIL, err.Error())
 				errs = append(errs, err)
 			}
 		}

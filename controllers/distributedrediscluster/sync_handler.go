@@ -214,9 +214,9 @@ func (r *DistributedRedisClusterReconciler) waitForClusterJoin(ctx *syncContext,
 		break
 	}
 	ctx.reqLogger.Info(">>> Sending CLUSTER MEET messages to join the cluster")
-	err := ctx.admin.AttachNodeToCluster(context, firstNode.IPPort())
+	err := ctx.admin.AttachNodeToCluster(context, firstNode.IPPort(), cluster.Namespace, cluster.Name)
 	if err != nil {
-		r.MetricsClient.RecordRedisOperation(cluster.Namespace, cluster.Name, metrics.CLUSTER_MEET, firstNode.IP, metrics.FAIL, err.Error())
+		// TODO - Record reconcile failure here - Pratheep
 		return Redis.Wrap(err, "AttachNodeToCluster")
 	}
 	// Give one second for the join to start, in order to avoid that
@@ -226,7 +226,7 @@ func (r *DistributedRedisClusterReconciler) waitForClusterJoin(ctx *syncContext,
 	/*
 		_, err = ctx.admin.GetClusterInfos(context)
 		if err != nil {
-			r.MetricsClient.RecordRedisOperation(cluster.Namespace, cluster.Name, metrics.GET_CLUSTER_NODES_ALL, "NA", metrics.FAIL, err.Error())
+			// TODO - Record reconcile failure here - Pratheep
 			return Requeue.Wrap(err, "wait for cluster join")
 		}
 	*/
@@ -245,12 +245,12 @@ func (r *DistributedRedisClusterReconciler) syncCluster(ctx *syncContext, contex
 	clusterCtx := clustering.NewCtx(cluster.Spec.HaConfig, rCluster, nodes, cluster.Spec.MasterSize, cluster.Spec.ClusterReplicas, cluster.Name, ctx.reqLogger)
 	//Create a New Ranking Info Every time we need to place masters
 	if err := clusterCtx.DispatchMasters(); err != nil {
-		r.MetricsClient.RecordRedisOperation(instance.Namespace, instance.Name, metrics.DISPATCH_MASTER, "NA", metrics.FAIL, err.Error())
+		// Figure out right metric - Pratheep
 		return Cluster.Wrap(err, "DispatchMasters")
 	}
 	//Check if there is any masters that needs to be recovered from failure before we proceed with cluster operations
 	/*
-		if err := clusterCtx.CheckAndHealCluster(admin, context); err != nil {
+		if err := clusterCtx.CheckAndHealCluster(admin, context, instance.Namespace, instance.Name); err != nil {
 			if clustering.ErrorType(GetType(err)) == clustering.HealReconcile {
 				//We need alert for this metric if its hapenning continually for more than a minute
 				r.MetricsClient.RecordRedisOperation(instance.Namespace, instance.Name, metrics.SELFHEAL_CLUSTER, "NA", metrics.SUCCESS, err.Error())
@@ -271,44 +271,44 @@ func (r *DistributedRedisClusterReconciler) syncCluster(ctx *syncContext, contex
 	if len(curMasters) == 0 {
 		ctx.reqLogger.Info("Creating cluster")
 		if err := clusterCtx.PlaceSlaves(); err != nil {
-			r.MetricsClient.RecordRedisOperation(instance.Namespace, instance.Name, metrics.PLACE_SLAVE, "NA", metrics.FAIL, err.Error())
+			// captured in child function - check if this metrics is needed - Pratheep
 			return Cluster.Wrap(err, "PlaceSlaves")
 
 		}
-		if err := clusterCtx.AttachingSlavesToMaster(admin, context); err != nil {
-			r.MetricsClient.RecordRedisOperation(instance.Namespace, instance.Name, metrics.ATTACH_SLAVE_TO_MASTER, "NA", metrics.FAIL, err.Error())
+		if err := clusterCtx.AttachingSlavesToMaster(admin, context, instance.Namespace, instance.Name); err != nil {
+			// captured in child function - check if this metrics is needed - Pratheep
 			return Cluster.Wrap(err, "AttachingSlavesToMaster")
 		}
 
 		if err := clusterCtx.AllocSlots(admin, newMasters, context); err != nil {
-			r.MetricsClient.RecordRedisOperation(instance.Namespace, instance.Name, metrics.SLOT_ALLOCATION, "NA", metrics.FAIL, err.Error())
+			// captured in child function - check if this metrics is needed - Pratheep
 			return Cluster.Wrap(err, "AllocSlots")
 		}
 	} else if len(newMasters) > len(curMasters) {
 		ctx.reqLogger.Info("Scaling up")
 		if err := clusterCtx.PlaceSlaves(); err != nil {
-			r.MetricsClient.RecordRedisOperation(instance.Namespace, instance.Name, metrics.PLACE_SLAVE, "NA", metrics.FAIL, err.Error())
+			// captured in child function - check if this metrics is needed - Pratheep
 			return Cluster.Wrap(err, "PlaceSlaves")
 
 		}
-		if err := clusterCtx.AttachingSlavesToMaster(admin, context); err != nil {
-			r.MetricsClient.RecordRedisOperation(instance.Namespace, instance.Name, metrics.ATTACH_SLAVE_TO_MASTER, "NA", metrics.FAIL, err.Error())
+		if err := clusterCtx.AttachingSlavesToMaster(admin, context, instance.Namespace, instance.Name); err != nil {
+			// captured in child function - check if this metrics is needed - Pratheep
 			return Cluster.Wrap(err, "AttachingSlavesToMaster")
 		}
 
-		if err := clusterCtx.RebalancedCluster(admin, newMasters, context); err != nil {
-			r.MetricsClient.RecordRedisOperation(instance.Namespace, instance.Name, metrics.REBALANCE_CLUSTER, "NA", metrics.FAIL, err.Error())
+		if err := clusterCtx.RebalancedCluster(admin, newMasters, context, instance.Namespace, instance.Name); err != nil {
+			// captured in child function - check if this metrics is needed - Pratheep
 			return Cluster.Wrap(err, "RebalancedCluster")
 		}
 	} else if cluster.Status.MinReplicationFactor < cluster.Spec.ClusterReplicas {
 		ctx.reqLogger.Info("Scaling slave")
 		if err := clusterCtx.PlaceSlaves(); err != nil {
-			r.MetricsClient.RecordRedisOperation(instance.Namespace, instance.Name, metrics.PLACE_SLAVE, "NA", metrics.FAIL, err.Error())
+			// captured in child function - check if this metrics is needed - Pratheep
 			return Cluster.Wrap(err, "PlaceSlaves")
 
 		}
-		if err := clusterCtx.AttachingSlavesToMaster(admin, context); err != nil {
-			r.MetricsClient.RecordRedisOperation(instance.Namespace, instance.Name, metrics.ATTACH_SLAVE_TO_MASTER, "NA", metrics.FAIL, err.Error())
+		if err := clusterCtx.AttachingSlavesToMaster(admin, context, instance.Namespace, instance.Name); err != nil {
+			// captured in child function - check if this metrics is needed - Pratheep
 			return Cluster.Wrap(err, "AttachingSlavesToMaster")
 		}
 	} else if len(curMasters) > int(expectMasterNum) {
@@ -316,19 +316,19 @@ func (r *DistributedRedisClusterReconciler) syncCluster(ctx *syncContext, contex
 		var allMaster redisutil.Nodes
 		allMaster = append(allMaster, newMasters...)
 		allMaster = append(allMaster, curMasters...)
-		if err := clusterCtx.DispatchSlotToNewMasters(admin, newMasters, curMasters, allMaster, context); err != nil {
-			r.MetricsClient.RecordRedisOperation(instance.Namespace, instance.Name, metrics.ALLOT_SLOTS_TO_NEW_MASTERS, "NA", metrics.FAIL, err.Error())
+		if err := clusterCtx.DispatchSlotToNewMasters(admin, newMasters, curMasters, allMaster, instance.Namespace, instance.Name, context); err != nil {
+			// captured in child function - check if this metrics is needed - Pratheep
 			return err
 		}
-		if err := r.scalingDown(ctx, len(curMasters), clusterCtx.GetStatefulsetNodes(), context); err != nil {
-			r.MetricsClient.RecordRedisOperation(instance.Namespace, instance.Name, metrics.SCALE_DOWN, "NA", metrics.FAIL, err.Error())
+		if err := r.scalingDown(ctx, len(curMasters), clusterCtx.GetStatefulsetNodes(), context, instance.Namespace, instance.Name); err != nil {
+			// captured in child function - check if this metrics is needed - Pratheep
 			return err
 		}
 	}
 	return nil
 }
 
-func (r *DistributedRedisClusterReconciler) scalingDown(ctx *syncContext, currentMasterNum int, statefulSetNodes map[string]redisutil.Nodes, context context.Context) error {
+func (r *DistributedRedisClusterReconciler) scalingDown(ctx *syncContext, currentMasterNum int, statefulSetNodes map[string]redisutil.Nodes, context context.Context, namespace string, name string) error {
 	cluster := ctx.cluster
 	SetClusterRebalancing(&cluster.Status,
 		fmt.Sprintf("scale down, currentMasterSize: %d, expectMasterSize %d", currentMasterNum, cluster.Spec.MasterSize))
@@ -353,7 +353,7 @@ func (r *DistributedRedisClusterReconciler) scalingDown(ctx *syncContext, curren
 			if len(node.Slots) > 0 {
 				return Redis.New(fmt.Sprintf("node %s is not empty! Reshard data away and try again", node.String()))
 			}
-			if err := admin.ForgetNode(context, node.ID); err != nil {
+			if err := admin.ForgetNode(context, node.ID, namespace, name); err != nil {
 				return Redis.Wrap(err, "ForgetNode")
 			}
 		}
@@ -541,7 +541,7 @@ func (r *DistributedRedisClusterReconciler) updatePodIfNeeded(ip string, pods []
 			if len(pod_hash) < 3 {
 				return false, fmt.Errorf("pod hash is invalid")
 			}
-			client := k8sutil.NewPodController(r.Client)
+			client := k8sutil.NewPodController(r.Client, r.MetricsClient)
 			if revision_hashes[stsIdentifier] != pod_hash[len(pod_hash)-1] {
 				err := client.DeletePodByName(namespace, pod.Name)
 				if err != nil {

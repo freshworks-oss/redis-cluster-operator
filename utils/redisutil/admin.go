@@ -9,7 +9,8 @@ import (
 	"strings"
 	"time"
 
-	//utils "github.com/dinesh-murugiah/rediscluster-operator/utils/commonutils"
+	"github.com/dinesh-murugiah/rediscluster-operator/metrics"
+	utils "github.com/dinesh-murugiah/rediscluster-operator/utils/commonutils"
 	"github.com/go-logr/logr"
 	"github.com/redis/go-redis/v9"
 )
@@ -83,49 +84,49 @@ type IAdmin interface {
 	// Close the admin connections
 	Close(ctx context.Context)
 	// GetClusterInfos get node infos for all nodes
-	GetClusterInfos(ctx context.Context) (*ClusterInfos, error)
+	GetClusterInfos(ctx context.Context, namespace string, name string) (*ClusterInfos, error)
 	// ClusterManagerNodeIsEmpty Checks whether the node is empty. Node is considered not-empty if it has
 	// some key or if it already knows other nodes
-	ClusterManagerNodeIsEmpty(ctx context.Context) (bool, error)
+	ClusterManagerNodeIsEmpty(ctx context.Context, namespace string, name string) (bool, error)
 	// SetConfigEpoch Assign a different config epoch to each node
-	SetConfigEpoch(ctx context.Context) error
+	SetConfigEpoch(ctx context.Context, namespace string, name string) error
 	// SetConfigIfNeed set redis config
-	SetConfigIfNeed(ctx context.Context, newConfig map[string]string) error
+	SetConfigIfNeed(ctx context.Context, newConfig map[string]string, namespace string, name string) error
 	// GetAllConfig get redis config by CONFIG GET *
-	GetAllConfig(ctx context.Context, c *redis.Client, addr string) (map[string]string, error)
+	GetAllConfig(ctx context.Context, c *redis.Client, addr string, namespace string, name string) (map[string]string, error)
 	// AttachNodeToCluster command use to connect a Node to the cluster
 	// the connection will be done on a random node part of the connection pool
-	AttachNodeToCluster(ctx context.Context, addr string) error
+	AttachNodeToCluster(ctx context.Context, addr string, namespace string, name string) error
 	// AttachSlaveToMaster attach a slave to a master node
-	AttachSlaveToMaster(ctx context.Context, slave *Node, masterID string) error
+	AttachSlaveToMaster(ctx context.Context, slave *Node, masterID string, namespace string, name string) error
 	// DetachSlave dettach a slave to its master
-	DetachSlave(ctx context.Context, slave *Node) error
+	DetachSlave(ctx context.Context, slave *Node, namespace string, name string) error
 	// ForgetNode execute the Redis command to force the cluster to forgot the the Node
-	ForgetNode(ctx context.Context, id string) error
+	ForgetNode(ctx context.Context, id string, namespace string, name string) error
 	// SetSlots exec the redis command to set slots in a pipeline, provide
 	// and empty nodeID if the set slots commands doesn't take a nodeID in parameter
-	SetSlots(ctx context.Context, addr string, action string, slots []Slot, nodeID string) error
+	SetSlots(ctx context.Context, addr string, action string, slots []Slot, nodeID string, namespace string, name string) error
 	// AddSlots exec the redis command to add slots in a pipeline
 	AddSlots(ctx context.Context, addr string, slots []Slot) error
 	// SetSlot use to set SETSLOT command on a slot
-	SetSlot(ctx context.Context, addr string, action string, slot Slot, nodeID string) error
+	SetSlot(ctx context.Context, addr string, action string, slot Slot, nodeID string, namespace string, name string) error
 	// MigrateKeys from addr to destination node. returns number of slot migrated. If replace is true, replace key on busy error
-	MigrateKeys(ctx context.Context, addr string, dest *Node, slots []Slot, batch, timeout int, replace bool) (int, error)
+	MigrateKeys(ctx context.Context, addr string, dest *Node, slots []Slot, batch, timeout int, replace bool, namespace string, name string) (int, error)
 	// MigrateKeys use to migrate keys from slot to other slot. if replace is true, replace key on busy error
 	// timeout is in milliseconds
-	MigrateKeysInSlot(ctx context.Context, addr string, dest *Node, slot Slot, batch int, timeout int, replace bool) (int, error)
+	MigrateKeysInSlot(ctx context.Context, addr string, dest *Node, slot Slot, batch int, timeout int, replace bool, namespace string, name string) (int, error)
 	// FlushAndReset reset the cluster configuration of the node, the node is flushed in the same pipe to ensure reset works
-	FlushAndReset(ctx context.Context, addr string, mode string) error
+	FlushAndReset(ctx context.Context, addr string, mode string, namespace string, name string) error
 	// GetHashMaxSlot get the max slot value
 	GetHashMaxSlot() Slot
 	// ResetPassword reset redis node masterauth and requirepass.
-	ResetPassword(ctx context.Context, newPassword string) error
+	ResetPassword(ctx context.Context, newPassword string, namespace string, name string) error
 
-	FailoverSlaveToMaster(ctx context.Context, slave *Node, option RedisFailover) error
+	FailoverSlaveToMaster(ctx context.Context, slave *Node, option RedisFailover, namespace string, name string) error
 
-	GetReplicationStatus(ip string, ctx context.Context) (string, ReplicationInfo, error)
+	GetReplicationStatus(ip string, ctx context.Context, namespace string, name string) (string, ReplicationInfo, error)
 
-	GetInfoReplication(ipPort string, ctx context.Context) (ReplicationInfo, error)
+	GetInfoReplication(ipPort string, ctx context.Context, namespace string, name string) (ReplicationInfo, error)
 }
 
 // AdminOptions optional options for redis admin
@@ -141,14 +142,16 @@ type Admin struct {
 	hashMaxSlots Slot
 	cnx          IAdminConnections
 	log          logr.Logger
+	metrics      metrics.Recorder
 }
 
 // NewAdmin returns new AdminInterface instance
 // at the same time it connects to all Redis Nodes thanks to the addrs list
-func NewAdmin(addrs []string, options *AdminOptions, log logr.Logger, ctx context.Context) IAdmin {
+func NewAdmin(addrs []string, options *AdminOptions, log logr.Logger, ctx context.Context, metrics metrics.Recorder) IAdmin {
 	a := &Admin{
 		hashMaxSlots: DefaultHashMaxSlots,
 		log:          log.WithName("redis_util"),
+		metrics:      metrics,
 	}
 
 	// perform initial connections
@@ -167,14 +170,16 @@ func (a *Admin) Close(ctx context.Context) {
 	a.Connections().Reset(ctx)
 }
 
+// Metrics will be added to all the functions which return error
 // GetClusterInfos return the Nodes infos for all nodes
-func (a *Admin) GetClusterInfos(ctx context.Context) (*ClusterInfos, error) {
+func (a *Admin) GetClusterInfos(ctx context.Context, namespace string, name string) (*ClusterInfos, error) {
 	infos := NewClusterInfos()
 	clusterErr := NewClusterInfosError()
 
 	for addr, c := range a.Connections().GetAll() {
-		nodeinfos, err := a.getInfos(ctx, c, addr)
+		nodeinfos, err := a.getInfos(ctx, c, addr, namespace, name)
 		if err != nil {
+			// pratheep : record other reconcilation failure here
 			a.log.WithValues("err", err).Info("get redis info failed")
 			infos.Status = ClusterInfosPartial
 			clusterErr.partial = true
@@ -185,7 +190,7 @@ func (a *Admin) GetClusterInfos(ctx context.Context) (*ClusterInfos, error) {
 			infos.Infos[addr] = nodeinfos
 
 			//Check for the cluster state and update the cluster status
-			cstatus, err := a.clusterGetState(ctx, c, addr)
+			cstatus, err := a.clusterGetState(ctx, c, addr, namespace, name)
 			if err != nil {
 				//a.log.WithValues("err", err).Info("get redis cluster status failed")
 				if updateErr := CheckandUpdateClusterState(infos, ClusterStatusNOK, nodeinfos.Node.IP, "", cstatus); updateErr != nil {
@@ -200,7 +205,7 @@ func (a *Admin) GetClusterInfos(ctx context.Context) (*ClusterInfos, error) {
 
 			//Check for the replication status and update the cluster status if its broken
 			if nodeinfos.Node.Role == RedisSlaveRole {
-				replicaStatus, replinfo, err := a.GetReplicationStatus(addr, ctx)
+				replicaStatus, replinfo, err := a.GetReplicationStatus(addr, ctx, namespace, name)
 				if err != nil {
 					//a.log.WithValues("err", err).Info("get redis slave replication status failed")
 					if updateErr := CheckandUpdateClusterState(infos, ClusterStatusNOK, nodeinfos.Node.IP, nodeinfos.Node.IP, replicaStatus); updateErr != nil {
@@ -256,11 +261,14 @@ func (a *Admin) GetClusterInfos(ctx context.Context) (*ClusterInfos, error) {
 	return infos, clusterErr
 }
 
-func (a *Admin) getInfos(ctx context.Context, c *redis.Client, addr string) (*NodeInfos, error) {
+func (a *Admin) getInfos(ctx context.Context, c *redis.Client, addr string, namespace string, name string) (*NodeInfos, error) {
 	resp := c.Do(ctx, "CLUSTER", "NODES")
-	if err := a.Connections().ValidateResp(ctx, resp, addr, "unable to retrieve node info"); err != nil {
+	err := a.Connections().ValidateResp(ctx, resp, addr, "unable to retrieve node info")
+	utils.RecordRedisMetrics(namespace, name, metrics.CLUSTER_NODES, addr, err, a.metrics)
+	if err != nil {
 		return nil, err
 	}
+
 	//var err error
 	raw, _ := resp.Result()
 	raw_str := fmt.Sprintf("%v", raw)
@@ -270,9 +278,10 @@ func (a *Admin) getInfos(ctx context.Context, c *redis.Client, addr string) (*No
 
 // ClusterManagerNodeIsEmpty Checks whether the node is empty. Node is considered not-empty if it has
 // some key or if it already knows other nodes
-func (a *Admin) ClusterManagerNodeIsEmpty(ctx context.Context) (bool, error) {
+// TODO : This function is not used anywhere, need to remove it - cleanup
+func (a *Admin) ClusterManagerNodeIsEmpty(ctx context.Context, namespace string, name string) (bool, error) {
 	for addr, c := range a.Connections().GetAll() {
-		knowNodes, err := a.clusterKnowNodes(ctx, c, addr)
+		knowNodes, err := a.clusterKnowNodes(ctx, c, addr, namespace, name)
 		if err != nil {
 			return false, err
 		}
@@ -283,9 +292,12 @@ func (a *Admin) ClusterManagerNodeIsEmpty(ctx context.Context) (bool, error) {
 	return true, nil
 }
 
-func (a *Admin) clusterKnowNodes(ctx context.Context, client *redis.Client, addr string) (int, error) {
+// TODO : This function is not used anywhere, need to remove it - cleanup
+func (a *Admin) clusterKnowNodes(ctx context.Context, client *redis.Client, addr string, namespace string, name string) (int, error) {
 	resp := client.Do(ctx, "CLUSTER", "INFO")
-	if err := a.Connections().ValidateResp(ctx, resp, addr, "unable to retrieve cluster info"); err != nil {
+	err := a.Connections().ValidateResp(ctx, resp, addr, "unable to retrieve cluster info")
+	utils.RecordRedisMetrics(namespace, name, metrics.CLUSTER_INFO, addr, err, a.metrics)
+	if err != nil {
 		return 0, err
 	}
 	raw := resp.String()
@@ -318,9 +330,11 @@ func CheckandUpdateClusterState(cinfos *ClusterInfos, cs clusterstate, fromip st
 	return nil
 }
 
-func (a *Admin) clusterGetState(ctx context.Context, client *redis.Client, addr string) (string, error) {
+func (a *Admin) clusterGetState(ctx context.Context, client *redis.Client, addr string, namespace string, name string) (string, error) {
 	resp := client.Do(ctx, "CLUSTER", "INFO")
-	if err := a.Connections().ValidateResp(ctx, resp, addr, "unable to retrieve cluster info"); err != nil {
+	err := a.Connections().ValidateResp(ctx, resp, addr, "unable to retrieve cluster info")
+	utils.RecordRedisMetrics(namespace, name, metrics.CLUSTER_INFO, addr, err, a.metrics)
+	if err != nil {
 		return ClusterStateGetFailed, err
 	}
 	raw := resp.String()
@@ -343,7 +357,7 @@ func (a *Admin) clusterGetState(ctx context.Context, client *redis.Client, addr 
 }
 
 // FailoverSlaveToMaster manual failover of a slave node to master node
-func (a *Admin) FailoverSlaveToMaster(ctx context.Context, slave *Node, option RedisFailover) error {
+func (a *Admin) FailoverSlaveToMaster(ctx context.Context, slave *Node, option RedisFailover, namespace string, name string) error {
 	c, err := a.Connections().Get(ctx, slave.IPPort())
 	if err != nil {
 		return err
@@ -354,9 +368,13 @@ func (a *Admin) FailoverSlaveToMaster(ctx context.Context, slave *Node, option R
 	} else {
 		resp = c.Do(ctx, "CLUSTER", "FAILOVER")
 	}
-	if err := a.Connections().ValidateResp(ctx, resp, slave.IPPort(), "unable to run command FAILOVER"); err != nil {
+
+	err1 := a.Connections().ValidateResp(ctx, resp, slave.IPPort(), "unable to run command FAILOVER")
+	if err1 != nil {
 		return err
 	}
+	utils.RecordRedisMetrics(namespace, name, metrics.CLUSTER_FAILOVER, slave.IPPort(), err1, a.metrics)
+
 	result, err := resp.Result()
 	if err != nil {
 		return err
@@ -373,7 +391,7 @@ func (a *Admin) FailoverSlaveToMaster(ctx context.Context, slave *Node, option R
 			return fmt.Errorf("timeout waiting for node %s to become master", slave.IPPort())
 		case <-ticker.C:
 
-			nodeInfo, err := a.GetClusterNodeInfos(ctx, slave.IPPort())
+			nodeInfo, err := a.GetClusterNodeInfos(ctx, slave.IPPort(), namespace, name)
 			if err != nil {
 				return fmt.Errorf("error checking role of node %s: %w", slave.IPPort(), err)
 			}
@@ -391,14 +409,16 @@ func (a *Admin) FailoverSlaveToMaster(ctx context.Context, slave *Node, option R
 }
 
 // AttachSlaveToMaster attach a slave to a master node
-func (a *Admin) AttachSlaveToMaster(ctx context.Context, slave *Node, masterID string) error {
+func (a *Admin) AttachSlaveToMaster(ctx context.Context, slave *Node, masterID string, namespace string, name string) error {
 	c, err := a.Connections().Get(ctx, slave.IPPort())
 	if err != nil {
 		return err
 	}
 
 	resp := c.Do(ctx, "CLUSTER", "REPLICATE", masterID)
-	if err := a.Connections().ValidateResp(ctx, resp, slave.IPPort(), "unable to run command REPLICATE"); err != nil {
+	err = a.Connections().ValidateResp(ctx, resp, slave.IPPort(), "unable to run command REPLICATE")
+	utils.RecordRedisMetrics(namespace, name, metrics.CLUSTER_REPLICATE, slave.IPPort(), err, a.metrics)
+	if err != nil {
 		return err
 	}
 	if resp.Err() != nil {
@@ -431,7 +451,7 @@ func (a *Admin) AddSlots(ctx context.Context, addr string, slots []Slot) error {
 }
 
 // SetSlots use to set SETSLOT command on several slots
-func (a *Admin) SetSlots(ctx context.Context, addr, action string, slots []Slot, nodeID string) error {
+func (a *Admin) SetSlots(ctx context.Context, addr, action string, slots []Slot, nodeID string, namespace string, name string) error {
 	if len(slots) == 0 {
 		return nil
 	}
@@ -452,6 +472,7 @@ func (a *Admin) SetSlots(ctx context.Context, addr, action string, slots []Slot,
 	}
 
 	out, err := pipeClient.Exec(ctx)
+	utils.RecordRedisMetrics(namespace, name, metrics.CLUSTER_SETSLOT, addr, err, a.metrics)
 
 	if err != nil {
 		return err
@@ -467,7 +488,7 @@ func (a *Admin) SetSlots(ctx context.Context, addr, action string, slots []Slot,
 }
 
 // SetSlot use to set SETSLOT command on a slot
-func (a *Admin) SetSlot(ctx context.Context, addr, action string, slot Slot, nodeID string) error {
+func (a *Admin) SetSlot(ctx context.Context, addr, action string, slot Slot, nodeID string, namespace string, name string) error {
 	c, err := a.Connections().Get(ctx, addr)
 	if err != nil {
 		return err
@@ -481,6 +502,7 @@ func (a *Admin) SetSlot(ctx context.Context, addr, action string, slot Slot, nod
 	}
 	pipeClient.Do(ctx, args...)
 	out, err := pipeClient.Exec(ctx)
+	utils.RecordRedisMetrics(namespace, name, metrics.CLUSTER_SETSLOT, addr, err, a.metrics)
 	// TODO: Handle response
 
 	if !a.Connections().ValidatePipeResp(ctx, out, addr, err, "Cannot SETSLOT") {
@@ -492,15 +514,15 @@ func (a *Admin) SetSlot(ctx context.Context, addr, action string, slot Slot, nod
 	return nil
 }
 
-func (a *Admin) SetConfigEpoch(ctx context.Context) error {
+// this is function is not used, can be removed - cleanup
+func (a *Admin) SetConfigEpoch(ctx context.Context, namespace string, name string) error {
 	configEpoch := 1
 	for addr, c := range a.Connections().GetAll() {
 		resp := c.Do(ctx, "CLUSTER", "SET-CONFIG-EPOCH", configEpoch)
+		utils.RecordRedisMetrics(namespace, name, metrics.CLUSTER_SET_CONFIG_EPOCH, addr, resp.Err(), a.metrics)
 		if err := a.Connections().ValidateResp(ctx, resp, addr, "unable to run command SET-CONFIG-EPOCH"); err != nil {
 			return err
 		}
-		// dummy print
-		//fmt.Println(addr)
 		if resp.Err() != nil {
 			return resp.Err()
 		}
@@ -510,7 +532,7 @@ func (a *Admin) SetConfigEpoch(ctx context.Context) error {
 }
 
 // AttachNodeToCluster command use to connect a Node to the cluster
-func (a *Admin) AttachNodeToCluster(ctx context.Context, addr string) error {
+func (a *Admin) AttachNodeToCluster(ctx context.Context, addr string, namespace string, name string) error {
 	ip, port, err := net.SplitHostPort(addr)
 	if err != nil {
 		return err
@@ -526,7 +548,9 @@ func (a *Admin) AttachNodeToCluster(ctx context.Context, addr string) error {
 		}
 		a.log.V(3).Info("CLUSTER MEET", "from addr", cAddr, "to", addr)
 		resp := c.Do(ctx, "CLUSTER", "MEET", ip, port)
-		if err = a.Connections().ValidateResp(ctx, resp, addr, "cannot attach node to cluster"); err != nil {
+		err = a.Connections().ValidateResp(ctx, resp, cAddr, "cannot attach node to cluster")
+		utils.RecordRedisMetrics(namespace, name, metrics.CLUSTER_MEET, cAddr, err, a.metrics)
+		if err != nil {
 			return err
 		}
 		if resp.Err() != nil {
@@ -539,9 +563,11 @@ func (a *Admin) AttachNodeToCluster(ctx context.Context, addr string) error {
 }
 
 // GetAllConfig get redis config by CONFIG GET *
-func (a *Admin) GetAllConfig(ctx context.Context, c *redis.Client, addr string) (map[string]string, error) {
+func (a *Admin) GetAllConfig(ctx context.Context, c *redis.Client, addr string, namespace string, name string) (map[string]string, error) {
 	resp := c.Do(ctx, "CONFIG", "GET", "*")
-	if err := a.Connections().ValidateResp(ctx, resp, addr, "unable to retrieve config"); err != nil {
+	err := a.Connections().ValidateResp(ctx, resp, addr, "unable to retrieve config")
+	utils.RecordRedisMetrics(namespace, name, metrics.REDIS_CONFIG_GET, addr, err, a.metrics)
+	if err != nil {
 		return nil, err
 	}
 	if resp.Err() != nil {
@@ -586,9 +612,9 @@ var parseConfigMap = map[string]int8{
 */
 
 // SetConfigIfNeed set redis config
-func (a *Admin) SetConfigIfNeed(ctx context.Context, newConfig map[string]string) error {
+func (a *Admin) SetConfigIfNeed(ctx context.Context, newConfig map[string]string, namespace string, name string) error {
 	for addr, c := range a.Connections().GetAll() {
-		oldConfig, err := a.GetAllConfig(ctx, c, addr)
+		oldConfig, err := a.GetAllConfig(ctx, c, addr, namespace, name)
 		if err != nil {
 			return err
 		}
@@ -606,7 +632,9 @@ func (a *Admin) SetConfigIfNeed(ctx context.Context, newConfig map[string]string
 			if value != oldConfig[key] {
 				a.log.V(3).Info("CONFIG SET", key, value)
 				resp := c.Do(ctx, "CONFIG", "SET", key, value)
-				if err := a.Connections().ValidateResp(ctx, resp, addr, "unable to retrieve config"); err != nil {
+				err = a.Connections().ValidateResp(ctx, resp, addr, "unable to set config")
+				utils.RecordRedisMetrics(namespace, name, metrics.REDIS_CONFIG_SET, addr, err, a.metrics)
+				if err != nil {
 					return err
 				}
 				if resp.Err() != nil {
@@ -625,7 +653,7 @@ func (a *Admin) GetHashMaxSlot() Slot {
 
 // MigrateKeys use to migrate keys from slots to other slots. if replace is true, replace key on busy error
 // timeout is in milliseconds
-func (a *Admin) MigrateKeys(ctx context.Context, addr string, dest *Node, slots []Slot, batch int, timeout int, replace bool) (int, error) {
+func (a *Admin) MigrateKeys(ctx context.Context, addr string, dest *Node, slots []Slot, batch int, timeout int, replace bool, namespace string, name string) (int, error) {
 	if len(slots) == 0 {
 		return 0, nil
 	}
@@ -641,11 +669,13 @@ func (a *Admin) MigrateKeys(ctx context.Context, addr string, dest *Node, slots 
 		for {
 			slotint := slot.ToInt()
 			resp := c.Do(ctx, "CLUSTER", "GETKEYSINSLOT", slotint, batchStr)
+			err := a.Connections().ValidateResp(ctx, resp, addr, "Unable to run command GETKEYSINSLOT")
+			utils.RecordRedisMetrics(namespace, name, metrics.CLUSTER_GET_KEYS_INSLOT, addr, err, a.metrics)
+			if err != nil {
+				return keyCount, err
+			}
 			if resp.Err() != nil {
 				return 0, resp.Err()
-			}
-			if err := a.Connections().ValidateResp(ctx, resp, addr, "Unable to run command GETKEYSINSLOT"); err != nil {
-				return keyCount, err
 			}
 			res, err := resp.Result()
 			if err != nil {
@@ -675,7 +705,9 @@ func (a *Admin) MigrateKeys(ctx context.Context, addr string, dest *Node, slots 
 
 			args := a.migrateCmdArgs(dest, timeoutStr, replace, keys)
 			resp = c.Do(ctx, "MIGRATE", args)
-			if resp.Err() != nil {
+			err = resp.Err()
+			utils.RecordRedisMetrics(namespace, name, metrics.MIGRATE, addr, err, a.metrics)
+			if err != nil {
 				return keyCount, err
 			}
 		}
@@ -686,7 +718,7 @@ func (a *Admin) MigrateKeys(ctx context.Context, addr string, dest *Node, slots 
 
 // MigrateKeys use to migrate keys from slot to other slot. if replace is true, replace key on busy error
 // timeout is in milliseconds
-func (a *Admin) MigrateKeysInSlot(ctx context.Context, addr string, dest *Node, slot Slot, batch int, timeout int, replace bool) (int, error) {
+func (a *Admin) MigrateKeysInSlot(ctx context.Context, addr string, dest *Node, slot Slot, batch int, timeout int, replace bool, namespace string, name string) (int, error) {
 	keyCount := 0
 	c, err := a.Connections().Get(ctx, addr)
 	if err != nil {
@@ -699,11 +731,13 @@ func (a *Admin) MigrateKeysInSlot(ctx context.Context, addr string, dest *Node, 
 
 	for {
 		resp := c.Do(ctx, "CLUSTER", "GETKEYSINSLOT", slotint, batchStr)
+		err = a.Connections().ValidateResp(ctx, resp, addr, "Unable to run command GETKEYSINSLOT")
+		utils.RecordRedisMetrics(namespace, name, metrics.CLUSTER_GET_KEYS_INSLOT, addr, err, a.metrics)
+		if err != nil {
+			return keyCount, err
+		}
 		if resp.Err() != nil {
 			return 0, resp.Err()
-		}
-		if err := a.Connections().ValidateResp(ctx, resp, addr, "Unable to run command GETKEYSINSLOT"); err != nil {
-			return keyCount, err
 		}
 		res, err := resp.Result()
 		if err != nil {
@@ -734,7 +768,9 @@ func (a *Admin) MigrateKeysInSlot(ctx context.Context, addr string, dest *Node, 
 		args := a.migrateCmdArgs(dest, timeoutStr, replace, keys)
 
 		resp = c.Do(ctx, "MIGRATE", args)
-		if err := a.Connections().ValidateResp(ctx, resp, addr, "Unable to run command MIGRATE"); err != nil {
+		err = a.Connections().ValidateResp(ctx, resp, addr, "Unable to run command MIGRATE")
+		utils.RecordRedisMetrics(namespace, name, metrics.MIGRATE, addr, err, a.metrics)
+		if err != nil {
 			return keyCount, err
 		}
 		if resp.Err() != nil {
@@ -761,15 +797,15 @@ func (a *Admin) migrateCmdArgs(dest *Node, timeoutStr string, replace bool, keys
 }
 
 // ForgetNode used to force other redis cluster node to forget a specific node
-func (a *Admin) ForgetNode(ctx context.Context, id string) error {
-	infos, _ := a.GetClusterInfos(ctx)
+func (a *Admin) ForgetNode(ctx context.Context, id string, namespace string, name string) error {
+	infos, _ := a.GetClusterInfos(ctx, namespace, name)
 	for nodeAddr, nodeinfos := range infos.Infos {
 		if nodeinfos.Node.ID == id {
 			continue
 		}
 
 		if IsSlave(nodeinfos.Node) && nodeinfos.Node.MasterReferent == id {
-			if err := a.DetachSlave(ctx, nodeinfos.Node); err != nil {
+			if err := a.DetachSlave(ctx, nodeinfos.Node, namespace, name); err != nil {
 				a.log.Error(err, "DetachSlave", "node", nodeAddr)
 			}
 			a.log.Info(fmt.Sprintf("detach slave id: %s of master: %s", nodeinfos.Node.ID, id))
@@ -783,6 +819,8 @@ func (a *Admin) ForgetNode(ctx context.Context, id string) error {
 
 		a.log.Info("CLUSTER FORGET", "id", id, "from", nodeAddr)
 		resp := c.Do(ctx, "CLUSTER", "FORGET", id)
+		err = resp.Err()
+		utils.RecordRedisMetrics(namespace, name, metrics.CLUSTER_FORGET, nodeAddr, err, a.metrics)
 		a.Connections().ValidateResp(ctx, resp, nodeAddr, "Unable to execute FORGET command")
 		if resp.Err() != nil {
 			match := forgetnodeUnknownRE.FindStringSubmatch(resp.Err().Error())
@@ -798,7 +836,7 @@ func (a *Admin) ForgetNode(ctx context.Context, id string) error {
 }
 
 // DetachSlave use to detach a slave to a master
-func (a *Admin) DetachSlave(ctx context.Context, slave *Node) error {
+func (a *Admin) DetachSlave(ctx context.Context, slave *Node, namespace string, name string) error {
 	c, err := a.Connections().Get(ctx, slave.IPPort())
 	if err != nil {
 		a.log.Error(err, fmt.Sprintf("unable to get the connection for slave ID:%s, addr:%s", slave.ID, slave.IPPort()))
@@ -806,14 +844,16 @@ func (a *Admin) DetachSlave(ctx context.Context, slave *Node) error {
 	}
 
 	resp := c.Do(ctx, "CLUSTER", "RESET", "SOFT")
-	if err = a.Connections().ValidateResp(ctx, resp, slave.IPPort(), "cannot attach node to cluster"); err != nil {
+	err = a.Connections().ValidateResp(ctx, resp, slave.IPPort(), "cannot detach node from cluster")
+	utils.RecordRedisMetrics(namespace, name, metrics.CLUSTER_RESET_SOFT, slave.IPPort(), err, a.metrics)
+	if err != nil {
 		return err
 	}
 	if resp.Err() != nil {
 		return resp.Err()
 	}
 
-	if err = a.AttachNodeToCluster(ctx, slave.IPPort()); err != nil {
+	if err = a.AttachNodeToCluster(ctx, slave.IPPort(), namespace, name); err != nil {
 		a.log.Error(err, fmt.Sprintf("[DetachSlave] unable to AttachNodeToCluster the Slave id: %s addr:%s", slave.ID, slave.IPPort()))
 		return err
 	}
@@ -825,7 +865,7 @@ func (a *Admin) DetachSlave(ctx context.Context, slave *Node) error {
 }
 
 // FlushAndReset flush the cluster and reset the cluster configuration of the node. Commands are piped, to ensure no items arrived between flush and reset
-func (a *Admin) FlushAndReset(ctx context.Context, addr string, mode string) error {
+func (a *Admin) FlushAndReset(ctx context.Context, addr string, mode string, namespace string, name string) error {
 	c, err := a.Connections().Get(ctx, addr)
 	if err != nil {
 		return err
@@ -835,6 +875,8 @@ func (a *Admin) FlushAndReset(ctx context.Context, addr string, mode string) err
 	pipeClient.Do(ctx, "CLUSTER", "RESET", mode)
 
 	out, err := pipeClient.Exec(ctx)
+	utils.RecordRedisMetrics(namespace, name, metrics.FLUSHALL, addr, err, a.metrics)
+	utils.RecordRedisMetrics(namespace, name, metrics.CLUSTER_RESET, addr, err, a.metrics)
 
 	if !a.Connections().ValidatePipeResp(ctx, out, addr, err, "Cannot reset node") {
 		return fmt.Errorf("cannot reset node %s", addr)
@@ -843,8 +885,9 @@ func (a *Admin) FlushAndReset(ctx context.Context, addr string, mode string) err
 	return nil
 }
 
+// this function is not used, can be removed - cleanup
 // ResetPassword reset redis node masterauth and requirepass.
-func (a *Admin) ResetPassword(ctx context.Context, newPassword string) error {
+func (a *Admin) ResetPassword(ctx context.Context, newPassword string, namespace string, name string) error {
 	all := a.Connections().GetAll()
 	if len(all) == 0 {
 		return fmt.Errorf("no connection for other redis-node found")
@@ -852,14 +895,18 @@ func (a *Admin) ResetPassword(ctx context.Context, newPassword string) error {
 	for addr, c := range a.Connections().GetAll() {
 		a.log.Info("reset password", "addr", addr)
 		resp := c.Do(ctx, "CONFIG", "SET", "masterauth", newPassword)
-		if err := a.Connections().ValidateResp(ctx, resp, addr, "cannot set new masterauth"); err != nil {
+		err := a.Connections().ValidateResp(ctx, resp, addr, "cannot set new masterauth")
+		utils.RecordRedisMetrics(namespace, name, metrics.REDIS_CONFIG_SET, addr, err, a.metrics)
+		if err != nil {
 			return err
 		}
 		if resp.Err() != nil {
 			return resp.Err()
 		}
 		resp = c.Do(ctx, "CONFIG", "SET", "requirepass", newPassword)
-		if err := a.Connections().ValidateResp(ctx, resp, addr, "cannot set new requirepass"); err != nil {
+		err = a.Connections().ValidateResp(ctx, resp, addr, "cannot set new requirepass")
+		utils.RecordRedisMetrics(namespace, name, metrics.REDIS_CONFIG_SET, addr, err, a.metrics)
+		if err != nil {
 			return err
 		}
 		if resp.Err() != nil {
@@ -869,15 +916,15 @@ func (a *Admin) ResetPassword(ctx context.Context, newPassword string) error {
 	return nil
 }
 
-func (a *Admin) GetClusterNodeInfos(ctx context.Context, addr string) (*NodeInfos, error) {
+func (a *Admin) GetClusterNodeInfos(ctx context.Context, addr string, namespace string, name string) (*NodeInfos, error) {
 	c, err := a.Connections().Get(ctx, addr)
 	if err != nil {
 		return nil, err
 	}
-	return a.getInfos(ctx, c, addr)
+	return a.getInfos(ctx, c, addr, namespace, name)
 }
 
-func (a *Admin) GetInfoReplication(ipPort string, ctx context.Context) (ReplicationInfo, error) {
+func (a *Admin) GetInfoReplication(ipPort string, ctx context.Context, namespace string, name string) (ReplicationInfo, error) {
 
 	var replInfo ReplicationInfo = ReplicationInfo{}
 
@@ -886,6 +933,7 @@ func (a *Admin) GetInfoReplication(ipPort string, ctx context.Context) (Replicat
 		return replInfo, err
 	}
 	info, err := c.Info(context.TODO(), "replication").Result()
+	utils.RecordRedisMetrics(namespace, name, metrics.CLUSTER_INFO, ipPort, err, a.metrics)
 	if err != nil {
 		return replInfo, err
 	}
@@ -926,12 +974,12 @@ func (a *Admin) GetInfoReplication(ipPort string, ctx context.Context) (Replicat
 	}
 	return replInfo, nil
 }
-func (a *Admin) GetReplicationStatus(ip string, ctx context.Context) (string, ReplicationInfo, error) {
+func (a *Admin) GetReplicationStatus(ip string, ctx context.Context, namespace string, name string) (string, ReplicationInfo, error) {
 
 	var replInfo ReplicationInfo = ReplicationInfo{}
 	var status string = ReplicaStatusUnknown
 
-	replInfo, err := a.GetInfoReplication(ip, ctx)
+	replInfo, err := a.GetInfoReplication(ip, ctx, namespace, name)
 	if err != nil {
 		a.log.Error(err, "GetInfoReplication failed")
 		return status, replInfo, err

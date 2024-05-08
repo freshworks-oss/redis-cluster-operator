@@ -251,7 +251,7 @@ func (c *Ctx) GetNodestoScaledandRecover(newMasters redisutil.Nodes, curMasters 
 	return scaleUpMasters, recoverMasters
 }
 
-func (c *Ctx) CheckAndHealCluster(admin redisutil.IAdmin, ctx context.Context) error {
+func (c *Ctx) CheckAndHealCluster(admin redisutil.IAdmin, ctx context.Context, namespace string, name string) error {
 
 	curMasters := c.GetCurrentMasters()
 	newMasters := c.GetNewMasters()
@@ -299,7 +299,7 @@ func (c *Ctx) CheckAndHealCluster(admin redisutil.IAdmin, ctx context.Context) e
 			}
 			c.log.Info("Recovering the cluster by failover", "RecoverNode IP", rnode.IP, "Recover Node role", rnode.GetRole(), "Promote Node IP", promoteNode.IP, "Promote Node role", promoteNode.GetRole(), "STS", rnode.StatefulSet, "promote Node zone", promoteNode.Zonename)
 			//Here we are assuming that slave chosen by ranking algorithm is the best slave to promote as master
-			errFailover := admin.FailoverSlaveToMaster(ctx, promoteNode, redisutil.RedisFailoverTakeover)
+			errFailover := admin.FailoverSlaveToMaster(ctx, promoteNode, redisutil.RedisFailoverTakeover, namespace, name)
 			if errFailover != nil {
 				c.log.Error(err, "Error while recovering the cluster by failover a slave to master", "Slave IP", rnode.IP)
 				return HealFailure.Wrap(errFailover, "Failover Takeover Failed")

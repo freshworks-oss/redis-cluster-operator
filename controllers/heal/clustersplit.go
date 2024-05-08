@@ -21,7 +21,7 @@ func (c *CheckAndHeal) FixClusterSplit(cluster *redisv1alpha1.DistributedRedisCl
 		if c.DryRun {
 			return true, nil
 		}
-		return true, c.reassignClusters(ctx, admin, config, clusters)
+		return true, c.reassignClusters(ctx, admin, config, clusters, cluster.Namespace, cluster.Name)
 	}
 	c.Logger.V(3).Info("[Check] No split cluster detected")
 	return false, nil
@@ -29,7 +29,7 @@ func (c *CheckAndHeal) FixClusterSplit(cluster *redisv1alpha1.DistributedRedisCl
 
 type cluster []string
 
-func (c *CheckAndHeal) reassignClusters(ctx context.Context, admin redisutil.IAdmin, config *config.Redis, clusters []cluster) error {
+func (c *CheckAndHeal) reassignClusters(ctx context.Context, admin redisutil.IAdmin, config *config.Redis, clusters []cluster, namespace string, name string) error {
 	c.Logger.Info("[Check] Cluster split detected, the Redis manager will recover from the issue, but data may be lost")
 	var errs []error
 	// only one cluster may remain
@@ -49,13 +49,13 @@ func (c *CheckAndHeal) reassignClusters(ctx context.Context, admin redisutil.IAd
 			&redisutil.AdminOptions{
 				ConnectionTimeout:  time.Duration(config.DialTimeout) * time.Millisecond,
 				RenameCommandsFile: config.GetRenameCommandsFile(),
-			}, c.Logger, ctx)
+			}, c.Logger, ctx, c.MetricsClient)
 		for _, nodeAddr := range cluster {
-			if err := clusterAdmin.FlushAndReset(ctx, nodeAddr, redisutil.ResetHard); err != nil {
+			if err := clusterAdmin.FlushAndReset(ctx, nodeAddr, redisutil.ResetHard, namespace, name); err != nil {
 				c.Logger.Error(err, "unable to flush the node", "node", nodeAddr)
 				errs = append(errs, err)
 			}
-			if err := admin.AttachNodeToCluster(ctx, nodeAddr); err != nil {
+			if err := admin.AttachNodeToCluster(ctx, nodeAddr, namespace, name); err != nil {
 				c.Logger.Error(err, "unable to attach the node", "node", nodeAddr)
 				errs = append(errs, err)
 			}

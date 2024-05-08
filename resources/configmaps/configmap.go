@@ -322,6 +322,7 @@ func GetAclStringFromSecrets(conflog logr.Logger, client client.Client, cluster 
 func GetAcldataFromSecrets(client client.Client, cluster *redisv1alpha1.DistributedRedisCluster, secretName string) (map[string]string, string, error) {
 	values := make(map[string]string)
 	secret := &corev1.Secret{}
+	// TODO : DR-1638:This is not the right place to do this operation. This should be done in the controller. To be fixed in cleanup - PRATHEEP
 	err := client.Get(context.TODO(), types.NamespacedName{
 		Name:      secretName,
 		Namespace: cluster.Namespace,

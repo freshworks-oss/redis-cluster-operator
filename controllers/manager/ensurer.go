@@ -41,11 +41,11 @@ type realEnsureResource struct {
 
 func NewEnsureResource(client client.Client, logger logr.Logger, metricsRecorder metrics.Recorder) IEnsureResource {
 	return &realEnsureResource{
-		statefulSetClient: k8sutil.NewStatefulSetController(client),
-		svcClient:         k8sutil.NewServiceController(client),
-		configMapClient:   k8sutil.NewConfigMapController(client),
-		pdbClient:         k8sutil.NewPodDisruptionBudgetController(client),
-		crClient:          k8sutil.NewCRControl(client),
+		statefulSetClient: k8sutil.NewStatefulSetController(client, metricsRecorder),
+		svcClient:         k8sutil.NewServiceController(client, metricsRecorder),
+		configMapClient:   k8sutil.NewConfigMapController(client, metricsRecorder),
+		pdbClient:         k8sutil.NewPodDisruptionBudgetController(client, metricsRecorder),
+		crClient:          k8sutil.NewCRControl(client, metricsRecorder),
 		client:            client,
 		logger:            logger,
 		metricsRecorder:   metricsRecorder,
@@ -119,8 +119,7 @@ func (r *realEnsureResource) EnsureRedisStatefulsets(cluster *redisv1alpha1.Dist
 func (r *realEnsureResource) ensureRedisStatefulset(cluster *redisv1alpha1.DistributedRedisCluster, ssName, svcName string,
 	labels map[string]string, update bool) (redisv1alpha1.StsEnsureStatus, error) {
 
-	ss, err := r.statefulSetClient.GetStatefulSet(cluster.Namespace, ssName)
-	k8sutil.RecordMetrics(cluster.Namespace, "StatefulSet", ss.Name, "GET", err, r.metricsRecorder)
+	_, err := r.statefulSetClient.GetStatefulSet(cluster.Namespace, ssName)
 	if err == nil {
 		if update {
 			r.logger.WithValues("StatefulSet.Namespace", cluster.Namespace, "StatefulSet.Name", ssName).
@@ -130,7 +129,6 @@ func (r *realEnsureResource) ensureRedisStatefulset(cluster *redisv1alpha1.Distr
 				return redisv1alpha1.STSUpdateError, EnsureSTS.Wrap(err, "Error creating StatefulSet for Update")
 			}
 			ssErr := r.statefulSetClient.UpdateStatefulSet(newSS)
-			k8sutil.RecordMetrics(cluster.Namespace, "StatefulSet", newSS.Name, "UPDATE", ssErr, r.metricsRecorder)
 			if ssErr != nil {
 				return redisv1alpha1.STSUpdateError, EnsureSTS.Wrap(ssErr, "Error updating StatefulSet")
 			}
@@ -149,7 +147,6 @@ func (r *realEnsureResource) ensureRedisStatefulset(cluster *redisv1alpha1.Distr
 			return redisv1alpha1.STSCreateError, EnsureSTS.Wrap(err, "Error creating StatefulSet for Create")
 		}
 		ssErr := r.statefulSetClient.CreateStatefulSet(newSS)
-		k8sutil.RecordMetrics(cluster.Namespace, "StatefulSet", newSS.Name, "CREATE", ssErr, r.metricsRecorder)
 		if ssErr != nil {
 			return redisv1alpha1.STSCreateError, EnsureSTS.Wrap(ssErr, "Error creating StatefulSet")
 		}
@@ -225,13 +222,11 @@ func (r *realEnsureResource) ensureRedisStatefulset(cluster *redisv1alpha1.Distr
 
 func (r *realEnsureResource) ensureRedisPDB(cluster *redisv1alpha1.DistributedRedisCluster, name string, labels map[string]string) error {
 	_, err := r.pdbClient.GetPodDisruptionBudget(cluster.Namespace, name)
-	k8sutil.RecordMetrics(cluster.Namespace, "PDB", name, "GET", err, r.metricsRecorder)
 	if err != nil && errors.IsNotFound(err) {
 		r.logger.WithValues("PDB.Namespace", cluster.Namespace, "PDB.Name", name).
 			Info("creating a new PodDisruptionBudget")
 		pdb := poddisruptionbudgets.NewPodDisruptionBudgetForCR(cluster, name, labels)
-		err1 := r.pdbClient.CreatePodDisruptionBudget(pdb)
-		k8sutil.RecordMetrics(cluster.Namespace, "PDB", name, "CREATE", err1, r.metricsRecorder)
+		_ = r.pdbClient.CreatePodDisruptionBudget(pdb)
 		return err
 	}
 	return err
@@ -253,13 +248,11 @@ func (r *realEnsureResource) EnsureClusterShardsHeadLessSvcs(cluster *redisv1alp
 
 func (r *realEnsureResource) ensureRedisHeadLessSvc(cluster *redisv1alpha1.DistributedRedisCluster, name string, labels map[string]string) error {
 	_, err := r.svcClient.GetService(cluster.Namespace, name)
-	k8sutil.RecordMetrics(cluster.Namespace, "Headless SVC", name, "GET", err, r.metricsRecorder)
 	if err != nil && errors.IsNotFound(err) {
 		r.logger.WithValues("Service.Namespace", cluster.Namespace, "Service.Name", cluster.Spec.ServiceName).
 			Info("creating a new headless service")
 		svc := services.NewHeadLessSvcForCR(cluster, name, labels)
 		err = r.svcClient.CreateService(svc)
-		k8sutil.RecordMetrics(cluster.Namespace, "Headless SVC", svc.Name, "CREATE", err, r.metricsRecorder)
 		return err
 	}
 	return err
@@ -270,13 +263,11 @@ func (r *realEnsureResource) EnsureClusterHeadLessSvc(cluster *redisv1alpha1.Dis
 	delete(labels, redisv1alpha1.StatefulSetLabel)
 	delete(labels, redisv1alpha1.ShardLabel)
 	_, err := r.svcClient.GetService(cluster.Namespace, name)
-	k8sutil.RecordMetrics(cluster.Namespace, "SVC", name, "GET", err, r.metricsRecorder)
 	if err != nil && errors.IsNotFound(err) {
 		r.logger.WithValues("Service.Namespace", cluster.Namespace, "Service.Name", cluster.Spec.ServiceName).
 			Info("creating a new service")
 		svc := services.NewHeadLessSvcForCR(cluster, name, labels)
 		err = r.svcClient.CreateService(svc)
-		k8sutil.RecordMetrics(cluster.Namespace, "SVC", svc.Name, "CREATE", err, r.metricsRecorder)
 		return err
 	}
 	return err
@@ -286,7 +277,6 @@ func (r *realEnsureResource) EnsureRedisConfigMap(cluster *redisv1alpha1.Distrib
 
 	cmName := configmaps.RedisConfigMapName(cluster.Name)
 	drcCm, err := r.configMapClient.GetConfigMap(cluster.Namespace, cmName)
-	k8sutil.RecordMetrics(cluster.Namespace, "ConfigMap", cmName, "GET", err, r.metricsRecorder)
 	if err != nil {
 		if errors.IsNotFound(err) {
 			r.logger.WithValues("ConfigMap.Namespace", cluster.Namespace, "ConfigMap.Name", cmName).
@@ -294,7 +284,6 @@ func (r *realEnsureResource) EnsureRedisConfigMap(cluster *redisv1alpha1.Distrib
 			cm := configmaps.NewConfigMapForCR(cluster, labels)
 
 			err2 := r.configMapClient.CreateConfigMap(cm)
-			k8sutil.RecordMetrics(cluster.Namespace, "ConfigMap", cm.Name, "CREATE", err2, r.metricsRecorder)
 			if err2 != nil {
 				return Requeue.Wrap(err2, "Error creating ConfigMap")
 			}
@@ -306,7 +295,6 @@ func (r *realEnsureResource) EnsureRedisConfigMap(cluster *redisv1alpha1.Distrib
 		if isRedisConfChanged(drcCm.Data[configmaps.RedisConfKey], cluster.Spec.Config, r.logger) {
 			cm := configmaps.NewConfigMapForCR(cluster, labels)
 			err2 := r.configMapClient.UpdateConfigMap(cm)
-			k8sutil.RecordMetrics(cluster.Namespace, "ConfigMap", cm.Name, "UPDATE", err2, r.metricsRecorder)
 			if err2 != nil {
 				return Requeue.Wrap(err2, "Error updating ConfigMap")
 			}
@@ -314,7 +302,6 @@ func (r *realEnsureResource) EnsureRedisConfigMap(cluster *redisv1alpha1.Distrib
 	}
 	aclcmName := configmaps.AclConfigMapName(cluster.Name)
 	_, err2 := r.configMapClient.GetConfigMap(cluster.Namespace, aclcmName)
-	k8sutil.RecordMetrics(cluster.Namespace, "ConfigMap", aclcmName, "GET", err, r.metricsRecorder)
 	if err2 != nil {
 		if errors.IsNotFound(err2) {
 			r.logger.WithValues("ConfigMap.Namespace", cluster.Namespace, "ConfigMap.Name", cmName).
@@ -329,7 +316,6 @@ func (r *realEnsureResource) EnsureRedisConfigMap(cluster *redisv1alpha1.Distrib
 
 			}
 			err3 := r.configMapClient.CreateConfigMap(aclcm)
-			k8sutil.RecordMetrics(cluster.Namespace, "ConfigMap", aclcm.Name, "CREATE", err2, r.metricsRecorder)
 			if err3 != nil {
 				return Requeue.Wrap(err3, "Error creating ACL ConfigMap")
 			}
@@ -437,6 +423,5 @@ func (r *realEnsureResource) updateRedisStatefulset(cluster *redisv1alpha1.Distr
 		return err
 	}
 	err = r.statefulSetClient.UpdateStatefulSet(newSS)
-	k8sutil.RecordMetrics(cluster.Namespace, "StatefulSet", newSS.Name, "UPDATE", err, r.metricsRecorder)
 	return err
 }

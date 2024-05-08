@@ -10,7 +10,7 @@ import (
 )
 
 // RebalancedCluster rebalanced a redis cluster.
-func (c *Ctx) RebalancedCluster(admin redisutil.IAdmin, newMasterNodes redisutil.Nodes, ctx context.Context) error {
+func (c *Ctx) RebalancedCluster(admin redisutil.IAdmin, newMasterNodes redisutil.Nodes, ctx context.Context, namespace string, name string) error {
 	nbNode := len(newMasterNodes)
 	for _, node := range newMasterNodes {
 		expected := int(float64(admin.GetHashMaxSlot()+1) / float64(nbNode))
@@ -64,7 +64,7 @@ func (c *Ctx) RebalancedCluster(admin redisutil.IAdmin, newMasterNodes redisutil
 				log.Error(nil, "*** Assertion failed: Reshard table != number of slots", "table", len(reshardTable), "slots", numSlots)
 			}
 			for _, e := range reshardTable {
-				if err := c.moveSlot(e, dst, admin, ctx); err != nil {
+				if err := c.moveSlot(e, dst, admin, ctx, namespace, name); err != nil {
 					return err
 				}
 			}
@@ -124,20 +124,20 @@ func computeReshardTable(src redisutil.Nodes, numSlots int) []*MovedNode {
 	return moved
 }
 
-func (c *Ctx) moveSlot(source *MovedNode, target *redisutil.Node, admin redisutil.IAdmin, ctx context.Context) error {
-	if err := admin.SetSlot(ctx, target.IPPort(), "IMPORTING", source.Slot, target.ID); err != nil {
+func (c *Ctx) moveSlot(source *MovedNode, target *redisutil.Node, admin redisutil.IAdmin, ctx context.Context, namespace string, name string) error {
+	if err := admin.SetSlot(ctx, target.IPPort(), "IMPORTING", source.Slot, target.ID, namespace, name); err != nil {
 		return err
 	}
-	if err := admin.SetSlot(ctx, source.Source.IPPort(), "MIGRATING", source.Slot, source.Source.ID); err != nil {
+	if err := admin.SetSlot(ctx, source.Source.IPPort(), "MIGRATING", source.Slot, source.Source.ID, namespace, name); err != nil {
 		return err
 	}
-	if _, err := admin.MigrateKeysInSlot(ctx, source.Source.IPPort(), target, source.Slot, 10, 30000, true); err != nil {
+	if _, err := admin.MigrateKeysInSlot(ctx, source.Source.IPPort(), target, source.Slot, 10, 30000, true, namespace, name); err != nil {
 		return err
 	}
-	if err := admin.SetSlot(ctx, target.IPPort(), "NODE", source.Slot, target.ID); err != nil {
+	if err := admin.SetSlot(ctx, target.IPPort(), "NODE", source.Slot, target.ID, namespace, name); err != nil {
 		c.log.Error(err, "SET NODE", "node", target.IPPort())
 	}
-	if err := admin.SetSlot(ctx, source.Source.IPPort(), "NODE", source.Slot, target.ID); err != nil {
+	if err := admin.SetSlot(ctx, source.Source.IPPort(), "NODE", source.Slot, target.ID, namespace, name); err != nil {
 		c.log.Error(err, "SET NODE", "node", source.Source.IPPort())
 	}
 	source.Source.Slots = redisutil.RemoveSlot(source.Source.Slots, source.Slot)

@@ -3,6 +3,8 @@ package k8sutil
 import (
 	"context"
 
+	"github.com/dinesh-murugiah/rediscluster-operator/metrics"
+	utils "github.com/dinesh-murugiah/rediscluster-operator/utils/commonutils"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
@@ -29,28 +31,35 @@ type IPodControl interface {
 }
 
 type PodController struct {
-	client client.Client
+	client  client.Client
+	metrics metrics.Recorder
 }
 
 // NewPodController creates a concrete implementation of the
 // IPodControl.
-func NewPodController(client client.Client) IPodControl {
-	return &PodController{client: client}
+func NewPodController(client client.Client, metrics metrics.Recorder) IPodControl {
+	return &PodController{client: client, metrics: metrics}
 }
 
 // CreatePod implement the IPodControl.Interface.
 func (p *PodController) CreatePod(pod *corev1.Pod) error {
-	return p.client.Create(context.TODO(), pod)
+	err := p.client.Create(context.TODO(), pod)
+	utils.RecordK8sMetrics(pod.Namespace, "Pod", pod.Name, "CREATE", err, p.metrics)
+	return err
 }
 
 // UpdatePod implement the IPodControl.Interface.
 func (p *PodController) UpdatePod(pod *corev1.Pod) error {
-	return p.client.Update(context.TODO(), pod)
+	err := p.client.Update(context.TODO(), pod)
+	utils.RecordK8sMetrics(pod.Namespace, "Pod", pod.Name, "UPDATE", err, p.metrics)
+	return err
 }
 
 // DeletePod implement the IPodControl.Interface.
 func (p *PodController) DeletePod(pod *corev1.Pod) error {
-	return p.client.Delete(context.TODO(), pod)
+	err := p.client.Delete(context.TODO(), pod)
+	utils.RecordK8sMetrics(pod.Namespace, "Pod", pod.Name, "DELETE", err, p.metrics)
+	return err
 }
 
 // DeletePod implement the IPodControl.Interface.
@@ -59,7 +68,7 @@ func (p *PodController) DeletePodByName(namespace, name string) error {
 	if err != nil {
 		return err
 	}
-	return p.client.Delete(context.TODO(), pod)
+	return p.DeletePod(pod)
 }
 
 func (p *PodController) UpdatePodAnnotations(pod *corev1.Pod, annotationKey string, annotationvalue string) error {
@@ -93,6 +102,7 @@ func (p *PodController) GetPod(namespace, name string) (*corev1.Pod, error) {
 		Name:      name,
 		Namespace: namespace,
 	}, pod)
+	utils.RecordK8sMetrics(namespace, "Pod", name, "GET", err, p.metrics)
 	return pod, err
 }
 
@@ -104,5 +114,6 @@ func (p *PodController) ListPodsWithLabel(namespace string, labelkey string, lab
 			labelkey: labelvalue,
 		})),
 	})
+	utils.RecordK8sMetrics(namespace, "Pod", "NA", "GETPODSBYLABELS", err, p.metrics)
 	return podList, err
 }

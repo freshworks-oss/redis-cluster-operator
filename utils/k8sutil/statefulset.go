@@ -3,6 +3,8 @@ package k8sutil
 import (
 	"context"
 
+	"github.com/dinesh-murugiah/rediscluster-operator/metrics"
+	utils "github.com/dinesh-murugiah/rediscluster-operator/utils/commonutils"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -27,36 +29,35 @@ type IStatefulSetControl interface {
 }
 
 type stateFulSetController struct {
-	client client.Client
+	client  client.Client
+	metrics metrics.Recorder
 }
 
 // NewRealStatefulSetControl creates a concrete implementation of the
 // IStatefulSetControl.
-func NewStatefulSetController(client client.Client) IStatefulSetControl {
-	return &stateFulSetController{client: client}
+func NewStatefulSetController(client client.Client, metrics metrics.Recorder) IStatefulSetControl {
+	return &stateFulSetController{client: client, metrics: metrics}
 }
 
 // CreateStatefulSet implement the IStatefulSetControl.Interface.
 func (s *stateFulSetController) CreateStatefulSet(ss *appsv1.StatefulSet) error {
-	return s.client.Create(context.TODO(), ss)
+	err := s.client.Create(context.TODO(), ss)
+	utils.RecordK8sMetrics(ss.Namespace, "StatefulSet", ss.Name, "CREATE", err, s.metrics)
+	return err
 }
 
 // UpdateStatefulSet implement the IStatefulSetControl.Interface.
 func (s *stateFulSetController) UpdateStatefulSet(ss *appsv1.StatefulSet) error {
-	return s.client.Update(context.TODO(), ss)
+	err := s.client.Update(context.TODO(), ss)
+	utils.RecordK8sMetrics(ss.Namespace, "StatefulSet", ss.Name, "UPDATE", err, s.metrics)
+	return err
 }
 
 // DeleteStatefulSet implement the IStatefulSetControl.Interface.
 func (s *stateFulSetController) DeleteStatefulSet(ss *appsv1.StatefulSet) error {
-	return s.client.Delete(context.TODO(), ss)
-}
-
-func (s *stateFulSetController) DeleteStatefulSetByName(namespace, name string) error {
-	sts, err := s.GetStatefulSet(namespace, name)
-	if err != nil {
-		return err
-	}
-	return s.DeleteStatefulSet(sts)
+	err := s.client.Delete(context.TODO(), ss)
+	utils.RecordK8sMetrics(ss.Namespace, "StatefulSet", ss.Name, "DELETE", err, s.metrics)
+	return err
 }
 
 // GetStatefulSet implement the IStatefulSetControl.Interface.
@@ -66,7 +67,16 @@ func (s *stateFulSetController) GetStatefulSet(namespace, name string) (*appsv1.
 		Name:      name,
 		Namespace: namespace,
 	}, statefulSet)
+	utils.RecordK8sMetrics(namespace, "StatefulSet", name, "GET", err, s.metrics)
 	return statefulSet, err
+}
+
+func (s *stateFulSetController) DeleteStatefulSetByName(namespace, name string) error {
+	sts, err := s.GetStatefulSet(namespace, name)
+	if err != nil {
+		return err
+	}
+	return s.DeleteStatefulSet(sts)
 }
 
 // GetStatefulSetPods implement the IStatefulSetControl.Interface.
@@ -82,6 +92,7 @@ func (s *stateFulSetController) GetStatefulSetPods(namespace, name string) (*cor
 	}
 	foundPods := &corev1.PodList{}
 	err = s.client.List(context.TODO(), foundPods, client.InNamespace(namespace), match)
+	utils.RecordK8sMetrics(namespace, "StatefulSet", name, "GETPODS", err, s.metrics)
 	return foundPods, err
 }
 
@@ -89,11 +100,13 @@ func (s *stateFulSetController) GetStatefulSetPods(namespace, name string) (*cor
 func (s *stateFulSetController) GetStatefulSetPodsByLabels(namespace string, labels map[string]string) (*corev1.PodList, error) {
 	foundPods := &corev1.PodList{}
 	err := s.client.List(context.TODO(), foundPods, client.InNamespace(namespace), client.MatchingLabels(labels))
+	utils.RecordK8sMetrics(namespace, "StatefulSet", "NA", "GETPODSBYLABELS", err, s.metrics)
 	return foundPods, err
 }
 
 func (s *stateFulSetController) ListStatefulSetByLabels(namespace string, labels map[string]string) (*appsv1.StatefulSetList, error) {
 	foundSts := &appsv1.StatefulSetList{}
 	err := s.client.List(context.TODO(), foundSts, client.InNamespace(namespace), client.MatchingLabels(labels))
+	utils.RecordK8sMetrics(namespace, "StatefulSet", "NA", "GETSTSBYLABELS", err, s.metrics)
 	return foundSts, err
 }

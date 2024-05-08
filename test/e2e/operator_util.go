@@ -161,7 +161,7 @@ func IsDistributedRedisClusterProperly(f *Framework, drc *redisv1alpha1.Distribu
 			f.Logf("NewRedisAdmin err: %s", err)
 			return err
 		}
-		if _, err := redisAdmin.GetClusterInfos(ctx); err != nil {
+		if _, err := redisAdmin.GetClusterInfos(ctx, f.Namespace(), drc.Name); err != nil {
 			f.Logf("DistributedRedisCluster Cluster nodes: %s", err)
 			return err
 		}

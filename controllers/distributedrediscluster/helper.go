@@ -11,6 +11,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	redisv1alpha1 "github.com/dinesh-murugiah/rediscluster-operator/api/v1alpha1"
+	"github.com/dinesh-murugiah/rediscluster-operator/metrics"
 	config "github.com/dinesh-murugiah/rediscluster-operator/redisconfig"
 	utils "github.com/dinesh-murugiah/rediscluster-operator/utils/commonutils"
 	"github.com/dinesh-murugiah/rediscluster-operator/utils/k8sutil"
@@ -31,9 +32,9 @@ func getLabels(cluster *redisv1alpha1.DistributedRedisCluster) map[string]string
 }
 
 // Helper functin to upadte the cluster info with additional information from other sources
-func UpdateClusterInfos(clusterInfos *redisutil.ClusterInfos, pods []*corev1.Pod, Client client.Client, reqLogger logr.Logger) error {
+func UpdateClusterInfos(clusterInfos *redisutil.ClusterInfos, pods []*corev1.Pod, Client client.Client, reqLogger logr.Logger, metrics metrics.Recorder) error {
 
-	nodectrl := k8sutil.NewNodeController(Client)
+	nodectrl := k8sutil.NewNodeController(Client, metrics)
 	nodes := clusterInfos.GetNodes()
 	for _, node := range nodes {
 		if len(node.FailStatus) > 0 {
@@ -74,7 +75,7 @@ func getpodFromlist(pods []*corev1.Pod, nodeIP string) *corev1.Pod {
 }
 
 // newRedisAdmin builds and returns new redis.Admin from the list of pods
-func newRedisAdmin(pods []*corev1.Pod, password string, cfg *config.Redis, reqLogger logr.Logger, ctx context.Context) (redisutil.IAdmin, error) {
+func newRedisAdmin(pods []*corev1.Pod, password string, cfg *config.Redis, reqLogger logr.Logger, ctx context.Context, metrics metrics.Recorder) (redisutil.IAdmin, error) {
 	nodesAddrs := []string{}
 	for _, pod := range pods {
 		redisPort := redisutil.DefaultRedisPort
@@ -96,7 +97,7 @@ func newRedisAdmin(pods []*corev1.Pod, password string, cfg *config.Redis, reqLo
 		Password:           password,
 	}
 
-	return redisutil.NewAdmin(nodesAddrs, &adminConfig, reqLogger, ctx), nil
+	return redisutil.NewAdmin(nodesAddrs, &adminConfig, reqLogger, ctx, metrics), nil
 }
 
 func newRedisCluster(infos *redisutil.ClusterInfos, cluster *redisv1alpha1.DistributedRedisCluster, reqLogger logr.Logger) (*redisutil.Cluster, redisutil.Nodes, error) {
