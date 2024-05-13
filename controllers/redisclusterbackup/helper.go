@@ -2,6 +2,8 @@ package redisclusterbackup
 
 import (
 	"context"
+	"fmt"
+	"strings"
 
 	batch "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -109,4 +111,12 @@ func isJobFinished(j *batch.Job) bool {
 		}
 	}
 	return false
+}
+
+func GetBackupDeploymentName(clusterName string) string {
+	if strings.HasPrefix(clusterName, redisv1alpha1.CrResourcesprefix) {
+		namespace := clusterName[len(redisv1alpha1.CrResourcesprefix):]
+		return fmt.Sprintf("%s-%s-%s", redisv1alpha1.CrNameShort, namespace, "backuputil")
+	}
+	return fmt.Sprintf("%s-%s-%s", redisv1alpha1.CrNameShort, clusterName, "backuputil")
 }

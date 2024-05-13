@@ -17,6 +17,11 @@ const (
 	RedisRoleLabelKey = "role"
 )
 
+const (
+	CrResourcesprefix = "distributedrediscluster-" // prefix for all resources created by the operator
+	CrNameShort       = "drc"                      // short name for the distributed redis cluster
+)
+
 // RedisRole RedisCluster Node Role type
 type RedisRole string
 
