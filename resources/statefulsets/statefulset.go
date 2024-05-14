@@ -265,11 +265,19 @@ func persistentClaim(cluster *redisv1alpha1.DistributedRedisCluster, labels map[
 }
 
 func ClusterStatefulSetName(clusterName string, i int) string {
-	return fmt.Sprintf("drc-%s-%d", clusterName, i)
+	if strings.HasPrefix(clusterName, redisv1alpha1.CrResourcesprefix) {
+		namespace := clusterName[len(redisv1alpha1.CrResourcesprefix):]
+		return fmt.Sprintf("%s-%s-%s%d", redisv1alpha1.CrNameShort, namespace, "shard", i)
+	}
+	return fmt.Sprintf("%s-%s-%s%d", redisv1alpha1.CrNameShort, clusterName, "shard", i)
 }
 
 func ClusterHeadlessSvcName(name string, i int) string {
-	return fmt.Sprintf("%s-%d", name, i)
+	if strings.HasPrefix(name, redisv1alpha1.CrResourcesprefix) {
+		namespace := name[len(redisv1alpha1.CrResourcesprefix):]
+		return fmt.Sprintf("%s-%s-%s%d", redisv1alpha1.CrNameShort, namespace, "svc-shard", i)
+	}
+	return fmt.Sprintf("%s-%s-%s%d", redisv1alpha1.CrNameShort, name, "svc-shard", i)
 }
 
 func getRedisCommand(cluster *redisv1alpha1.DistributedRedisCluster, password *corev1.EnvVar) []string {

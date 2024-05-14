@@ -279,7 +279,11 @@ func generateRedisConfContent(configMap map[string]string) string {
 }
 
 func RedisConfigMapName(clusterName string) string {
-	return fmt.Sprintf("%s-%s", "redis-cluster", clusterName)
+	if strings.HasPrefix(clusterName, redisv1alpha1.CrResourcesprefix) {
+		namespace := clusterName[len(redisv1alpha1.CrResourcesprefix):]
+		return fmt.Sprintf("%s-%s-%s", redisv1alpha1.CrNameShort, namespace, "redis-config")
+	}
+	return fmt.Sprintf("%s-%s-%s", redisv1alpha1.CrNameShort, clusterName, "redis-config")
 }
 
 func NewConfigMapForRestore(cluster *redisv1alpha1.DistributedRedisCluster, labels map[string]string) *corev1.ConfigMap {
@@ -297,11 +301,19 @@ func NewConfigMapForRestore(cluster *redisv1alpha1.DistributedRedisCluster, labe
 }
 
 func RestoreConfigMapName(clusterName string) string {
-	return fmt.Sprintf("%s-%s", "rediscluster-restore", clusterName)
+	if strings.HasPrefix(clusterName, redisv1alpha1.CrResourcesprefix) {
+		namespace := clusterName[len(redisv1alpha1.CrResourcesprefix):]
+		return fmt.Sprintf("%s-%s-%s", redisv1alpha1.CrNameShort, namespace, "restore")
+	}
+	return fmt.Sprintf("%s-%s-%s", redisv1alpha1.CrNameShort, clusterName, "restore")
 }
 
 func AclConfigMapName(clusterName string) string {
-	return fmt.Sprintf("%s-%s", "rediscluster-acl", clusterName)
+	if strings.HasPrefix(clusterName, redisv1alpha1.CrResourcesprefix) {
+		namespace := clusterName[len(redisv1alpha1.CrResourcesprefix):]
+		return fmt.Sprintf("%s-%s-%s", redisv1alpha1.CrNameShort, namespace, "redis-acl")
+	}
+	return fmt.Sprintf("%s-%s-%s", redisv1alpha1.CrNameShort, clusterName, "redis-acl")
 }
 func GetAclStringFromSecrets(conflog logr.Logger, client client.Client, cluster *redisv1alpha1.DistributedRedisCluster, secretname string) (string, string, error) {
 

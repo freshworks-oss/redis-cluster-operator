@@ -259,9 +259,14 @@ func (r *RedisClusterBackupReconciler) finalizeBackup(namespace string, b *redis
 	// needs to do before the CR can be deleted. Examples
 	// of finalizers include performing backups and deleting
 	// resources that are not owned by this CR, like a PVC.
+	dpname := GetBackupDeploymentName(b.Spec.RedisClusterName)
 	logl.Info("Successfully finalized RedisClusterBackup")
-	dp, err := r.DeploymentController.GetDeployment(namespace, b.Spec.RedisClusterName)
+	dp, err := r.DeploymentController.GetDeployment(namespace, dpname)
 	if err != nil {
+		if errors.IsNotFound(err) {
+			logl.Info("finalizeBackup", "Deployment not found", "probably already deleted,no need to delete")
+			return nil
+		}
 		logl.Error(err, "unable to get deployment", "namespace", namespace)
 		return err
 	}

@@ -71,8 +71,8 @@ BIN_DIR=bin/operator
 DEVREPO=$(REPO)
 
 
-BINARY_VERSION_RELEASE=v0.0.40
-BINARY_VERSION_DEV=pass-p9
+BINARY_VERSION_RELEASE=v0.0.41
+BINARY_VERSION_DEV=dev-v10
 
 ECR_REPO=redis-cluster-operator
 ECR__DEV_REPO=redis-cluster-operator-dev
@@ -163,7 +163,7 @@ docker-push: ## Push docker image with the manager.
 .PHONY: image-release-dev
 image-release-dev:
 	aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin $(ECR_URI) 
-	docker build --platform=$(DEPLOYPLATFORMS) --tag $(ECR_URI)/$(ECR__DEV_REPO):$(BINARY_VERSION_DEV) .
+	docker buildx build --no-cache --push --platform=$(DEPLOYPLATFORMS) --tag $(ECR_URI)/$(ECR__DEV_REPO):$(BINARY_VERSION_DEV) .
 
 .PHONY: build-tools
 build-tools:

@@ -95,6 +95,16 @@ func DefaultOwnerReferences(cluster *DistributedRedisCluster) []metav1.OwnerRefe
 	}
 }
 
+func BackupOwnerReferences(backup *RedisClusterBackup) []metav1.OwnerReference {
+	return []metav1.OwnerReference{
+		*metav1.NewControllerRef(backup, schema.GroupVersionKind{
+			Group:   GroupVersion.Group,
+			Version: GroupVersion.Version,
+			Kind:    RedisClusterBackupKind,
+		}),
+	}
+}
+
 func (in *RedisClusterBackup) Validate() error {
 	clusterName := in.Spec.RedisClusterName
 	if clusterName == "" {

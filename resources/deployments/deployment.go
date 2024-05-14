@@ -31,6 +31,7 @@ func utilGenerateDeploymentSpec(instance *redisv1alpha1.RedisClusterBackup, clus
 				"app":       instance.Spec.RedisClusterName,
 				"container": utilContainerName,
 			},
+			OwnerReferences:redisv1alpha1.BackupOwnerReferences(instance),
 		},
 		Spec: appsv1.DeploymentSpec{
 			Replicas: &replicas,

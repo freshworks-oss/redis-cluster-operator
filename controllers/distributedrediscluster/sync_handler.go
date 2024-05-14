@@ -109,6 +109,20 @@ func (r *DistributedRedisClusterReconciler) validateAndSetDefault(cluster *redis
 	var update bool
 	var err error
 
+	if strings.HasPrefix(cluster.Name, redisv1alpha1.CrResourcesprefix) {
+		nameSpace := cluster.Name[len(redisv1alpha1.CrResourcesprefix):]
+		if len(nameSpace) <= 0 {
+			reqLogger.Error(err, "validateAndSetDefault", "possibly missing namespace prefix for: ", redisv1alpha1.CrResourcesprefix)
+			err = fmt.Errorf("possibly missing namespace prefix for: %s", redisv1alpha1.CrResourcesprefix)
+			return err
+		}
+
+	} else {
+		reqLogger.Error(err, "validateAndSetDefault", "cluster name should start with:", redisv1alpha1.CrResourcesprefix)
+		err = fmt.Errorf("cluster name should start with %s", redisv1alpha1.CrResourcesprefix)
+		return err
+
+	}
 	// TODO: DR-1173 Move this to validation webhook
 	if cluster.Spec.HaConfig == nil {
 		err = fmt.Errorf("ha config expected missing")

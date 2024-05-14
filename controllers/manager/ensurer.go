@@ -259,14 +259,17 @@ func (r *realEnsureResource) ensureRedisHeadLessSvc(cluster *redisv1alpha1.Distr
 }
 
 func (r *realEnsureResource) EnsureClusterHeadLessSvc(cluster *redisv1alpha1.DistributedRedisCluster, labels map[string]string) error {
-	name := cluster.Spec.ServiceName
+	svcName := cluster.Spec.ServiceName
+	if strings.HasPrefix(cluster.Spec.ServiceName, redisv1alpha1.CrResourcesprefix) {
+		svcName = fmt.Sprintf("%s-%s-%s", redisv1alpha1.CrNameShort, cluster.Spec.ServiceName[len(redisv1alpha1.CrResourcesprefix):], "svc-cluster")
+	}
 	delete(labels, redisv1alpha1.StatefulSetLabel)
 	delete(labels, redisv1alpha1.ShardLabel)
-	_, err := r.svcClient.GetService(cluster.Namespace, name)
+	_, err := r.svcClient.GetService(cluster.Namespace, svcName)
 	if err != nil && errors.IsNotFound(err) {
 		r.logger.WithValues("Service.Namespace", cluster.Namespace, "Service.Name", cluster.Spec.ServiceName).
 			Info("creating a new service")
-		svc := services.NewHeadLessSvcForCR(cluster, name, labels)
+		svc := services.NewHeadLessSvcForCR(cluster, svcName, labels)
 		err = r.svcClient.CreateService(svc)
 		return err
 	}
