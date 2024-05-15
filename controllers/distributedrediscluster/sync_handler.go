@@ -3,6 +3,7 @@ package distributedrediscluster
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -546,8 +547,10 @@ func (r *DistributedRedisClusterReconciler) updatePodIfNeeded(ip string, pods []
 	}
 	for _, pod := range pods {
 		if ip == pod.Status.PodIP {
-			pod_name := strings.Split(pod.Name, "-")
-			stsIdentifier, err := strconv.Atoi(pod_name[len(pod_name)-2])
+			pattern := `shard(\d)`
+			re := regexp.MustCompile(pattern)
+			stsNumStr := re.FindStringSubmatch(pod.Name)
+			stsIdentifier, err := strconv.Atoi(stsNumStr[1])
 			if err != nil {
 				return false, fmt.Errorf("unable to convert pod hash identifier to int")
 			}
