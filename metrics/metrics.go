@@ -132,7 +132,7 @@ func NewRecorder(namespace string, reg prometheus.Registerer) Recorder {
 			Subsystem: promControllerSubsystemRedis,
 			Name:      "reconcile_cluster",
 			Help:      "reconcile cluster",
-		}, []string{"namespace", "name", "status", "function", "operation", "err"})
+		}, []string{"namespace", "name", "operation", "function", "status", "err"})
 
 	r := recorder{
 		clusterOK:             clusterOK,
