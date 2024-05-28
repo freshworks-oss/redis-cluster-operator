@@ -6,6 +6,7 @@ import (
 
 	redisv1alpha1 "github.com/dinesh-murugiah/rediscluster-operator/api/v1alpha1"
 	"github.com/dinesh-murugiah/rediscluster-operator/controllers/heal"
+	"github.com/dinesh-murugiah/rediscluster-operator/metrics"
 	"github.com/dinesh-murugiah/rediscluster-operator/utils/redisutil"
 )
 
@@ -27,18 +28,21 @@ func (h *realHeal) Heal(cluster *redisv1alpha1.DistributedRedisCluster, clusterI
 	var stopReconcile bool = false
 
 	if stopReconcile, actionDone, err := h.CheckandRecoverCluster(cluster, clusterInfos, admin, context); err != nil {
+		h.MetricsClient.ReconcileCluster(cluster.Name, cluster.Namespace, "CHECK_AND_RECOVER_CLUSTER", metrics.CHECK_AND_HEAL, metrics.FAIL, err.Error())
 		return stopReconcile, actionDone, err
 	} else if actionDone {
 		return stopReconcile, actionDone, nil
 	}
 
 	if actionDone, err := h.FixFailedNodes(cluster, clusterInfos, admin, context); err != nil {
+		h.MetricsClient.ReconcileCluster(cluster.Name, cluster.Namespace, "FIX_FAILED_NODES", metrics.CHECK_AND_HEAL, metrics.FAIL, err.Error())
 		return stopReconcile, actionDone, err
 	} else if actionDone {
 		return stopReconcile, actionDone, nil
 	}
 
 	if actionDone, err := h.FixUntrustedNodes(cluster, clusterInfos, admin, context); err != nil {
+		h.MetricsClient.ReconcileCluster(cluster.Name, cluster.Namespace, "FIX_UNTRUSTED_NODES", metrics.CHECK_AND_HEAL, metrics.FAIL, err.Error())
 		return stopReconcile, actionDone, err
 	} else if actionDone {
 		return stopReconcile, actionDone, nil

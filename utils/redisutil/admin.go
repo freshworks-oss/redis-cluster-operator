@@ -179,7 +179,6 @@ func (a *Admin) GetClusterInfos(ctx context.Context, namespace string, name stri
 	for addr, c := range a.Connections().GetAll() {
 		nodeinfos, err := a.getInfos(ctx, c, addr, namespace, name)
 		if err != nil {
-			// pratheep : record other reconcilation failure here
 			a.log.WithValues("err", err).Info("get redis info failed")
 			infos.Status = ClusterInfosPartial
 			clusterErr.partial = true

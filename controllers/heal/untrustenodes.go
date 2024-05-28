@@ -27,7 +27,6 @@ func (c *CheckAndHeal) FixUntrustedNodes(cluster *redisv1alpha1.DistributedRedis
 		}
 		node2, err := infos.GetNodes().GetNodesByFunc(getByIPFunc)
 		if err != nil && !redisutil.IsNodeNotFoundedError(err) {
-			// record this under heal failure or find right metric - Pratheep
 			c.Logger.Error(err, "error with GetNodesByFunc(getByIPFunc) search function")
 			errs = append(errs, err)
 			continue
@@ -40,7 +39,6 @@ func (c *CheckAndHeal) FixUntrustedNodes(cluster *redisv1alpha1.DistributedRedis
 		if exist && !reused {
 			c.Logger.Info("[FixUntrustedNodes] try to delete pod", "podName", uNode.PodName)
 			if err := c.PodControl.DeletePodByName(cluster.Namespace, uNode.PodName); err != nil {
-				// record this under heal failure or find right metric - Pratheep
 				errs = append(errs, err)
 			}
 		}

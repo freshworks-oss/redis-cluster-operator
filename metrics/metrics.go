@@ -21,8 +21,12 @@ const (
 	SUCCESS                      = "SUCCESS"
 	FAIL                         = "FAIL"
 	FATAL                        = "FATAL"
+	RECONCILE                    = "RECONCILE"
+	ENSURE                       = "ENSURE"
+	CHECK_AND_HEAL               = "CHECK_AND_HEAL"
+	SYNC_CLUSTER                 = "SYNC_CLUSTER"
+	HA_HEAL                      = "HA_HEAL"
 	NOT_APPLICABLE               = "NA"
-	MISC                         = "MISC_ERROR"
 	GET_CLUSTERADMIN_PASSWORD    = "GET_CLUSTERADMIN_PASSWORD"
 	CREATE_ADMIN_CONN            = "CREATE_ADMIN_CONNECTION"
 	FORGET_NODE                  = "FORGET NODE"
@@ -77,16 +81,18 @@ func init() {
 type Recorder interface {
 	// ClusterOK metrics
 	SetClusterOK(namespace string, name string, val float64)
+	ReconcileClusterGauge(namespace string, name string, function string, val float64)
 	RecordK8sOperation(namespace string, kind string, name string, operation string, status string, err string)
-	EnsureCluster(namespace string, name string, status string, operation string, err string)
 	RecordRedisOperation(namespace string, name string, operation string, ip string, status string, err string)
+	ReconcileCluster(namespace string, name string, operation string, function string, status string, err string)
 }
 
 type recorder struct {
-	clusterOK            *prometheus.GaugeVec   // clusterOk is the status of a cluster
-	k8sServiceOperations *prometheus.CounterVec // number of operations performed on k8s
-	ensureCluster        *prometheus.CounterVec // status of ensure cluster
-	recordRedisOperation *prometheus.CounterVec // record redis operation
+	clusterOK             *prometheus.GaugeVec   // clusterOk is the status of a cluster
+	reconcileClusterGauge *prometheus.GaugeVec   // reconcile cluster gauge
+	k8sServiceOperations  *prometheus.CounterVec // number of operations performed on k8s
+	recordRedisOperation  *prometheus.CounterVec // record redis operation
+	reconcileCluster      *prometheus.CounterVec // reconcile cluster
 }
 
 func NewRecorder(namespace string, reg prometheus.Registerer) Recorder {
@@ -97,6 +103,13 @@ func NewRecorder(namespace string, reg prometheus.Registerer) Recorder {
 		Help:      "Number of clusters managed by the operator.",
 	}, []string{"namespace", "name"})
 
+	reconcileClusterGauge := prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: namespace,
+		Subsystem: promControllerSubsystemRedis,
+		Name:      "reconcile_cluster_gauge",
+		Help:      "Gauge metrices for different reconcile functions.",
+	}, []string{"namespace", "name", "function"})
+
 	k8sServiceOperations := prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Namespace: namespace,
@@ -105,13 +118,6 @@ func NewRecorder(namespace string, reg prometheus.Registerer) Recorder {
 			Help:      "number of operations performed on k8s",
 		}, []string{"namespace", "kind", "name", "operation", "status", "err"})
 
-	ensureCluster := prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Namespace: namespace,
-			Subsystem: promControllerSubsystemRedis,
-			Name:      "ensure_cluster",
-			Help:      "ensure cluster status",
-		}, []string{"namespace", "name", "status", "operation", "err"})
 	recordRedisOperation := prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Namespace: namespace,
@@ -120,19 +126,29 @@ func NewRecorder(namespace string, reg prometheus.Registerer) Recorder {
 			Help:      "redis operation",
 		}, []string{"namespace", "name", "operation", "ip", "status", "err"})
 
+	reconcileCluster := prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: namespace,
+			Subsystem: promControllerSubsystemRedis,
+			Name:      "reconcile_cluster",
+			Help:      "reconcile cluster",
+		}, []string{"namespace", "name", "status", "function", "operation", "err"})
+
 	r := recorder{
-		clusterOK:            clusterOK,
-		k8sServiceOperations: k8sServiceOperations,
-		ensureCluster:        ensureCluster,
-		recordRedisOperation: recordRedisOperation,
+		clusterOK:             clusterOK,
+		k8sServiceOperations:  k8sServiceOperations,
+		recordRedisOperation:  recordRedisOperation,
+		reconcileCluster:      reconcileCluster,
+		reconcileClusterGauge: reconcileClusterGauge,
 	}
 
 	// Register metrics.
 	reg.MustRegister(
 		r.clusterOK,
 		r.k8sServiceOperations,
-		r.ensureCluster,
 		r.recordRedisOperation,
+		r.reconcileCluster,
+		r.reconcileClusterGauge,
 	)
 	return r
 }
@@ -141,18 +157,22 @@ func (r recorder) SetClusterOK(namespace string, name string, val float64) {
 	r.clusterOK.WithLabelValues(namespace, name).Set(val)
 }
 
+func (r recorder) ReconcileClusterGauge(namespace string, name string, function string, val float64) {
+	r.reconcileClusterGauge.WithLabelValues(namespace, name, function).Set(val)
+}
+
 func (r recorder) RecordK8sOperation(namespace string, kind string, name string, operation string, status string, err string) {
 	r.k8sServiceOperations.WithLabelValues(namespace, kind, name, operation, status, err).Add(1)
 	updateResourceMetricLastUpdatedTracker(namespace, kind, name)
 }
 
-func (r recorder) EnsureCluster(namespace string, name string, status string, operation string, err string) {
-	r.ensureCluster.WithLabelValues(namespace, name, status, operation, err).Add(1)
-}
-
 func (r recorder) RecordRedisOperation(namespace string, name string, operation string, IP string, status string, err string) {
 	r.recordRedisOperation.WithLabelValues(namespace, name, operation, IP, status, err).Add(1)
 	updateInstanceMetricLastUpdatedTracker(IP)
+}
+
+func (r recorder) ReconcileCluster(namespace string, name string, operation string, function string, status string, err string) {
+	r.reconcileCluster.WithLabelValues(namespace, name, operation, function, status, err).Add(1)
 }
 
 func updateResourceMetricLastUpdatedTracker(namespace string, kind string, name string) {
@@ -176,7 +196,6 @@ func removeStaleMetrics() {
 		kubernetesResourceBasedLabels, customResourceBasedLabels, ipBasedLabels := getLabelsOfStaleMetrics()
 		for _, recorder := range recorders {
 			for _, label := range kubernetesResourceBasedLabels {
-				metricsDeletedCount += recorder.ensureCluster.DeletePartialMatch(label)
 				metricsDeletedCount += recorder.k8sServiceOperations.DeletePartialMatch(label)
 			}
 			for _, label := range customResourceBasedLabels {
