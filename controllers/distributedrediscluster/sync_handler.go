@@ -547,11 +547,17 @@ func (r *DistributedRedisClusterReconciler) updatePodIfNeeded(ip string, pods []
 	}
 	for _, pod := range pods {
 		if ip == pod.Status.PodIP {
-			pattern := `shard(\d)`
+			pattern := `shard(\d+)`
 			re := regexp.MustCompile(pattern)
 			stsNumStr := re.FindStringSubmatch(pod.Name)
+			if len(stsNumStr) < 2 {
+				// TODO: Add error logs in all functions
+				log.Info("pattern not found or unable to extract shard number")
+				return false, fmt.Errorf("pattern not found or unable to extract shard number")
+			}
 			stsIdentifier, err := strconv.Atoi(stsNumStr[1])
 			if err != nil {
+				log.Info("unable to convert shard number to int")
 				return false, fmt.Errorf("unable to convert pod hash identifier to int")
 			}
 			pod_hash := strings.Split((pod.ObjectMeta.Labels[v1.ControllerRevisionHashLabelKey]), "-")

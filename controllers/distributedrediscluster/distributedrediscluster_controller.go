@@ -500,6 +500,7 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 	if instance.Spec.HaConfig.HaEnabled {
 		if clusterHealthOk && haStatus == rediskunv1alpha1.HaStatusFailed {
 			err := fmt.Errorf("unexpected Error - HaStatusFailed")
+			r.MetricsClient.ReconcileCluster(request.Namespace, request.Name, "HA status failed", "HA_HEAL", metrics.FAIL, err.Error())
 			reqLogger.Error(err, "HaStatusFailed")
 			r.MetricsClient.SetClusterOK(instance.Namespace, instance.Name, float64(2))
 			return reconcile.Result{RequeueAfter: time.Duration(reconcileTime) * time.Second}, nil
@@ -509,7 +510,6 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 			//check if all Zones active now
 			isAllactive, _, err := CheckallZonesActive(instance, reqLogger, r.Client, r.MetricsClient)
 			if err != nil {
-				r.MetricsClient.ReconcileClusterGauge(request.Namespace, request.Name, "HA_HEAL", float64(1))
 				r.MetricsClient.ReconcileCluster(request.Namespace, request.Name, "CHECK_ALL_ZONES_ACTIVE", metrics.HA_HEAL, metrics.FAIL, err.Error())
 				reqLogger.Error(err, "CheckallZonesActive")
 				return reconcile.Result{RequeueAfter: 20 * time.Second}, nil
@@ -529,10 +529,11 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 			// 3. If all zones not active , then check if we need to add annotations to not evict master pods
 			// Inorder for self heal to occur, set reDitributeNodes=true as annotation in respective cluster CRD.
 			if isAllactive && reDitributeNodes {
+				// starting ha heal timer loop here
+				r.MetricsClient.ReconcileClusterGauge(request.Namespace, request.Name, "HA_HEAL", float64(1))
 				//check if any masters needs to be failedover
 				haRanking, haStatus, displacedMasters, _ := buildHAStatus(newClusterInfos, instance, reqLogger)
 				if haStatus == rediskunv1alpha1.HaStatusFailed {
-					r.MetricsClient.ReconcileClusterGauge(request.Namespace, request.Name, "HA_HEAL", float64(1))
 					r.MetricsClient.ReconcileCluster(request.Namespace, request.Name, "BUILD_HA_STATUS", metrics.HA_HEAL, metrics.FAIL, "HaStatusFailed")
 					reqLogger.Error(fmt.Errorf("unexpected Error - HaStatusFailed"), "HaStatusFailed When trying to Distribute Masters")
 					return reconcile.Result{RequeueAfter: time.Duration(reconcileTime) * time.Second}, nil
@@ -540,7 +541,6 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 
 				numofNodestoDel, delNodes, err1 := r.getListofNodestoDelete(instance, haRanking, reqLogger)
 				if err1 != nil {
-					r.MetricsClient.ReconcileClusterGauge(request.Namespace, request.Name, "HA_HEAL", float64(1))
 					r.MetricsClient.ReconcileCluster(request.Namespace, request.Name, "GET_LIST_OF_NODES_TO_DELETE", metrics.HA_HEAL, metrics.FAIL, err1.Error())
 					reqLogger.Error(err1, "HaRedistribute - getListofNodestoDelete")
 					return reconcile.Result{RequeueAfter: time.Duration(reconcileTime) * time.Second}, nil
@@ -557,7 +557,6 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 						reqLogger.Info("HaStatusRedistribute - Distribute Masters", "master", master)
 						BestRankedMaster, _ := haRanking.GetHAPlacedNodeinSTS(master.StatefulSet)
 						if BestRankedMaster == nil {
-							r.MetricsClient.ReconcileClusterGauge(request.Namespace, request.Name, "HA_HEAL", float64(1))
 							r.MetricsClient.ReconcileCluster(request.Namespace, request.Name, "UNABLE_TO_FIND_BEST_MASTER", metrics.HA_HEAL, metrics.FAIL, "BestRankedMaster is nil")
 							reqLogger.Error(fmt.Errorf("unexpected Error - BestRankedMaster is nil"), "HaStatusRedistribute - BestRankedMaster")
 							return reconcile.Result{RequeueAfter: time.Duration(reconcileTime) * time.Second}, nil
@@ -567,7 +566,6 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 						}
 						err := r.FailoverMastersbySTS(instance, master, newClusterInfos, BestRankedMaster, admin, context, reqLogger)
 						if err != nil {
-							r.MetricsClient.ReconcileClusterGauge(request.Namespace, request.Name, "HA_HEAL", float64(1))
 							if GetType(err) == Requeue {
 								reqLogger.Error(err, "HaStatusRedistribute - FailoverMastersbySTS", "Failed Retrying", err)
 								r.MetricsClient.ReconcileCluster(request.Namespace, request.Name, "FAILOVER_MASTERS_BY_STS", metrics.HA_HEAL, metrics.FAIL, err.Error())
@@ -590,6 +588,7 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 					SetHAStatus(newStatus, rediskunv1alpha1.HaStatusHealthy)
 					haStatus = rediskunv1alpha1.HaStatusHealthy
 					r.updateClusterIfNeed(instance, newStatus, reqLogger)
+					r.MetricsClient.ReconcileClusterGauge(request.Namespace, request.Name, "HA_HEAL", float64(0))
 					reqLogger.Info("HaStatusHealthy - HaHealing Completed , Updating annotation reDistributeNode to false in cluster CRD to stop selfheal.")
 					//Update the annotation reDistributeNode to false in cluster CRD to stop selfheal.
 					//Selfheal should occur only if human operator sets annotation reDistributeNode as true on cluster crd.
@@ -618,7 +617,6 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 				return reconcile.Result{}, err
 			}
 		}
-		r.MetricsClient.ReconcileClusterGauge(request.Namespace, request.Name, "HA_HEAL", float64(0))
 	} else {
 		r.MetricsClient.SetClusterOK(instance.Namespace, instance.Name, float64(1))
 	}
