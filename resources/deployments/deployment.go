@@ -31,7 +31,7 @@ func utilGenerateDeploymentSpec(instance *redisv1alpha1.RedisClusterBackup, clus
 				"app":       instance.Spec.RedisClusterName,
 				"container": utilContainerName,
 			},
-			OwnerReferences:redisv1alpha1.BackupOwnerReferences(instance),
+			OwnerReferences: redisv1alpha1.BackupOwnerReferences(instance),
 		},
 		Spec: appsv1.DeploymentSpec{
 			Replicas: &replicas,
@@ -67,9 +67,9 @@ func utilGeneratePodTemplate(instance *redisv1alpha1.RedisClusterBackup, cluster
 				"container": utilContainerName,
 			},
 			Annotations: map[string]string{
-				"0.prometheus.io/path":   "/metrics",
-				"0.prometheus.io/port":   "9999",
-				"0.prometheus.io/scrape": "true",
+				"prometheus.io/path":   "/metrics",
+				"prometheus.io/port":   "9999",
+				"prometheus.io/scrape": "true",
 			},
 		},
 		Spec: corev1.PodSpec{
