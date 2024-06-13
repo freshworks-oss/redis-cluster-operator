@@ -96,6 +96,7 @@ func redisbackupcontrollerPredfunction() predicate.Funcs {
 			if e.ObjectOld.GetGeneration() != e.ObjectNew.GetGeneration() {
 				logl.WithValues("namespace", e.ObjectNew.GetNamespace(), "name", e.ObjectNew.GetName()).Info("Generation change return true",
 					"old", e.ObjectOld, "new", e.ObjectNew)
+				updatePredicateCalled = true
 				return true
 			}
 			return false

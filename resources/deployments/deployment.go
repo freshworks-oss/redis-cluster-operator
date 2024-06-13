@@ -84,7 +84,7 @@ func utilGeneratePodTemplate(instance *redisv1alpha1.RedisClusterBackup, cluster
 					Resources:       *instance.Spec.UtilSpec.Resources,
 					Ports: []corev1.ContainerPort{
 						{
-							Name:          "metrics-0",
+							Name:          "metrics",
 							ContainerPort: 9999,
 						},
 					},
