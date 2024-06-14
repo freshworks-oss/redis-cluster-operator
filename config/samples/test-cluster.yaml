@@ -178,7 +178,7 @@ data:
       current_date=$(date +'%Y/%m/%d')
       s3_tenant_path="s3://$S3_BUCKET/rediscluster/rdb/distributedrediscluster-$tenant/$shard_num/$current_date/"
       # Check if the file dump.rdb has been created since the bgsave started
-      file_path="/data/dump.rdb"
+      file_path="/backup/dump.rdb"
       while [ "$(( $(date +%s) - start_time ))" -lt "$TERMINATION_GRACE_PERIOD" ] && ! file_created "$file_path"; do
           echo "File $file_path does not exist. Retrying in 5 seconds..."
           sleep 5
@@ -270,8 +270,8 @@ spec:
     volumeMounts:
     - mountPath: /config
       name: utilconf
-    - mountPath: /data
-      name: redis-data
+    - mountPath: /backup
+      name: redis-backup
   masterSize: 3
   terminationGracePeriod: 30
   customLivenessProbe:

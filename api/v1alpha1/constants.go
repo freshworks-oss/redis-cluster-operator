@@ -3,8 +3,9 @@ package v1alpha1
 type StorageType string
 
 const (
-	PersistentClaim StorageType = "persistent-claim"
-	Ephemeral       StorageType = "ephemeral"
+	PersistentClaimEfs StorageType = "persistent-claim-efs"
+	PersistentClaimEbs StorageType = "persistent-claim-ebs"
+	Ephemeral          StorageType = "ephemeral"
 )
 
 const (
@@ -146,6 +147,6 @@ const (
 	PrometheusExporterPortNumber    = 9100
 	PrometheusExporterTelemetryPath = "/metrics"
 
-	BackupDumpDir  = "/data"
+	BackupDumpDir  = "/backup"
 	UtilVolumeName = "util-volume"
 )

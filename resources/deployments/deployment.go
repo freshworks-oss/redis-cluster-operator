@@ -31,7 +31,7 @@ func utilGenerateDeploymentSpec(instance *redisv1alpha1.RedisClusterBackup, clus
 				"app":       instance.Spec.RedisClusterName,
 				"container": utilContainerName,
 			},
-			OwnerReferences:redisv1alpha1.BackupOwnerReferences(instance),
+			OwnerReferences: redisv1alpha1.BackupOwnerReferences(instance),
 		},
 		Spec: appsv1.DeploymentSpec{
 			Replicas: &replicas,
@@ -142,8 +142,8 @@ func utilGeneratePodTemplate(instance *redisv1alpha1.RedisClusterBackup, cluster
 							MountPath: configMapMountPath,
 						},
 						{
-							Name:      "redis-data",
-							MountPath: "/data",
+							Name:      "redis-backup",
+							MountPath: "/backup",
 						},
 					},
 					SecurityContext: instance.Spec.UtilSpec.ContainerSecurityContext,
@@ -173,7 +173,7 @@ func utilGenerateConfigmapVolumeSpec(cluster *redisv1alpha1.DistributedRedisClus
 
 	// Define the new emptyDir volume for downloading redis RDB's
 	redisDataVolume := corev1.Volume{
-		Name: "redis-data",
+		Name: "redis-backup",
 		VolumeSource: corev1.VolumeSource{
 			EmptyDir: &corev1.EmptyDirVolumeSource{},
 		},

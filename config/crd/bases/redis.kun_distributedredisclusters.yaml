@@ -905,6 +905,25 @@ spec:
                 additionalProperties:
                   type: string
                 type: object
+              backupStorage:
+                description: RedisStorage defines the structure used to store the
+                  Redis Data
+                properties:
+                  class:
+                    type: string
+                  size:
+                    anyOf:
+                    - type: integer
+                    - type: string
+                    pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                    x-kubernetes-int-or-string: true
+                  type:
+                    type: string
+                required:
+                - class
+                - size
+                - type
+                type: object
               clusterReplicas:
                 format: int32
                 type: integer
@@ -912,6 +931,25 @@ spec:
                 items:
                   type: string
                 type: array
+              confStorage:
+                description: RedisStorage defines the structure used to store the
+                  Redis Data
+                properties:
+                  class:
+                    type: string
+                  size:
+                    anyOf:
+                    - type: integer
+                    - type: string
+                    pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                    x-kubernetes-int-or-string: true
+                  type:
+                    type: string
+                required:
+                - class
+                - size
+                - type
+                type: object
               config:
                 additionalProperties:
                   type: string
@@ -3581,27 +3619,6 @@ spec:
                 type: string
               serviceName:
                 type: string
-              storage:
-                description: RedisStorage defines the structure used to store the
-                  Redis Data
-                properties:
-                  class:
-                    type: string
-                  deleteClaim:
-                    type: boolean
-                  size:
-                    anyOf:
-                    - type: integer
-                    - type: string
-                    pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
-                    x-kubernetes-int-or-string: true
-                  type:
-                    type: string
-                required:
-                - class
-                - size
-                - type
-                type: object
               terminationGracePeriod:
                 format: int64
                 type: integer

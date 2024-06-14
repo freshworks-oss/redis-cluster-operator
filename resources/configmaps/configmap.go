@@ -256,6 +256,8 @@ func generateRedisConfContent(configMap map[string]string) string {
 	aclfilepath := "/acl/" + Aclfile
 	buffer.WriteString(fmt.Sprintf("%s %s", "aclfile", aclfilepath))
 	buffer.WriteString("\n")
+	buffer.WriteString(fmt.Sprintf("%s %s", "dir", "/backup"))
+	buffer.WriteString("\n")
 
 	if configMap == nil {
 		return buffer.String()

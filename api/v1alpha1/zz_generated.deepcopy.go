@@ -223,8 +223,13 @@ func (in *DistributedRedisClusterSpec) DeepCopyInto(out *DistributedRedisCluster
 			(*out)[key] = val
 		}
 	}
-	if in.Storage != nil {
-		in, out := &in.Storage, &out.Storage
+	if in.ConfStorage != nil {
+		in, out := &in.ConfStorage, &out.ConfStorage
+		*out = new(RedisStorage)
+		(*in).DeepCopyInto(*out)
+	}
+	if in.BackupStorage != nil {
+		in, out := &in.BackupStorage, &out.BackupStorage
 		*out = new(RedisStorage)
 		(*in).DeepCopyInto(*out)
 	}
