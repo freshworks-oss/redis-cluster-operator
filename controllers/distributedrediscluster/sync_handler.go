@@ -152,6 +152,26 @@ func (r *DistributedRedisClusterReconciler) validateAndSetDefault(cluster *redis
 		}
 	}
 
+	if (cluster.Spec.ConfStorage != nil && cluster.Spec.ConfStorage.Type == "") || (cluster.Spec.BackupStorage != nil && cluster.Spec.BackupStorage.Type == "") {
+		err = fmt.Errorf("storage defined, but storage type missing")
+		return err
+	}
+
+	if (cluster.Spec.ConfStorage != nil && !statefulsets.IsStorageTypeSupported(cluster.Spec.ConfStorage.Type)) || (cluster.Spec.BackupStorage != nil && !statefulsets.IsStorageTypeSupported(cluster.Spec.BackupStorage.Type)) {
+		err = fmt.Errorf("storage type not supported")
+		return err
+	}
+
+	if (cluster.Spec.ConfStorage != nil && statefulsets.IsPersistentStorageType(cluster.Spec.ConfStorage.Type) && cluster.Spec.ConfStorage.Class == "") || (cluster.Spec.BackupStorage != nil && statefulsets.IsPersistentStorageType(cluster.Spec.BackupStorage.Type) && cluster.Spec.BackupStorage.Class == "") {
+		err = fmt.Errorf("Storage class missing for persistent storage")
+		return err
+	}
+
+	if (cluster.Spec.ConfStorage != nil && statefulsets.IsPersistentStorageType(cluster.Spec.ConfStorage.Type) && cluster.Spec.BackupStorage != nil && statefulsets.IsPersistentStorageType(cluster.Spec.BackupStorage.Type)) && !statefulsets.IsPersistentStorageTypeSame(cluster.Spec.ConfStorage.Type, cluster.Spec.BackupStorage.Type) {
+		err = fmt.Errorf("Storage type should be same for both conf and backup storage if both are persistent")
+		return err
+	}
+
 	if cluster.IsRestoreFromBackup() && cluster.ShouldInitRestorePhase() {
 		//Dinesh Todo This flow Needs FIX ####, commented out below to fix status fileds
 		err = fmt.Errorf("restore Not supported yet")

@@ -87,11 +87,15 @@ func NewDistributedRedisCluster(name, namespace, image, passwordName string, mas
 					corev1.ResourceMemory: resource.MustParse("1024Mi"),
 				},
 			},
-			Storage: &redisv1alpha1.RedisStorage{
-				Type:        "persistent-claim",
-				Size:        resource.MustParse("10Gi"),
-				Class:       storageClassName,
-				DeleteClaim: true,
+			BackupStorage: &redisv1alpha1.RedisStorage{
+				Type:  "ephemeral",
+				Size:  resource.MustParse("10Gi"),
+				Class: "",
+			},
+			ConfStorage: &redisv1alpha1.RedisStorage{
+				Type:  "persistent-claim-efs",
+				Size:  resource.MustParse("10Gi"),
+				Class: storageClassName,
 			},
 			Annotations: map[string]string{
 				"prometheus.io/app-metrics":      "true",
@@ -166,7 +170,7 @@ func IsDistributedRedisClusterProperly(f *Framework, drc *redisv1alpha1.Distribu
 			return err
 		}
 		for addr, c := range redisAdmin.Connections().GetAll() {
-			configs, err := redisAdmin.GetAllConfig(ctx, c, addr)
+			configs, err := redisAdmin.GetAllConfig(ctx, c, addr, f.nameSpace, drc.Name)
 			if err != nil {
 				f.Logf("DistributedRedisCluster CONFIG GET: %s", err)
 				return err
@@ -214,7 +218,7 @@ func NewRedisAdmin(pods []corev1.Pod, password string, cfg *config.Redis, reqLog
 		Password:           password,
 	}
 
-	return redisutil.NewAdmin(nodesAddrs, &adminConfig, reqLogger, ctx), nil
+	return redisutil.NewAdmin(nodesAddrs, &adminConfig, reqLogger, ctx, nil), nil
 }
 
 func getClusterPassword(client client.Client, cluster *redisv1alpha1.DistributedRedisCluster) (string, error) {
@@ -270,7 +274,8 @@ func RestoreDRC(drc *redisv1alpha1.DistributedRedisCluster, drcb *redisv1alpha1.
 			Config:          drc.Spec.Config,
 			AdminSecret:     drc.Spec.AdminSecret,
 			Resources:       drc.Spec.Resources,
-			Storage:         drc.Spec.Storage,
+			ConfStorage:     drc.Spec.ConfStorage,
+			BackupStorage:   drc.Spec.BackupStorage,
 			Annotations:     drc.Spec.Annotations,
 			Restore: &redisv1alpha1.RestoreSpec{BackupSource: &redisv1alpha1.BackupSourceSpec{
 				Namespace: drcb.Namespace,
