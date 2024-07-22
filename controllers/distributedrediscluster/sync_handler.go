@@ -22,10 +22,14 @@ import (
 	"github.com/dinesh-murugiah/rediscluster-operator/resources/statefulsets"
 	"github.com/dinesh-murugiah/rediscluster-operator/utils/k8sutil"
 	"github.com/dinesh-murugiah/rediscluster-operator/utils/redisutil"
+	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 const (
-	requeueAfter = 15 * time.Second
+	requeueAfter                 = 15 * time.Second
+	redisConfStorageVolumeName   = "redis-conf"
+	redisBackupStorageVolumeName = "redis-backup"
 )
 
 type syncContext struct {
@@ -163,13 +167,90 @@ func (r *DistributedRedisClusterReconciler) validateAndSetDefault(cluster *redis
 	}
 
 	if (cluster.Spec.ConfStorage != nil && statefulsets.IsPersistentStorageType(cluster.Spec.ConfStorage.Type) && cluster.Spec.ConfStorage.Class == "") || (cluster.Spec.BackupStorage != nil && statefulsets.IsPersistentStorageType(cluster.Spec.BackupStorage.Type) && cluster.Spec.BackupStorage.Class == "") {
-		err = fmt.Errorf("Storage class missing for persistent storage")
+		err = fmt.Errorf("storage class missing for persistent storage")
 		return err
 	}
 
 	if (cluster.Spec.ConfStorage != nil && statefulsets.IsPersistentStorageType(cluster.Spec.ConfStorage.Type) && cluster.Spec.BackupStorage != nil && statefulsets.IsPersistentStorageType(cluster.Spec.BackupStorage.Type)) && !statefulsets.IsPersistentStorageTypeSame(cluster.Spec.ConfStorage.Type, cluster.Spec.BackupStorage.Type) {
-		err = fmt.Errorf("Storage type should be same for both conf and backup storage if both are persistent")
+		err = fmt.Errorf("storage type should be same for both conf and backup storage if both are persistent")
 		return err
+	}
+
+	//Create PVC here if not present
+	if cluster.Spec.ConfStorage.Type == rediskunv1alpha1.PersistentClaimEfs {
+
+		// Get PVC
+		_, err := r.PvcController.GetPvc(cluster.Namespace, redisConfStorageVolumeName)
+
+		if err != nil {
+			if errors.IsNotFound(err) {
+				// Create PVC
+				claim := corev1.PersistentVolumeClaim{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:            redisConfStorageVolumeName,
+						Namespace:       cluster.Namespace,
+						Labels:          cluster.Labels,
+						OwnerReferences: redisv1alpha1.DefaultOwnerReferences(cluster),
+					},
+					Spec: corev1.PersistentVolumeClaimSpec{
+						AccessModes: []corev1.PersistentVolumeAccessMode{
+							corev1.ReadWriteMany,
+						},
+						StorageClassName: &cluster.Spec.ConfStorage.Class,
+						Resources: corev1.ResourceRequirements{
+							Requests: corev1.ResourceList{
+								corev1.ResourceStorage: cluster.Spec.ConfStorage.Size,
+							},
+						},
+					},
+				}
+				if err := r.PvcController.CreatePvc(&claim); err != nil {
+					err1 := fmt.Errorf("unable to create PVC for redis conf for EFS %v in %v", err, cluster.Namespace)
+					return err1
+				}
+			} else {
+				err1 := fmt.Errorf("error during fetch PVC redis-conf %v in %v", err, cluster.Namespace)
+				return err1
+			}
+		}
+	}
+
+	//Create PVC here if not present
+	if cluster.Spec.BackupStorage.Type == rediskunv1alpha1.PersistentClaimEfs {
+
+		// Get PVC
+		_, err := r.PvcController.GetPvc(cluster.Namespace, redisBackupStorageVolumeName)
+		if err != nil {
+			if errors.IsNotFound(err) {
+				// Create PVC
+				claim := corev1.PersistentVolumeClaim{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:            redisBackupStorageVolumeName,
+						Namespace:       cluster.Namespace,
+						Labels:          cluster.Labels,
+						OwnerReferences: redisv1alpha1.DefaultOwnerReferences(cluster),
+					},
+					Spec: corev1.PersistentVolumeClaimSpec{
+						AccessModes: []corev1.PersistentVolumeAccessMode{
+							corev1.ReadWriteMany,
+						},
+						StorageClassName: &cluster.Spec.ConfStorage.Class,
+						Resources: corev1.ResourceRequirements{
+							Requests: corev1.ResourceList{
+								corev1.ResourceStorage: cluster.Spec.BackupStorage.Size,
+							},
+						},
+					},
+				}
+				if err := r.PvcController.CreatePvc(&claim); err != nil {
+					err1 := fmt.Errorf("unable to create PVC for redis backup for EFS %v in %v", err, cluster.Namespace)
+					return err1
+				}
+			} else {
+				err1 := fmt.Errorf("error during fetch PVC redis-backup %v in %v", err, cluster.Namespace)
+				return err1
+			}
+		}
 	}
 
 	if cluster.IsRestoreFromBackup() && cluster.ShouldInitRestorePhase() {

@@ -13,6 +13,7 @@ import (
 // IPvcControl defines the interface that uses to create, update, and delete PersistentVolumeClaim.
 type IPvcControl interface {
 	DeletePvc(claim *corev1.PersistentVolumeClaim) error
+	CreatePvc(claim *corev1.PersistentVolumeClaim) error
 	DeletePvcByLabels(namespace string, labels map[string]string) error
 	GetPvc(namespace, name string) (*corev1.PersistentVolumeClaim, error)
 }
@@ -32,6 +33,13 @@ func NewPvcController(client client.Client, metrics metrics.Recorder) IPvcContro
 func (s *pvcController) DeletePvc(pvc *corev1.PersistentVolumeClaim) error {
 	err := s.client.Delete(context.TODO(), pvc)
 	utils.RecordK8sMetrics(pvc.Namespace, "PersistentVolumeClaim", pvc.Name, "DELETE", err, s.metrics)
+	return err
+}
+
+// CreatePvc implement the IPvcControl.Interface.
+func (s *pvcController) CreatePvc(claim *corev1.PersistentVolumeClaim) error {
+	err := s.client.Create(context.TODO(), claim)
+	utils.RecordK8sMetrics(claim.Namespace, "PersistentVolumeClaim", claim.Name, "CREATE", err, s.metrics)
 	return err
 }
 

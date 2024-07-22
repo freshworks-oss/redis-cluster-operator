@@ -112,33 +112,8 @@ func NewStatefulSetForCR(cluster *redisv1alpha1.DistributedRedisCluster, ssName,
 		},
 	}
 
-	if (spec.ConfStorage != nil && spec.BackupStorage != nil) && (IsPersistentStorageType(spec.BackupStorage.Type) || IsPersistentStorageType(spec.ConfStorage.Type)) {
-
-		StoragevolName := ""
-		getStoragefor := ""
-		if IsBothStorageTypePersistent(cluster) {
-			getStoragefor = rediscommondata
-
-		} else {
-			if IsPersistentStorageType(spec.BackupStorage.Type) {
-				getStoragefor = redisbackupdata
-			}
-			if IsPersistentStorageType(spec.ConfStorage.Type) {
-				getStoragefor = redisnodeconfdata
-			}
-		}
-		StoragevolName = GetStorageVolumeName(cluster, getStoragefor)
-		if spec.ConfStorage.Type == redisv1alpha1.PersistentClaimEfs || spec.BackupStorage.Type == redisv1alpha1.PersistentClaimEfs {
-			ss.Spec.VolumeClaimTemplates = []corev1.PersistentVolumeClaim{
-				efsPersistentClaim(cluster, labels, StoragevolName, getStoragefor),
-			}
-		} else {
-			return nil, fmt.Errorf("ebs storage not supported yet")
-		}
-
-		// set an owner reference so the persistent volumes are deleted when the cluster be deleted.
-		ss.Spec.VolumeClaimTemplates[0].OwnerReferences = redisv1alpha1.DefaultOwnerReferences(cluster)
-
+	if spec.ConfStorage.Type == redisv1alpha1.PersistentClaimEbs || spec.BackupStorage.Type == redisv1alpha1.PersistentClaimEbs {
+		return nil, fmt.Errorf("ebs storage not supported yet")
 	}
 
 	if spec.Monitor != nil {
@@ -335,16 +310,16 @@ func IsBothStorageTypePersistent(cluster *redisv1alpha1.DistributedRedisCluster)
 func GetStorageVolumeName(cluster *redisv1alpha1.DistributedRedisCluster, datatype string) string {
 	StorageVolName := ""
 
-	if cluster.Spec.ConfStorage != nil && cluster.Spec.BackupStorage != nil && cluster.Spec.BackupStorage.Type == cluster.Spec.ConfStorage.Type {
+	if (cluster.Spec.ConfStorage.Type == redisv1alpha1.Ephemeral || cluster.Spec.ConfStorage == nil) &&
+		(cluster.Spec.BackupStorage.Type == redisv1alpha1.Ephemeral || cluster.Spec.BackupStorage == nil) { //Default to epheramal
 		StorageVolName = redisStorageVolumeName
 	} else {
-		if cluster.Spec.ConfStorage != nil && datatype == redisnodeconfdata {
+		if datatype == redisnodeconfdata {
 			StorageVolName = redisConfStorageVolumeName
 		}
-		if cluster.Spec.BackupStorage != nil && datatype == redisbackupdata {
+		if datatype == redisbackupdata {
 			StorageVolName = redisBackupStorageVolumeName
 		}
-
 	}
 	return StorageVolName
 
@@ -451,6 +426,14 @@ func redisServerContainer(cluster *redisv1alpha1.DistributedRedisCluster, passwo
 				ValueFrom: &corev1.EnvVarSource{
 					FieldRef: &corev1.ObjectFieldSelector{
 						FieldPath: "status.podIP",
+					},
+				},
+			},
+			{
+				Name: "POD_NAME", // To use this env in the volume mount subPathExpr
+				ValueFrom: &corev1.EnvVarSource{
+					FieldRef: &corev1.ObjectFieldSelector{
+						FieldPath: "metadata.name",
 					},
 				},
 			},
@@ -609,19 +592,38 @@ func getContainersWithRedisEnv(cluster *redisv1alpha1.DistributedRedisCluster, c
 	var containers []corev1.Container
 	for _, c := range cs {
 		if c.Name == initContainerloadbackup {
+
 			c.VolumeMounts = append(c.VolumeMounts,
-				corev1.VolumeMount{
-					Name:      GetStorageVolumeName(cluster, redisbackupdata),
-					MountPath: "/backup",
-				},
 				corev1.VolumeMount{
 					Name:      utilConfigMapVolName,
 					MountPath: "/config",
 				},
 			)
+			redisBackupVolName := GetStorageVolumeName(cluster, redisbackupdata)
+			if cluster.Spec.BackupStorage.Type == "persistent-claim-efs" {
+				c.VolumeMounts = append(c.VolumeMounts, corev1.VolumeMount{
+					Name:        redisBackupVolName,
+					MountPath:   "/backup",
+					SubPathExpr: "$(POD_NAME)",
+				})
+			} else {
+				c.VolumeMounts = append(c.VolumeMounts, corev1.VolumeMount{
+					Name:      redisBackupVolName,
+					MountPath: "/backup",
+				})
+			}
+
 		}
 		if e != nil {
 			c.Env = append(c.Env, e...)
+			c.Env = append(c.Env, corev1.EnvVar{
+				Name: "POD_NAME",
+				ValueFrom: &corev1.EnvVarSource{
+					FieldRef: &corev1.ObjectFieldSelector{
+						FieldPath: "metadata.name",
+					},
+				},
+			})
 		}
 		if password != nil {
 			c.Env = append(c.Env, *password)
@@ -640,15 +642,35 @@ func customContainerEnv(env []corev1.EnvVar, customEnv []corev1.EnvVar) []corev1
 func volumeMounts(cluster *redisv1alpha1.DistributedRedisCluster) []corev1.VolumeMount {
 	redisBackupVolName := GetStorageVolumeName(cluster, redisbackupdata)
 	redisNodeConfVolName := GetStorageVolumeName(cluster, redisnodeconfdata)
-	return []corev1.VolumeMount{
-		{
-			Name:      redisBackupVolName,
-			MountPath: "/backup",
-		},
-		{
+	var volumeMounts []corev1.VolumeMount
+
+	if cluster.Spec.ConfStorage.Type == "persistent-claim-efs" {
+		volumeMounts = append(volumeMounts, corev1.VolumeMount{
+			Name:        redisNodeConfVolName,
+			MountPath:   "/data",
+			SubPathExpr: "$(POD_NAME)",
+		})
+	} else {
+		volumeMounts = append(volumeMounts, corev1.VolumeMount{
 			Name:      redisNodeConfVolName,
 			MountPath: "/data",
-		},
+		})
+	}
+
+	if cluster.Spec.BackupStorage.Type == "persistent-claim-efs" {
+		volumeMounts = append(volumeMounts, corev1.VolumeMount{
+			Name:        redisBackupVolName,
+			MountPath:   "/backup",
+			SubPathExpr: "$(POD_NAME)",
+		})
+	} else {
+		volumeMounts = append(volumeMounts, corev1.VolumeMount{
+			Name:      redisBackupVolName,
+			MountPath: "/backup",
+		})
+	}
+
+	volumeMounts = append(volumeMounts, []corev1.VolumeMount{
 		{
 			Name:      configMapVolumeName,
 			MountPath: "/conf",
@@ -677,7 +699,9 @@ func volumeMounts(cluster *redisv1alpha1.DistributedRedisCluster) []corev1.Volum
 			Name:      shutdownConfigmapVolName,
 			MountPath: "/shutdown",
 		},
-	}
+	}...)
+
+	return volumeMounts
 }
 
 // Returns the REDIS_PASSWORD environment variable.
@@ -789,6 +813,28 @@ func redisVolumes(cluster *redisv1alpha1.DistributedRedisCluster) []corev1.Volum
 		if isEphemeral(cluster.Spec.BackupStorage) {
 			volumes = append(volumes, *emptyVolume(redisBackupStorageVolumeName))
 		}
+	}
+
+	if cluster.Spec.ConfStorage.Type == "persistent-claim-efs" {
+		volumes = append(volumes, corev1.Volume{
+			Name: redisConfStorageVolumeName,
+			VolumeSource: corev1.VolumeSource{
+				PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+					ClaimName: redisConfStorageVolumeName,
+				},
+			},
+		})
+	}
+
+	if cluster.Spec.BackupStorage.Type == "persistent-claim-efs" {
+		volumes = append(volumes, corev1.Volume{
+			Name: redisBackupStorageVolumeName,
+			VolumeSource: corev1.VolumeSource{
+				PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+					ClaimName: redisBackupStorageVolumeName,
+				},
+			},
+		})
 	}
 
 	if !cluster.IsRestoreFromBackup() ||

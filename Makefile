@@ -70,11 +70,11 @@ DOCKER_REGISTRY=local
 BIN_DIR=bin/operator
 DEVREPO=$(REPO)
 
-BINARY_VERSION_RELEASE=v0.0.49
-BINARY_VERSION_DEV=dev-2.0
+BINARY_VERSION_RELEASE=v0.0.50
+BINARY_VERSION_DEV=efs-modifications
 
 ECR_REPO=redis-cluster-operator
-ECR__DEV_REPO=redis-cluster-operator-dev
+ECR_DEV_REPO=redis-cluster-operator-dev
 ECR_URI=582763096612.dkr.ecr.us-east-1.amazonaws.com
 
 # Setting SHELL to bash allows bash commands to be executed by recipes.
@@ -162,7 +162,7 @@ docker-push: ## Push docker image with the manager.
 .PHONY: image-release-dev
 image-release-dev:
 	aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin $(ECR_URI) 
-	docker buildx build --no-cache --push --platform=$(DEPLOYPLATFORMS) --tag $(ECR_URI)/$(ECR__DEV_REPO):$(BINARY_VERSION_DEV) .
+	docker buildx build --no-cache --push --platform=$(DEPLOYPLATFORMS) --tag $(ECR_URI)/$(ECR_DEV_REPO):$(BINARY_VERSION_DEV) .
 
 .PHONY: build-tools
 build-tools:
