@@ -317,6 +317,15 @@ func AclConfigMapName(clusterName string) string {
 	}
 	return fmt.Sprintf("%s-%s-%s", redisv1alpha1.CrNameShort, clusterName, "redis-acl")
 }
+
+func RedisInitConfigMapName(clusterName string) string {
+	if strings.HasPrefix(clusterName, redisv1alpha1.CrResourcesprefix) {
+		namespace := clusterName[len(redisv1alpha1.CrResourcesprefix):]
+		return fmt.Sprintf("%s-%s-%s", redisv1alpha1.CrNameShort, namespace, "redis-init")
+	}
+	return fmt.Sprintf("%s-%s-%s", redisv1alpha1.CrNameShort, clusterName, "redis-init")
+}
+
 func GetAclStringFromSecrets(conflog logr.Logger, client client.Client, cluster *redisv1alpha1.DistributedRedisCluster, secretname string) (string, string, error) {
 
 	aclsecret, versionId, err := GetAcldataFromSecrets(client, cluster, secretname)

@@ -628,6 +628,12 @@ func (a *Admin) SetConfigIfNeed(ctx context.Context, newConfig map[string]string
 			// 		continue
 			// 	}
 			// }
+			//
+			// TODO: Adding a hacky way to ignore loadmodule config. This is a temporary fix and need to be removed
+			// load module can be set only during the start of the redis server
+			if key == "loadmodule" {
+				continue
+			}
 			if value != oldConfig[key] {
 				a.log.V(3).Info("CONFIG SET", key, value)
 				resp := c.Do(ctx, "CONFIG", "SET", key, value)

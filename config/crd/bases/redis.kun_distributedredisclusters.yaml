@@ -901,6 +901,8 @@ spec:
                         type: array
                     type: object
                 type: object
+              allowedModules:
+                type: string
               annotations:
                 additionalProperties:
                   type: string
@@ -2984,6 +2986,8 @@ spec:
               masterSize:
                 format: int32
                 type: integer
+              moduleEnabled:
+                type: boolean
               monitor:
                 items:
                   properties:
@@ -3664,9 +3668,11 @@ spec:
               utilConfig:
                 type: string
             required:
+            - allowedModules
             - customLivenessProbe
             - customReadinessProbe
             - customStartupProbe
+            - moduleEnabled
             - pdbEnabled
             - serviceAccountName
             - utilConfig

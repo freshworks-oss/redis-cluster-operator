@@ -23,6 +23,7 @@ var log = logf.Log.WithName("resource_statefulset")
 const (
 	redisConfStorageVolumeName   = "redis-conf"
 	redisBackupStorageVolumeName = "redis-backup"
+	redisModuleVolumeName        = "redis-modules"
 	redisStorageVolumeName       = "redis-data"
 	redisRestoreLocalVolumeName  = "redis-local"
 	redisServerName              = "redis"
@@ -39,6 +40,7 @@ const (
 	livenessConfigmapVolName  = "liveconf"
 	startupConfigmapVolName   = "startupconf"
 	shutdownConfigmapVolName  = "shutdownconf"
+	initConfigmapVolName      = "initconf"
 	redisnodeconfdata         = "redisnodeconf"
 	redisbackupdata           = "redisbackupdata"
 	rediscommondata           = "rediscommondata"
@@ -437,6 +439,14 @@ func redisServerContainer(cluster *redisv1alpha1.DistributedRedisCluster, passwo
 					},
 				},
 			},
+			{
+				Name:  "MODULE_ENABLED",
+				Value: fmt.Sprintf("%t", cluster.Spec.ModuleEnabled),
+			},
+			{
+				Name:  "ALLOWED_MODULES",
+				Value: cluster.Spec.AllowedModules,
+			},
 		},
 		Resources: *cluster.Spec.Resources,
 		// TODO store redis data when pod stop
@@ -599,6 +609,12 @@ func getContainersWithRedisEnv(cluster *redisv1alpha1.DistributedRedisCluster, c
 					MountPath: "/config",
 				},
 			)
+
+			c.VolumeMounts = append(c.VolumeMounts, corev1.VolumeMount{
+				Name:      initConfigmapVolName,
+				MountPath: "/init-script",
+			})
+
 			redisBackupVolName := GetStorageVolumeName(cluster, redisbackupdata)
 			if cluster.Spec.BackupStorage.Type == "persistent-claim-efs" {
 				c.VolumeMounts = append(c.VolumeMounts, corev1.VolumeMount{
@@ -613,6 +629,11 @@ func getContainersWithRedisEnv(cluster *redisv1alpha1.DistributedRedisCluster, c
 				})
 			}
 
+			c.VolumeMounts = append(c.VolumeMounts, corev1.VolumeMount{
+				Name:      redisModuleVolumeName,
+				MountPath: "/modules",
+			})
+
 		}
 		if e != nil {
 			c.Env = append(c.Env, e...)
@@ -623,6 +644,14 @@ func getContainersWithRedisEnv(cluster *redisv1alpha1.DistributedRedisCluster, c
 						FieldPath: "metadata.name",
 					},
 				},
+			})
+			c.Env = append(c.Env, corev1.EnvVar{
+				Name:  "MODULE_ENABLED",
+				Value: fmt.Sprintf("%t", cluster.Spec.ModuleEnabled),
+			})
+			c.Env = append(c.Env, corev1.EnvVar{
+				Name:  "ALLOWED_MODULES",
+				Value: cluster.Spec.AllowedModules,
 			})
 		}
 		if password != nil {
@@ -670,6 +699,11 @@ func volumeMounts(cluster *redisv1alpha1.DistributedRedisCluster) []corev1.Volum
 		})
 	}
 
+	volumeMounts = append(volumeMounts, corev1.VolumeMount{
+		Name:      redisModuleVolumeName,
+		MountPath: "/modules",
+	})
+
 	volumeMounts = append(volumeMounts, []corev1.VolumeMount{
 		{
 			Name:      configMapVolumeName,
@@ -698,6 +732,10 @@ func volumeMounts(cluster *redisv1alpha1.DistributedRedisCluster) []corev1.Volum
 		{
 			Name:      shutdownConfigmapVolName,
 			MountPath: "/shutdown",
+		},
+		{
+			Name:      initConfigmapVolName,
+			MountPath: "/init-script",
 		},
 	}...)
 
@@ -792,6 +830,17 @@ func redisVolumes(cluster *redisv1alpha1.DistributedRedisCluster) []corev1.Volum
 			},
 		},
 		{
+			Name: initConfigmapVolName,
+			VolumeSource: corev1.VolumeSource{
+				ConfigMap: &corev1.ConfigMapVolumeSource{
+					LocalObjectReference: corev1.LocalObjectReference{
+						Name: "init-script",
+					},
+					DefaultMode: &executeMode,
+				},
+			},
+		},
+		{
 			Name: shutdownConfigmapVolName,
 			VolumeSource: corev1.VolumeSource{
 				ConfigMap: &corev1.ConfigMapVolumeSource{
@@ -814,6 +863,8 @@ func redisVolumes(cluster *redisv1alpha1.DistributedRedisCluster) []corev1.Volum
 			volumes = append(volumes, *emptyVolume(redisBackupStorageVolumeName))
 		}
 	}
+
+	volumes = append(volumes, *emptyVolume(redisModuleVolumeName))
 
 	if cluster.Spec.ConfStorage.Type == "persistent-claim-efs" {
 		volumes = append(volumes, corev1.Volume{
