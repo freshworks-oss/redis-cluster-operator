@@ -16,6 +16,7 @@ require (
 	k8s.io/client-go v0.28.2
 	kmodules.xyz/objectstore-api v0.25.1
 	sigs.k8s.io/controller-runtime v0.16.2
+	github.com/prometheus/client_golang v1.16.0
 )
 
 require (

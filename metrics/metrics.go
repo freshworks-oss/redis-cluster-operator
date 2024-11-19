@@ -2,6 +2,7 @@ package metrics
 
 import (
 	"fmt"
+	"log"
 	"strings"
 	"sync"
 	"time"
@@ -67,15 +68,19 @@ const (
 	metricsGCIntervalMinutes     = 5
 )
 
-var ( // used for grabage collection of metrics
-	mutex                     sync.Mutex
-	recorders                 = []recorder{}
-	instanceMetricLastUpdated = map[string]time.Time{}
-	resourceMetricLastUpdated = map[string]time.Time{}
-)
+// MetricsTracker handles thread-safe tracking of metric updates
+type MetricsTracker struct {
+	mu              sync.RWMutex
+	resourceMetrics map[string]time.Time
+	instanceMetrics map[string]time.Time
+}
 
-func init() {
-	go removeStaleMetrics()
+// NewMetricsTracker creates a new MetricsTracker
+func NewMetricsTracker() *MetricsTracker {
+	return &MetricsTracker{
+		resourceMetrics: make(map[string]time.Time),
+		instanceMetrics: make(map[string]time.Time),
+	}
 }
 
 type Recorder interface {
@@ -88,6 +93,7 @@ type Recorder interface {
 }
 
 type recorder struct {
+	metricsTracker        *MetricsTracker
 	clusterOK             *prometheus.GaugeVec   // clusterOk is the status of a cluster
 	reconcileClusterGauge *prometheus.GaugeVec   // reconcile cluster gauge
 	k8sServiceOperations  *prometheus.CounterVec // number of operations performed on k8s
@@ -96,6 +102,7 @@ type recorder struct {
 }
 
 func NewRecorder(namespace string, reg prometheus.Registerer) Recorder {
+	metricsTracker := NewMetricsTracker()
 	clusterOK := prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Namespace: namespace,
 		Subsystem: promControllerSubsystemRedis,
@@ -135,6 +142,7 @@ func NewRecorder(namespace string, reg prometheus.Registerer) Recorder {
 		}, []string{"namespace", "name", "operation", "function", "status", "err"})
 
 	r := recorder{
+		metricsTracker:        metricsTracker,
 		clusterOK:             clusterOK,
 		k8sServiceOperations:  k8sServiceOperations,
 		recordRedisOperation:  recordRedisOperation,
@@ -150,6 +158,8 @@ func NewRecorder(namespace string, reg prometheus.Registerer) Recorder {
 		r.reconcileCluster,
 		r.reconcileClusterGauge,
 	)
+	// Start the metrics garbage collector
+	go r.removeStaleMetrics()
 	return r
 }
 
@@ -163,67 +173,41 @@ func (r recorder) ReconcileClusterGauge(namespace string, name string, function 
 
 func (r recorder) RecordK8sOperation(namespace string, kind string, name string, operation string, status string, err string) {
 	r.k8sServiceOperations.WithLabelValues(namespace, kind, name, operation, status, err).Add(1)
-	updateResourceMetricLastUpdatedTracker(namespace, kind, name)
+	r.metricsTracker.UpdateResourceMetric(namespace, kind, name)
 }
 
 func (r recorder) RecordRedisOperation(namespace string, name string, operation string, IP string, status string, err string) {
 	r.recordRedisOperation.WithLabelValues(namespace, name, operation, IP, status, err).Add(1)
-	updateInstanceMetricLastUpdatedTracker(IP)
+	r.metricsTracker.UpdateInstanceMetric(IP)
 }
 
 func (r recorder) ReconcileCluster(namespace string, name string, operation string, function string, status string, err string) {
 	r.reconcileCluster.WithLabelValues(namespace, name, operation, function, status, err).Add(1)
 }
 
-func updateResourceMetricLastUpdatedTracker(namespace string, kind string, name string) {
-	mutex.Lock()
-	resourceMetricLastUpdated[fmt.Sprintf("%v/%v/%v", namespace, kind, name)] = time.Now()
-	mutex.Unlock()
+// MetricsTracker methods
+func (mt *MetricsTracker) UpdateResourceMetric(namespace, kind, name string) {
+	key := fmt.Sprintf("%v/%v/%v", namespace, kind, name)
+	mt.mu.Lock()
+	mt.resourceMetrics[key] = time.Now()
+	mt.mu.Unlock()
 }
 
-func updateInstanceMetricLastUpdatedTracker(IP string) {
-	mutex.Lock()
-	instanceMetricLastUpdated[IP] = time.Now()
-	mutex.Unlock()
+func (mt *MetricsTracker) UpdateInstanceMetric(IP string) {
+	mt.mu.Lock()
+	mt.instanceMetrics[IP] = time.Now()
+	mt.mu.Unlock()
 }
 
-// Garbage collection
-func removeStaleMetrics() {
-	// Runs every `metricsGCIntervalMinutes`. It keeps track of recently updated metrics
-	// And every metric that was not updated after `metricsGCIntervalMinutes` gets deleted
-	for {
-		metricsDeletedCount := 0
-		kubernetesResourceBasedLabels, customResourceBasedLabels, ipBasedLabels := getLabelsOfStaleMetrics()
-		for _, recorder := range recorders {
-			for _, label := range kubernetesResourceBasedLabels {
-				metricsDeletedCount += recorder.k8sServiceOperations.DeletePartialMatch(label)
-			}
-			for _, label := range customResourceBasedLabels {
-				labelWithName := label
-				labelWithName["name"] = labelWithName["resource"]
-				mutex.Lock()
-				delete(labelWithName, "resource")
-				mutex.Unlock()
-				metricsDeletedCount += recorder.clusterOK.DeletePartialMatch(label)
-			}
-			for _, label := range ipBasedLabels {
-				metricsDeletedCount += recorder.recordRedisOperation.DeletePartialMatch(label)
-			}
-		}
-		time.Sleep(metricsGCIntervalMinutes * time.Minute)
-	}
-}
+func (mt *MetricsTracker) GetStaleMetrics(gcInterval time.Duration) ([]prometheus.Labels, []prometheus.Labels, []prometheus.Labels) {
+	var kubernetesResourceBasedLabels, customResourceBasedLabels, ipBasedLabels []prometheus.Labels
+	staleTime := time.Now().Add(-gcInterval)
 
-func getLabelsOfStaleMetrics() (kubernetesResourceBasedLabels []prometheus.Labels, customResourceBasedLabels []prometheus.Labels, ipBasedLabels []prometheus.Labels) {
+	mt.mu.Lock()
+	defer mt.mu.Unlock()
 
-	kubernetesResourceBasedLabels = []prometheus.Labels{}
-	customResourceBasedLabels = []prometheus.Labels{}
-	ipBasedLabels = []prometheus.Labels{}
-
-	for key, value := range resourceMetricLastUpdated {
-		// if the key is stale
-		if value.Before(time.Now().Add(-metricsGCIntervalMinutes * time.Minute)) {
-			// extract keys and create labels
+	for key, lastUpdate := range mt.resourceMetrics {
+		if lastUpdate.Before(staleTime) {
 			ids := strings.Split(key, "/")
 			namespace := ids[0]
 			kind := ids[1]
@@ -241,27 +225,46 @@ func getLabelsOfStaleMetrics() (kubernetesResourceBasedLabels []prometheus.Label
 					"resource":  resource,
 				},
 			)
-			// once we have created labels out of the contents of the key,
-			// its not longer required - since it is known to be stale. remove it from the tracker.
-			mutex.Lock()
-			delete(resourceMetricLastUpdated, key)
-			mutex.Unlock()
+			delete(mt.resourceMetrics, key)
 		}
 	}
-	for IP, value := range instanceMetricLastUpdated {
-		if value.Before(time.Now().Add(-metricsGCIntervalMinutes * time.Minute)) {
+
+	for IP, lastUpdate := range mt.instanceMetrics {
+		if lastUpdate.Before(staleTime) {
 			ipBasedLabels = append(ipBasedLabels,
 				prometheus.Labels{
 					"IP": IP,
 				},
 			)
-			// once we have created labels out of the contents of the key,
-			// its not longer required - since it is known to be stale. remove it from the tracker.
-			mutex.Lock()
-			delete(instanceMetricLastUpdated, IP)
-			mutex.Unlock()
+			delete(mt.instanceMetrics, IP)
 		}
-
 	}
+
 	return kubernetesResourceBasedLabels, customResourceBasedLabels, ipBasedLabels
+}
+
+// Garbage collection
+func (r *recorder) removeStaleMetrics() {
+	// Runs every `metricsGCIntervalMinutes`. It keeps track of recently updated metrics
+	// And every metric that was not updated after `metricsGCIntervalMinutes` gets deleted
+	for {
+		k, c, i := r.metricsTracker.GetStaleMetrics(metricsGCIntervalMinutes * time.Minute)
+		metricsDeletedCount := 0
+
+		for _, label := range k {
+			metricsDeletedCount += r.k8sServiceOperations.DeletePartialMatch(label)
+		}
+		for _, label := range c {
+			labelWithName := label
+			labelWithName["name"] = labelWithName["resource"]
+			metricsDeletedCount += r.clusterOK.DeletePartialMatch(label)
+			metricsDeletedCount += r.reconcileClusterGauge.DeletePartialMatch(label)
+			metricsDeletedCount += r.reconcileCluster.DeletePartialMatch(label)
+		}
+		for _, label := range i {
+			metricsDeletedCount += r.recordRedisOperation.DeletePartialMatch(label)
+		}
+		log.Printf("Number of delted metrics %v", metricsDeletedCount)
+		time.Sleep(metricsGCIntervalMinutes * time.Minute)
+	}
 }
