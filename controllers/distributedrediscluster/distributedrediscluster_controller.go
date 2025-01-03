@@ -73,10 +73,10 @@ func FlagSet() *pflag.FlagSet {
 	return controllerFlagSet
 }
 
-func getProxyLabels(instance *rediskunv1alpha1.DistributedRedisCluster) map[string]string {
+func getProxyLabels(namespace string) map[string]string {
 	return map[string]string{
 		"app":       "redis-proxy",
-		"service":   instance.Name,
+		"service":   namespace,
 		"component": "redis-cluster",
 	}
 }
@@ -196,7 +196,7 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 				if key == "RedisMaster" && value == "SingleAZ" {
 					nodectrl := k8sutil.NewNodeController(r.Client, r.MetricsClient)
 					// Get the AZ information of the Proxy pods of this namespace.
-					proxyPods, err := r.StatefulSetController.GetStatefulSetPodsByLabels(instance.Namespace, getProxyLabels(instance))
+					proxyPods, err := r.StatefulSetController.GetStatefulSetPodsByLabels(request.Namespace, getProxyLabels(request.Namespace))
 					if err != nil {
 						r.MetricsClient.ReconcileCluster(request.Namespace, request.Name, "GET_PROXY_PODS_BY_LABELS", metrics.RECONCILE, metrics.FAIL, err.Error())
 						return reconcile.Result{}, Kubernetes.Wrap(err, "GetStatefulSetPods")
