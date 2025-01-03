@@ -201,15 +201,31 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 						r.MetricsClient.ReconcileCluster(request.Namespace, request.Name, "GET_PROXY_PODS_BY_LABELS", metrics.RECONCILE, metrics.FAIL, err.Error())
 						return reconcile.Result{}, Kubernetes.Wrap(err, "GetStatefulSetPods")
 					}
+					reqLogger.Info("Proxy Pods", "ProxyPods", proxyPods)
 					// Get the AZ information of the Proxy pods of this namespace.
 					proxyPodsList := clusterPods(proxyPods.Items)
-					zoneNode, err := nodectrl.GetNode(proxyPodsList[0].Spec.NodeName)
-					if err == nil {
-						proxyAz = nodectrl.GetZoneLabel(zoneNode)
-						reqLogger.Info("Proxy Pod AZ Information", "ProxyPodAZ", proxyAz)
+					reqLogger.Info("Proxy Pods List", "ProxyPodsList", proxyPodsList)
+					for _, pod := range proxyPodsList {
+						reqLogger.Info("Proxy Pod Name", "ProxyPodName", pod.Name)
+					}
+					// Ensure that proxy pod is running before proceeding to get the AZ information.
+					if len(proxyPodsList) > 0 {
+						if proxyPodsList[0].Status.Phase == "Running" {
+							zoneNode, err := nodectrl.GetNode(proxyPodsList[0].Spec.NodeName)
+							if err == nil {
+								proxyAz = nodectrl.GetZoneLabel(zoneNode)
+								reqLogger.Info("Proxy Pod AZ Information", "ProxyPodAZ", proxyAz)
+							} else {
+								reqLogger.Error(err, "GetNode Returned Error")
+								return reconcile.Result{}, err
+							}
+						} else {
+							reqLogger.Info("Proxy Pod is not in Running state! Waiting for the Proxy Pod to be in Running state.")
+							return reconcile.Result{RequeueAfter: 10 * time.Second}, nil
+						}
 					} else {
-						reqLogger.Error(err, "GetNode Returned Error")
-						return reconcile.Result{}, err
+						reqLogger.Info("Proxy Pod is not found! Waiting for the Proxy Pod to be created.")
+						return reconcile.Result{RequeueAfter: 10 * time.Second}, nil
 					}
 				}
 			}
