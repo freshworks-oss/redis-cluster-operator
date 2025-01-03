@@ -204,6 +204,10 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 				return reconcile.Result{RequeueAfter: 10 * time.Second}, nil
 			}
 
+			for _, pod := range proxyPods.Items {
+				reqLogger.Info("Proxy Pod Information", "ProxyPodName", pod.Name, "ProxyPodNodeName", pod.Spec.NodeName)
+			}
+
 			pod := clusterPods(proxyPods.Items)[0] //Single AZ deployment and proxy pod will be in the same AZ as well. So, we can take the first pod.
 			if pod.Status.Phase != "Running" {
 				reqLogger.Info("Proxy Pod is not in Running state! Waiting for the Proxy Pod to be in Running state.")

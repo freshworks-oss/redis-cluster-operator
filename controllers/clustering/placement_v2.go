@@ -94,7 +94,7 @@ func (c *Ctx) DispatchMasters(proxyPodAz string) error {
 				}
 				master = c.PlaceMastersHA(stsName, zoneRankingInfo)
 			} else {
-				if proxyPodAz != "" {
+				if proxyPodAz == "" {
 					master = c.PlaceMasters(stsName)
 				} else {
 					master = c.PlaceMasterSingleAz(stsName, proxyPodAz)
