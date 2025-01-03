@@ -59,6 +59,8 @@ var (
 	updatePredicateCalled = false
 
 	pred predicate.Funcs
+
+	proxyAz string
 )
 
 func init() {
@@ -69,6 +71,14 @@ func init() {
 
 func FlagSet() *pflag.FlagSet {
 	return controllerFlagSet
+}
+
+func getProxyLabels(instance *rediskunv1alpha1.DistributedRedisCluster) map[string]string {
+	return map[string]string{
+		"app":       "redis-proxy",
+		"service":   instance.Name,
+		"component": "redis-cluster",
+	}
 }
 
 // DistributedRedisClusterReconciler reconciles a DistributedRedisCluster object
@@ -176,6 +186,36 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 	var STSEnsureStatus rediskunv1alpha1.StsEnsureStatus = rediskunv1alpha1.STSNotEnsured
 	var haStatus rediskunv1alpha1.HaStatus = rediskunv1alpha1.HaStatusUnknown
 	STSEnsureStatus, err = r.ensureCluster(syncCtx, updatePredicateCalled)
+
+	// Identify if HAConfig is False and ZonesInfo contain "RedisMaster" as SingleAZ.
+	// If so, get the AZ information of the Proxy pods of this namespace.
+
+	if !instance.Spec.HaConfig.HaEnabled {
+		if instance.Spec.HaConfig.ZonesInfo != nil {
+			for key, value := range instance.Spec.HaConfig.ZonesInfo {
+				if key == "RedisMaster" && value == "SingleAZ" {
+					nodectrl := k8sutil.NewNodeController(r.Client, r.MetricsClient)
+					// Get the AZ information of the Proxy pods of this namespace.
+					proxyPods, err := r.StatefulSetController.GetStatefulSetPodsByLabels(instance.Namespace, getProxyLabels(instance))
+					if err != nil {
+						r.MetricsClient.ReconcileCluster(request.Namespace, request.Name, "GET_PROXY_PODS_BY_LABELS", metrics.RECONCILE, metrics.FAIL, err.Error())
+						return reconcile.Result{}, Kubernetes.Wrap(err, "GetStatefulSetPods")
+					}
+					// Get the AZ information of the Proxy pods of this namespace.
+					proxyPodsList := clusterPods(proxyPods.Items)
+					zoneNode, err := nodectrl.GetNode(proxyPodsList[0].Spec.NodeName)
+					if err == nil {
+						proxyAz = nodectrl.GetZoneLabel(zoneNode)
+						reqLogger.Info("Proxy Pod AZ Information", "ProxyPodAZ", proxyAz)
+					} else {
+						reqLogger.Error(err, "GetNode Returned Error")
+						return reconcile.Result{}, err
+					}
+				}
+			}
+		}
+	}
+
 	// Make sure to update the predicate called flag to false
 	updatePredicateCalled = false
 	if err != nil {

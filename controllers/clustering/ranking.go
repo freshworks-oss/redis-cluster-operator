@@ -26,6 +26,8 @@ type RankingInfo struct {
 	zoneList                 []string
 	masternodeBySTS          map[string]*redisutil.Node
 	replicaNodesBySTS        map[string]redisutil.Nodes
+	singleAzMasters          map[string]*redisutil.Node
+	singleAzReplicas         map[string]redisutil.Nodes
 	nodesByZone              map[string]redisutil.Nodes
 	NodesIndexedbyZoneAndSTS map[string]map[string][]*redisutil.Node
 	CurrentMastersbyZone     map[string]redisutil.Nodes
