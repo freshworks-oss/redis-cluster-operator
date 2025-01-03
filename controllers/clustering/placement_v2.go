@@ -76,7 +76,7 @@ func (c *Ctx) sortRedisNodeByStatefulSet(nodes redisutil.Nodes) map[string]redis
 	return nodesByStatefulSet
 }
 
-func (c *Ctx) DispatchMasters() error {
+func (c *Ctx) DispatchMasters(proxyPodAz string) error {
 	zoneRankingInfo := NewRankingInfo(c.haconfig, c.nodes, int32(c.expectedMasterNum), int32(c.expectedReplicaCount), c.clusterName, c.log)
 	zoneRankingInfo.ApplyZoneRankingPerNodeDistribution()
 	for i := 0; i < c.expectedMasterNum; i++ {
@@ -94,7 +94,13 @@ func (c *Ctx) DispatchMasters() error {
 				}
 				master = c.PlaceMastersHA(stsName, zoneRankingInfo)
 			} else {
-				master = c.PlaceMasters(stsName)
+				if proxyPodAz != "" {
+					master = c.PlaceMasters(stsName)
+				} else {
+					master = c.PlaceMasterSingleAz(stsName, proxyPodAz)
+					c.log.Info("Proxy Details", "Proxy Pod AZ", proxyPodAz)
+					c.log.Info("Master Details", master.ID, master.IP, master.NodeName, master.Zonename)
+				}
 			}
 			if master == nil {
 				return fmt.Errorf("unable to place master for statefulset %s", stsName)
@@ -147,6 +153,33 @@ func (c *Ctx) PlaceMasters(ssName string) *redisutil.Node {
 	}
 	c.bestEffort = true
 	c.log.Info("the pod are not spread enough on VMs to have only one master by VM", "select", nodes[0].IP)
+	return nodes[0]
+}
+
+func (c *Ctx) PlaceMasterSingleAz(ssName string, proxyPodAz string) *redisutil.Node {
+	var allMasters redisutil.Nodes
+	allMasters = append(allMasters, c.currentMasters...)
+	for _, master := range c.newMastersBySts {
+		allMasters = append(allMasters, master)
+	}
+
+	nodes := c.nodes[ssName]
+	for _, cNode := range nodes {
+		if cNode.Zonename != proxyPodAz {
+			continue
+		}
+		_, err := allMasters.GetNodesByFunc(func(node *redisutil.Node) bool {
+			return node.NodeName == cNode.NodeName
+		})
+		if err != nil {
+			return cNode
+		}
+	}
+
+	c.bestEffort = true
+	c.log.Info("no available nodes in the specified AZ for master placement",
+		"az", proxyPodAz,
+		"select", nodes[0].IP)
 	return nodes[0]
 }
 

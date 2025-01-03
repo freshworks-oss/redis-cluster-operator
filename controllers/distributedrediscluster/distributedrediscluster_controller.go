@@ -59,8 +59,6 @@ var (
 	updatePredicateCalled = false
 
 	pred predicate.Funcs
-
-	proxyAz string
 )
 
 func init() {
@@ -96,6 +94,7 @@ type DistributedRedisClusterReconciler struct {
 	PodController         k8sutil.IPodControl
 	NodeController        k8sutil.INodeControl
 	MetricsClient         metrics.Recorder
+	ProxyPodAZ            string
 }
 
 //+kubebuilder:rbac:groups=redis.kun,resources=distributedredisclusters,verbs=get;list;watch;create;update;patch;delete
@@ -188,47 +187,37 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 	STSEnsureStatus, err = r.ensureCluster(syncCtx, updatePredicateCalled)
 
 	// Identify if HAConfig is False and ZonesInfo contain "RedisMaster" as SingleAZ.
-	// If so, get the AZ information of the Proxy pods of this namespace.
+	// If Yes, get the AZ information of the Proxy pods of this namespace.
 
-	if !instance.Spec.HaConfig.HaEnabled {
-		if instance.Spec.HaConfig.ZonesInfo != nil {
-			for key, value := range instance.Spec.HaConfig.ZonesInfo {
-				if key == "RedisMaster" && value == "SingleAZ" {
-					nodectrl := k8sutil.NewNodeController(r.Client, r.MetricsClient)
-					// Get the AZ information of the Proxy pods of this namespace.
-					proxyPods, err := r.StatefulSetController.GetStatefulSetPodsByLabels(request.Namespace, getProxyLabels(request.Namespace))
-					if err != nil {
-						r.MetricsClient.ReconcileCluster(request.Namespace, request.Name, "GET_PROXY_PODS_BY_LABELS", metrics.RECONCILE, metrics.FAIL, err.Error())
-						return reconcile.Result{}, Kubernetes.Wrap(err, "GetStatefulSetPods")
-					}
-					reqLogger.Info("Proxy Pods", "ProxyPods", proxyPods)
-					// Get the AZ information of the Proxy pods of this namespace.
-					proxyPodsList := clusterPods(proxyPods.Items)
-					reqLogger.Info("Proxy Pods List", "ProxyPodsList", proxyPodsList)
-					for _, pod := range proxyPodsList {
-						reqLogger.Info("Proxy Pod Name", "ProxyPodName", pod.Name)
-					}
-					// Ensure that proxy pod is running before proceeding to get the AZ information.
-					if len(proxyPodsList) > 0 {
-						if proxyPodsList[0].Status.Phase == "Running" {
-							zoneNode, err := nodectrl.GetNode(proxyPodsList[0].Spec.NodeName)
-							if err == nil {
-								proxyAz = nodectrl.GetZoneLabel(zoneNode)
-								reqLogger.Info("Proxy Pod AZ Information", "ProxyPodAZ", proxyAz)
-							} else {
-								reqLogger.Error(err, "GetNode Returned Error")
-								return reconcile.Result{}, err
-							}
-						} else {
-							reqLogger.Info("Proxy Pod is not in Running state! Waiting for the Proxy Pod to be in Running state.")
-							return reconcile.Result{RequeueAfter: 10 * time.Second}, nil
-						}
-					} else {
-						reqLogger.Info("Proxy Pod is not found! Waiting for the Proxy Pod to be created.")
-						return reconcile.Result{RequeueAfter: 10 * time.Second}, nil
-					}
-				}
+	if !instance.Spec.HaConfig.HaEnabled && instance.Spec.HaConfig.ZonesInfo != nil {
+		if value, exists := instance.Spec.HaConfig.ZonesInfo["RedisMaster"]; exists && value == "SingleAZ" {
+			nodectrl := k8sutil.NewNodeController(r.Client, r.MetricsClient)
+
+			proxyPods, err := r.StatefulSetController.GetStatefulSetPodsByLabels(request.Namespace, getProxyLabels(request.Namespace))
+			if err != nil {
+				r.MetricsClient.ReconcileCluster(request.Namespace, request.Name, "GET_PROXY_PODS_BY_LABELS", metrics.RECONCILE, metrics.FAIL, err.Error())
+				return reconcile.Result{}, Kubernetes.Wrap(err, "GetStatefulSetPods")
 			}
+
+			if len(proxyPods.Items) == 0 {
+				reqLogger.Info("Proxy Pod is not found! Waiting for the Proxy Pod to be created.")
+				return reconcile.Result{RequeueAfter: 10 * time.Second}, nil
+			}
+
+			pod := clusterPods(proxyPods.Items)[0] //Single AZ deployment and proxy pod will be in the same AZ as well. So, we can take the first pod.
+			if pod.Status.Phase != "Running" {
+				reqLogger.Info("Proxy Pod is not in Running state! Waiting for the Proxy Pod to be in Running state.")
+				return reconcile.Result{RequeueAfter: 10 * time.Second}, nil
+			}
+
+			zoneNode, err := nodectrl.GetNode(pod.Spec.NodeName)
+			if err != nil {
+				reqLogger.Error(err, "GetNode Returned Error!")
+				return reconcile.Result{}, err
+			}
+
+			r.ProxyPodAZ = nodectrl.GetZoneLabel(zoneNode)
+			reqLogger.Info("Proxy Pod AZ Information", "ProxyPodAZ", r.ProxyPodAZ)
 		}
 	}
 
@@ -476,7 +465,7 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 	instance.Status = *status
 	if needClusterOperation(instance, reqLogger) {
 		reqLogger.Info(">>>>>> clustering")
-		err = r.syncCluster(syncCtx, context, instance)
+		err = r.syncCluster(syncCtx, context, instance, r.ProxyPodAZ)
 		if err != nil {
 			r.MetricsClient.ReconcileClusterGauge(request.Namespace, request.Name, "SYNC_CLUSTER", float64(1))
 			if GetType(err) == Requeue {

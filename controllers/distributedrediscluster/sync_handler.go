@@ -348,7 +348,7 @@ func (r *DistributedRedisClusterReconciler) waitForClusterJoin(ctx *syncContext,
 	return nil
 }
 
-func (r *DistributedRedisClusterReconciler) syncCluster(ctx *syncContext, context context.Context, instance *rediskunv1alpha1.DistributedRedisCluster) error {
+func (r *DistributedRedisClusterReconciler) syncCluster(ctx *syncContext, context context.Context, instance *rediskunv1alpha1.DistributedRedisCluster, proxyPodAz string) error {
 	cluster := ctx.cluster
 	admin := ctx.admin
 	clusterInfos := ctx.clusterInfos
@@ -360,7 +360,7 @@ func (r *DistributedRedisClusterReconciler) syncCluster(ctx *syncContext, contex
 	}
 	clusterCtx := clustering.NewCtx(cluster.Spec.HaConfig, rCluster, nodes, cluster.Spec.MasterSize, cluster.Spec.ClusterReplicas, cluster.Name, ctx.reqLogger)
 	//Create a New Ranking Info Every time we need to place masters
-	if err := clusterCtx.DispatchMasters(); err != nil {
+	if err := clusterCtx.DispatchMasters(proxyPodAz); err != nil {
 		r.MetricsClient.ReconcileCluster(cluster.Namespace, cluster.Name, "DISPATCH_MASTER", metrics.SYNC_CLUSTER, metrics.FAIL, err.Error())
 		return Cluster.Wrap(err, "DispatchMasters")
 	}
