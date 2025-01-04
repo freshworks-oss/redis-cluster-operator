@@ -19,6 +19,7 @@ import (
 )
 
 var log = logf.Log.WithName("resource_statefulset")
+var ssNameList []string
 
 const (
 	redisConfStorageVolumeName   = "redis-conf"
@@ -70,7 +71,7 @@ func NewStatefulSetForCR(cluster *redisv1alpha1.DistributedRedisCluster, ssName,
 	//Enable affinity and topology spread constraints only if haenabled is true
 	var affinity *corev1.Affinity
 	var topologySpreadConstraints []corev1.TopologySpreadConstraint
-	affinity = getAffinity(cluster, labels)
+	affinity = getAffinity(cluster, labels, proxyPodAz, ssName)
 	if cluster.Spec.HaConfig.HaEnabled || proxyPodAz != "" {
 		topologySpreadConstraints = getTopolgyspreadConstraints(cluster, ssName)
 	}
@@ -164,12 +165,12 @@ func getTopolgyspreadConstraints(cluster *redisv1alpha1.DistributedRedisCluster,
 	}
 }
 
-func getAffinity(cluster *redisv1alpha1.DistributedRedisCluster, labels map[string]string) *corev1.Affinity {
+func getAffinity(cluster *redisv1alpha1.DistributedRedisCluster, labels map[string]string, proxyPodAz string, ssName string) *corev1.Affinity {
 
 	var affinity *corev1.Affinity = nil
 	var nodeAffinity *corev1.NodeAffinity = nil
 	// haEnabled is true, then use pod anti-affinity is enfored on node level and the RequiredAntiAffinity and other affinity definitions are ignored
-	if cluster.Spec.HaConfig.HaEnabled {
+	if cluster.Spec.HaConfig.HaEnabled || proxyPodAz != "" {
 		// Check if Nodeaffinity is passed and if present, add it to Affinity
 		if cluster.Spec.Affinity != nil {
 			if cluster.Spec.Affinity.NodeAffinity != nil {
@@ -192,9 +193,53 @@ func getAffinity(cluster *redisv1alpha1.DistributedRedisCluster, labels map[stri
 		}
 	}
 
+	// // If proxyPodAz is passed, then use pod anti-affinity on node level per STS
+	// if proxyPodAz != "" {
+
+	// 	for i := 0; i < int(cluster.Spec.MasterSize); i++ {
+	// 		ssNameList = append(ssNameList, ClusterStatefulSetName(cluster.Name, i))
+	// 	}
+
+	// 	// //Removing ssName from the ssNameList to set the AnitAffinity
+	// 	// var ssListFiltered []string
+	// 	// for _, name := range ssNameList {
+	// 	// 	if name != ssName {
+	// 	// 		ssListFiltered = append(ssListFiltered, name)
+	// 	// 	}
+	// 	// }
+	// 	// ssNameList = ssListFiltered
+
+	// 	if cluster.Spec.Affinity != nil {
+	// 		if cluster.Spec.Affinity.NodeAffinity != nil {
+	// 			nodeAffinity = cluster.Spec.Affinity.NodeAffinity
+	// 		}
+	// 	}
+
+	// 	return &corev1.Affinity{
+	// 		NodeAffinity: nodeAffinity,
+	// 		PodAntiAffinity: &corev1.PodAntiAffinity{
+	// 			RequiredDuringSchedulingIgnoredDuringExecution: []corev1.PodAffinityTerm{
+	// 				{
+	// 					TopologyKey: hostnameTopologyKey,
+	// 					LabelSelector: &metav1.LabelSelector{
+	// 						MatchExpressions: []metav1.LabelSelectorRequirement{
+	// 							{
+	// 								Key:      "statefulSet",
+	// 								Operator: "In",
+	// 								Values:   ssNameList,
+	// 							},
+	// 						},
+	// 					},
+	// 				},
+	// 			},
+	// 		},
+	// 	}
+	// }
+
 	if cluster.Spec.Affinity != nil {
 		affinity = cluster.Spec.Affinity
 	}
+
 	// pod  anti affinity for every pod in a redis cluster on node level (preferred weighted anti-affinity for every pod, mandatady on STS level)
 	if cluster.Spec.RequiredAntiAffinity {
 		if affinity.PodAntiAffinity == nil {
