@@ -417,7 +417,7 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 			r.MetricsClient.ReconcileCluster(request.Namespace, request.Name, "UPDATE_CR_STATUS", metrics.RECONCILE, metrics.FAIL, err.Error())
 			return reconcile.Result{}, err
 		}
-		if err := r.Ensurer.UpdateRedisStatefulsets(instance, getLabels(instance)); err != nil {
+		if err := r.Ensurer.UpdateRedisStatefulsets(instance, getLabels(instance), r.ProxyPodAZ); err != nil {
 			r.MetricsClient.ReconcileCluster(request.Namespace, request.Name, "UPDATE_REDIS_STATEFULSETS", metrics.RECONCILE, metrics.FAIL, err.Error())
 			return reconcile.Result{}, err
 		}

@@ -49,7 +49,7 @@ const (
 
 // NewStatefulSetForCR creates a new StatefulSet for the given Cluster.
 func NewStatefulSetForCR(cluster *redisv1alpha1.DistributedRedisCluster, ssName, svcName string,
-	labels map[string]string) (*appsv1.StatefulSet, error) {
+	labels map[string]string, proxyPodAz string) (*appsv1.StatefulSet, error) {
 	var password *corev1.EnvVar
 	volumes := redisVolumes(cluster)
 	namespace := cluster.Namespace
@@ -71,7 +71,7 @@ func NewStatefulSetForCR(cluster *redisv1alpha1.DistributedRedisCluster, ssName,
 	var affinity *corev1.Affinity
 	var topologySpreadConstraints []corev1.TopologySpreadConstraint
 	affinity = getAffinity(cluster, labels)
-	if cluster.Spec.HaConfig.HaEnabled {
+	if cluster.Spec.HaConfig.HaEnabled || proxyPodAz != "" {
 		topologySpreadConstraints = getTopolgyspreadConstraints(cluster, ssName)
 	}
 

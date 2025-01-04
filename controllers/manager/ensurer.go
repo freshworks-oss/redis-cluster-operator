@@ -19,13 +19,13 @@ import (
 )
 
 type IEnsureResource interface {
-	EnsureRedisStatefulsets(cluster *redisv1alpha1.DistributedRedisCluster, labels map[string]string, update bool) (redisv1alpha1.StsEnsureStatus, error)
+	EnsureRedisStatefulsets(cluster *redisv1alpha1.DistributedRedisCluster, labels map[string]string, update bool, proxyPodAz string) (redisv1alpha1.StsEnsureStatus, error)
 	EnsureRedisPDB(cluster *redisv1alpha1.DistributedRedisCluster, labels map[string]string) error
 	EnsureClusterShardsHeadLessSvcs(cluster *redisv1alpha1.DistributedRedisCluster, labels map[string]string) error
 	EnsureClusterHeadLessSvc(cluster *redisv1alpha1.DistributedRedisCluster, labels map[string]string) error
 	EnsureRedisConfigMap(cluster *redisv1alpha1.DistributedRedisCluster, labels map[string]string) error
 	EnsureRedisRCloneSecret(cluster *redisv1alpha1.DistributedRedisCluster, labels map[string]string) error
-	UpdateRedisStatefulsets(cluster *redisv1alpha1.DistributedRedisCluster, labels map[string]string) error
+	UpdateRedisStatefulsets(cluster *redisv1alpha1.DistributedRedisCluster, labels map[string]string, proxyPodAz string) error
 }
 
 type realEnsureResource struct {
@@ -66,7 +66,7 @@ func (r *realEnsureResource) EnsureRedisPDB(cluster *redisv1alpha1.DistributedRe
 	}
 	return nil
 }
-func (r *realEnsureResource) EnsureRedisStatefulsets(cluster *redisv1alpha1.DistributedRedisCluster, labels map[string]string, update bool) (redisv1alpha1.StsEnsureStatus, error) {
+func (r *realEnsureResource) EnsureRedisStatefulsets(cluster *redisv1alpha1.DistributedRedisCluster, labels map[string]string, update bool, proxyPodAz string) (redisv1alpha1.StsEnsureStatus, error) {
 
 	var StsCreatedcount int = 0
 	var StsUpdateCount int = 0
@@ -80,7 +80,7 @@ func (r *realEnsureResource) EnsureRedisStatefulsets(cluster *redisv1alpha1.Dist
 		labels[redisv1alpha1.StatefulSetLabel] = name
 		labels[redisv1alpha1.ShardLabel] = strconv.Itoa(i)
 
-		ensureSTSStatus, err := r.ensureRedisStatefulset(cluster, name, svcName, labels, update)
+		ensureSTSStatus, err := r.ensureRedisStatefulset(cluster, name, svcName, labels, update, proxyPodAz)
 		if err != nil {
 			return ensureSTSStatus, EnsureSTS.Wrap(err, "Ensure STS failed")
 		} else {
@@ -117,14 +117,14 @@ func (r *realEnsureResource) EnsureRedisStatefulsets(cluster *redisv1alpha1.Dist
 }
 
 func (r *realEnsureResource) ensureRedisStatefulset(cluster *redisv1alpha1.DistributedRedisCluster, ssName, svcName string,
-	labels map[string]string, update bool) (redisv1alpha1.StsEnsureStatus, error) {
+	labels map[string]string, update bool, proxyPodAz string) (redisv1alpha1.StsEnsureStatus, error) {
 
 	_, err := r.statefulSetClient.GetStatefulSet(cluster.Namespace, ssName)
 	if err == nil {
 		if update {
 			r.logger.WithValues("StatefulSet.Namespace", cluster.Namespace, "StatefulSet.Name", ssName).
 				Info("updating statefulSet")
-			newSS, err := statefulsets.NewStatefulSetForCR(cluster, ssName, svcName, labels)
+			newSS, err := statefulsets.NewStatefulSetForCR(cluster, ssName, svcName, labels, proxyPodAz)
 			if err != nil {
 				return redisv1alpha1.STSUpdateError, EnsureSTS.Wrap(err, "Error creating StatefulSet for Update")
 			}
@@ -142,7 +142,7 @@ func (r *realEnsureResource) ensureRedisStatefulset(cluster *redisv1alpha1.Distr
 	} else if err != nil && errors.IsNotFound(err) {
 		r.logger.WithValues("StatefulSet.Namespace", cluster.Namespace, "StatefulSet.Name", ssName).
 			Info("creating a new statefulSet")
-		newSS, err := statefulsets.NewStatefulSetForCR(cluster, ssName, svcName, labels)
+		newSS, err := statefulsets.NewStatefulSetForCR(cluster, ssName, svcName, labels, proxyPodAz)
 		if err != nil {
 			return redisv1alpha1.STSCreateError, EnsureSTS.Wrap(err, "Error creating StatefulSet for Create")
 		}
@@ -403,14 +403,14 @@ func isRedisConfChanged(confInCm string, currentConf map[string]string, log logr
 	return false
 }
 
-func (r *realEnsureResource) UpdateRedisStatefulsets(cluster *redisv1alpha1.DistributedRedisCluster, labels map[string]string) error {
+func (r *realEnsureResource) UpdateRedisStatefulsets(cluster *redisv1alpha1.DistributedRedisCluster, labels map[string]string, proxyPodAz string) error {
 	for i := 0; i < int(cluster.Spec.MasterSize); i++ {
 		name := statefulsets.ClusterStatefulSetName(cluster.Name, i)
 		svcName := statefulsets.ClusterHeadlessSvcName(cluster.Spec.ServiceName, i)
 		// assign label
 		labels[redisv1alpha1.StatefulSetLabel] = name
 		labels[redisv1alpha1.ShardLabel] = strconv.Itoa(i)
-		if err := r.updateRedisStatefulset(cluster, name, svcName, labels); err != nil {
+		if err := r.updateRedisStatefulset(cluster, name, svcName, labels, proxyPodAz); err != nil {
 			return err
 		}
 	}
@@ -418,10 +418,10 @@ func (r *realEnsureResource) UpdateRedisStatefulsets(cluster *redisv1alpha1.Dist
 }
 
 func (r *realEnsureResource) updateRedisStatefulset(cluster *redisv1alpha1.DistributedRedisCluster, ssName, svcName string,
-	labels map[string]string) error {
+	labels map[string]string, proxyPodAz string) error {
 	r.logger.WithValues("StatefulSet.Namespace", cluster.Namespace, "StatefulSet.Name", ssName).
 		Info("updating statefulSet immediately")
-	newSS, err := statefulsets.NewStatefulSetForCR(cluster, ssName, svcName, labels)
+	newSS, err := statefulsets.NewStatefulSetForCR(cluster, ssName, svcName, labels, proxyPodAz)
 	if err != nil {
 		return err
 	}

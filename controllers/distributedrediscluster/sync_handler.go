@@ -71,7 +71,7 @@ func (r *DistributedRedisClusterReconciler) ensureCluster(ctx *syncContext, upda
 		}
 	}
 
-	ensureSTSStatus, err := r.Ensurer.EnsureRedisStatefulsets(cluster, labels, update)
+	ensureSTSStatus, err := r.Ensurer.EnsureRedisStatefulsets(cluster, labels, update, r.ProxyPodAZ)
 	if err != nil {
 		ctx.reqLogger.Error(err, "EnsureRedisStatefulSets")
 		r.MetricsClient.ReconcileCluster(cluster.Namespace, cluster.Name, "ENSURE_STATEFULSET", metrics.ENSURE, metrics.FAIL, err.Error())
