@@ -176,16 +176,6 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 		return reconcile.Result{}, err
 	}
 
-	syncCtx := &syncContext{
-		cluster:         instance,
-		reqLogger:       reqLogger,
-		client:          r.Client,
-		configMapClient: k8sutil.NewConfigMapController(r.Client, r.MetricsClient),
-	}
-	var STSEnsureStatus rediskunv1alpha1.StsEnsureStatus = rediskunv1alpha1.STSNotEnsured
-	var haStatus rediskunv1alpha1.HaStatus = rediskunv1alpha1.HaStatusUnknown
-	STSEnsureStatus, err = r.ensureCluster(syncCtx, updatePredicateCalled)
-
 	// Identify if HAConfig is False and ZonesInfo contain "RedisMaster" as SingleAZ.
 	// If Yes, get the AZ information of the Proxy pods of this namespace.
 
@@ -224,6 +214,16 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 			reqLogger.Info("Proxy Pod AZ Information", "ProxyPodAZ", r.ProxyPodAZ)
 		}
 	}
+
+	syncCtx := &syncContext{
+		cluster:         instance,
+		reqLogger:       reqLogger,
+		client:          r.Client,
+		configMapClient: k8sutil.NewConfigMapController(r.Client, r.MetricsClient),
+	}
+	var STSEnsureStatus rediskunv1alpha1.StsEnsureStatus = rediskunv1alpha1.STSNotEnsured
+	var haStatus rediskunv1alpha1.HaStatus = rediskunv1alpha1.HaStatusUnknown
+	STSEnsureStatus, err = r.ensureCluster(syncCtx, updatePredicateCalled)
 
 	// Make sure to update the predicate called flag to false
 	updatePredicateCalled = false
