@@ -218,6 +218,7 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 
 			proxyPodList := clusterPods(proxyPods.Items)
 			proxyPod := findProxyPod(proxyPodList, r.ProxyPodName)
+			r.ProxyPodName = proxyPod.Name
 
 			if proxyPod.Status.Phase != "Running" { // Check why selected proxyPod is not running.
 				reqLogger.Info("Proxy Pod is not in Running state! Waiting for the Proxy Pod to be in Running state.", "ProxyPodName", proxyPod.Name)
