@@ -168,14 +168,19 @@ func (c *Ctx) PlaceMasterSingleAz(ssName string, proxyPodAz string) *redisutil.N
 	for _, cNode := range nodes {
 		c.log.Info("STS Node Details", "Node Zone", cNode.Zonename, "STS Name", ssName)
 		if cNode.Zonename != proxyPodAz {
+			c.log.Info("Node Zone is not equal to Proxy Pod AZ", "Node Zone", cNode.Zonename, "Proxy Pod AZ", proxyPodAz)
 			continue
 		}
-		_, err := allMasters.GetNodesByFunc(func(node *redisutil.Node) bool {
-			return node.NodeName == cNode.NodeName
-		})
-		if err != nil {
-			return cNode
-		}
+		c.log.Info("Node Zone is equal to Proxy Pod AZ", "Node Zone", cNode.Zonename, "Proxy Pod AZ", proxyPodAz)
+		return cNode
+		// _, err := allMasters.GetNodesByFunc(func(node *redisutil.Node) bool {
+		// 	return node.NodeName == cNode.NodeName
+		// })
+
+		// c.log.Info("Checking if the node is already a master", "Node Name", cNode.NodeName, "Node IP", cNode.IP, "Node Role", cNode.GetRole())
+		// if err != nil {
+		// 	return cNode
+		// }
 	}
 
 	c.bestEffort = true
