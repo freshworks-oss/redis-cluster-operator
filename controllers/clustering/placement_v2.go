@@ -97,9 +97,9 @@ func (c *Ctx) DispatchMasters(proxyPodAz string) error {
 				if proxyPodAz == "" {
 					master = c.PlaceMasters(stsName)
 				} else {
+					c.log.Info("Proceeding to PlaceMasterSingleAz Function for Master Placement", "STS Name", stsName, "Proxy Pod AZ", proxyPodAz)
 					master = c.PlaceMasterSingleAz(stsName, proxyPodAz)
-					c.log.Info("Proxy Details", "Proxy Pod AZ", proxyPodAz)
-					c.log.Info("Master Details", master.ID, master.IP, master.NodeName, master.Zonename)
+					c.log.Info("Selected Master Details", master.ID, master.IP, master.NodeName, master.Zonename)
 				}
 			}
 			if master == nil {
@@ -164,7 +164,9 @@ func (c *Ctx) PlaceMasterSingleAz(ssName string, proxyPodAz string) *redisutil.N
 	}
 
 	nodes := c.nodes[ssName]
+	c.log.Info("Iterating STS", "StatefulSet", ssName)
 	for _, cNode := range nodes {
+		c.log.Info("STS Node Details", "Node Zone", cNode.Zonename, "STS Name", ssName)
 		if cNode.Zonename != proxyPodAz {
 			continue
 		}

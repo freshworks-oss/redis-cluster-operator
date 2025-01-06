@@ -35,6 +35,7 @@ import (
 	"github.com/dinesh-murugiah/rediscluster-operator/utils/redisutil"
 	"github.com/go-logr/logr"
 	"github.com/spf13/pflag"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -59,6 +60,8 @@ var (
 	updatePredicateCalled = false
 
 	pred predicate.Funcs
+
+	proxyPod *corev1.Pod
 )
 
 func init() {
@@ -94,6 +97,7 @@ type DistributedRedisClusterReconciler struct {
 	PodController         k8sutil.IPodControl
 	NodeController        k8sutil.INodeControl
 	MetricsClient         metrics.Recorder
+	ProxyPodName          string
 	ProxyPodAZ            string
 }
 
@@ -189,8 +193,22 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 				return reconcile.Result{}, Kubernetes.Wrap(err, "GetStatefulSetPods")
 			}
 
+			// Check if proxy pods have come up
 			if len(proxyPods.Items) == 0 {
 				reqLogger.Info("Proxy Pod is not found! Waiting for the Proxy Pod to be created.")
+				return reconcile.Result{RequeueAfter: 10 * time.Second}, nil
+			}
+
+			// Check if all proxy pods are in running state
+			var proxyPodsRunning bool = true
+			for _, pod := range proxyPods.Items {
+				if pod.Status.Phase != "Running" {
+					proxyPodsRunning = false
+				}
+			}
+
+			if !proxyPodsRunning {
+				reqLogger.Info("One of the Proxy Pod is not in Running state! Waiting for all Proxy Pods to be in Running state.")
 				return reconcile.Result{RequeueAfter: 10 * time.Second}, nil
 			}
 
@@ -198,13 +216,15 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 				reqLogger.Info("Proxy Pod Information", "ProxyPodName", pod.Name, "ProxyPodNodeName", pod.Spec.NodeName)
 			}
 
-			pod := clusterPods(proxyPods.Items)[0] //Single AZ deployment and proxy pod will be in the same AZ as well. So, we can take the first pod.
-			if pod.Status.Phase != "Running" {
-				reqLogger.Info("Proxy Pod is not in Running state! Waiting for the Proxy Pod to be in Running state.")
+			proxyPodList := clusterPods(proxyPods.Items)
+			proxyPod := findProxyPod(proxyPodList, r.ProxyPodName)
+
+			if proxyPod.Status.Phase != "Running" { // Check why selected proxyPod is not running.
+				reqLogger.Info("Proxy Pod is not in Running state! Waiting for the Proxy Pod to be in Running state.", "ProxyPodName", proxyPod.Name)
 				return reconcile.Result{RequeueAfter: 10 * time.Second}, nil
 			}
 
-			zoneNode, err := nodectrl.GetNode(pod.Spec.NodeName)
+			zoneNode, err := nodectrl.GetNode(proxyPod.Spec.NodeName)
 			if err != nil {
 				reqLogger.Error(err, "GetNode Returned Error!")
 				return reconcile.Result{}, err

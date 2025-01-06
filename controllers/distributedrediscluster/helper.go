@@ -138,6 +138,20 @@ func clusterPods(pods []corev1.Pod) []*corev1.Pod {
 	return podSlice
 }
 
+func findProxyPod(pods []*corev1.Pod, podName string) *corev1.Pod {
+	if podName == "" {
+		return pods[0] //First Time - So, we will return the first pod
+	}
+
+	for _, pod := range pods {
+		if pod.Name == podName {
+			return pod // Found the pod, so we will return the stored pod details
+		}
+	}
+
+	return pods[0] // If we are here, then proxyPod would have got restarted or got scheudled to different az. So, return the first pod.
+}
+
 func needClusterOperation(cluster *redisv1alpha1.DistributedRedisCluster, reqLogger logr.Logger) bool {
 	if utils.CompareIntValue("NumberOfMaster", &cluster.Status.NumberOfMaster, &cluster.Spec.MasterSize, reqLogger) {
 		reqLogger.V(4).Info("needClusterOperation---NumberOfMaster")
