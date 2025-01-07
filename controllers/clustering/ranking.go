@@ -26,8 +26,6 @@ type RankingInfo struct {
 	zoneList                 []string
 	masternodeBySTS          map[string]*redisutil.Node
 	replicaNodesBySTS        map[string]redisutil.Nodes
-	singleAzMasters          map[string]*redisutil.Node
-	singleAzReplicas         map[string]redisutil.Nodes
 	nodesByZone              map[string]redisutil.Nodes
 	NodesIndexedbyZoneAndSTS map[string]map[string][]*redisutil.Node
 	CurrentMastersbyZone     map[string]redisutil.Nodes
@@ -188,9 +186,25 @@ func (c *RankingInfo) SetCurrentMastersZoneRank() {
 	}
 }
 
-func (c *RankingInfo) GetHAPlacedNodeinSTS(stsname string) (*redisutil.Node, error) {
+func (c *RankingInfo) GetHAPlacedNodeinSTS(stsname string, proxyPodAz string) (*redisutil.Node, error) {
 
 	var bestRankedNode *redisutil.Node = nil
+
+	if proxyPodAz != "" {
+		stsNameNodes := c.replicaNodesBySTS[stsname]
+		if len(stsNameNodes) == 0 {
+			return nil, fmt.Errorf("no nodes found for the statefulset %s", stsname)
+		}
+
+		for _, node := range stsNameNodes {
+			if node.Zonename == proxyPodAz {
+				bestRankedNode = node
+				return bestRankedNode, nil
+			}
+		}
+
+		return nil, fmt.Errorf("no nodes found in zone %s for the statefulset %s", proxyPodAz, stsname)
+	}
 
 	var leastMastersZone = make(map[int][]string)
 	var leastNodesZone = make(map[int][]string)

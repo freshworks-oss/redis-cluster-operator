@@ -92,15 +92,20 @@ func (c *Ctx) DispatchMasters(proxyPodAz string) error {
 				if c.hastatus != redisv1alpha1.HaStatusCreating {
 					c.log.Info("DispatchMasters", "HA Satus Not desired when creating cluster", c.hastatus)
 				}
-				master = c.PlaceMastersHA(stsName, zoneRankingInfo)
-			} else {
 				if proxyPodAz == "" {
-					master = c.PlaceMasters(stsName)
+					master = c.PlaceMastersHA(stsName, zoneRankingInfo)
 				} else {
-					c.log.Info("Proceeding to PlaceMasterSingleAz Function for Master Placement", "STS Name", stsName, "Proxy Pod AZ", proxyPodAz)
 					master = c.PlaceMasterSingleAz(stsName, proxyPodAz)
-					c.log.Info("Selected Master Details", master.ID, master.IP, master.NodeName, master.Zonename)
 				}
+			} else {
+				// if proxyPodAz == "" {
+				// 	master = c.PlaceMasters(stsName)
+				// } else {
+				// 	c.log.Info("Proceeding to PlaceMasterSingleAz Function for Master Placement", "STS Name", stsName, "Proxy Pod AZ", proxyPodAz)
+				// 	master = c.PlaceMasterSingleAz(stsName, proxyPodAz)
+				// 	c.log.Info("Selected Master Details", master.ID, master.IP, master.NodeName, master.Zonename)
+				// }
+				master = c.PlaceMasters(stsName)
 			}
 			if master == nil {
 				return fmt.Errorf("unable to place master for statefulset %s", stsName)
@@ -157,11 +162,11 @@ func (c *Ctx) PlaceMasters(ssName string) *redisutil.Node {
 }
 
 func (c *Ctx) PlaceMasterSingleAz(ssName string, proxyPodAz string) *redisutil.Node {
-	var allMasters redisutil.Nodes
-	allMasters = append(allMasters, c.currentMasters...)
-	for _, master := range c.newMastersBySts {
-		allMasters = append(allMasters, master)
-	}
+	// var allMasters redisutil.Nodes
+	// allMasters = append(allMasters, c.currentMasters...)
+	// for _, master := range c.newMastersBySts {
+	// 	allMasters = append(allMasters, master)
+	// }
 
 	nodes := c.nodes[ssName]
 	c.log.Info("Iterating STS", "StatefulSet", ssName)

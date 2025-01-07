@@ -180,11 +180,21 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 		return reconcile.Result{}, err
 	}
 
-	// Identify if HAConfig is False and ZonesInfo contain "RedisMaster" as SingleAZ.
-	// If Yes, get the AZ information of the Proxy pods of this namespace.
+	// Identify if HAConfig is True and ZonesInfo contain value as RedisMasterSingleAZ.
+	// If Yes, treat this as Single Az for proxy and redis masters.
 
-	if !instance.Spec.HaConfig.HaEnabled && instance.Spec.HaConfig.ZonesInfo != nil {
-		if value, exists := instance.Spec.HaConfig.ZonesInfo["RedisMaster"]; exists && value == "SingleAZ" {
+	var redisMasterSingleAz bool = false
+	if instance.Spec.HaConfig.HaEnabled && instance.Spec.HaConfig.ZonesInfo != nil {
+		// Check if value exists as value "RedisMasterSingleAz" in ZonesInfo.
+		// If Yes, get the AZ information of the Proxy pods of this namespace.
+		for _, value := range instance.Spec.HaConfig.ZonesInfo {
+			if value == "RedisMasterSingleAz" {
+				redisMasterSingleAz = true
+				break
+			}
+		}
+		if redisMasterSingleAz {
+
 			nodectrl := k8sutil.NewNodeController(r.Client, r.MetricsClient)
 
 			proxyPods, err := r.StatefulSetController.GetStatefulSetPodsByLabels(request.Namespace, getProxyLabels(request.Namespace))
@@ -528,7 +538,7 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 
 	newStatus := buildClusterStatus(newClusterInfos, syncCtx.pods, instance, reqLogger)
 	if instance.Spec.HaConfig.HaEnabled {
-		_, haStatus, _, _ = buildHAStatus(newClusterInfos, instance, reqLogger)
+		_, haStatus, _, _ = buildHAStatus(newClusterInfos, instance, reqLogger, r.ProxyPodAZ)
 		SetHAStatus(newStatus, haStatus)
 	}
 	clusterHealthOk := CheackandUpdateClusterHealth(newStatus, newClusterInfos, instance, reqLogger)
@@ -602,7 +612,7 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 				// starting ha heal timer loop here
 				r.MetricsClient.ReconcileClusterGauge(request.Namespace, request.Name, "HA_HEAL", float64(1))
 				//check if any masters needs to be failedover
-				haRanking, haStatus, displacedMasters, _ := buildHAStatus(newClusterInfos, instance, reqLogger)
+				haRanking, haStatus, displacedMasters, _ := buildHAStatus(newClusterInfos, instance, reqLogger, r.ProxyPodAZ)
 				if haStatus == rediskunv1alpha1.HaStatusFailed {
 					r.MetricsClient.ReconcileCluster(request.Namespace, request.Name, "BUILD_HA_STATUS", metrics.HA_HEAL, metrics.FAIL, "HaStatusFailed")
 					reqLogger.Error(fmt.Errorf("unexpected Error - HaStatusFailed"), "HaStatusFailed When trying to Distribute Masters")
@@ -625,7 +635,7 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 					//Re Distribute Masters by Failover
 					for _, master := range displacedMasters {
 						reqLogger.Info("HaStatusRedistribute - Distribute Masters", "master", master)
-						BestRankedMaster, _ := haRanking.GetHAPlacedNodeinSTS(master.StatefulSet)
+						BestRankedMaster, _ := haRanking.GetHAPlacedNodeinSTS(master.StatefulSet, r.ProxyPodAZ)
 						if BestRankedMaster == nil {
 							r.MetricsClient.ReconcileCluster(request.Namespace, request.Name, "UNABLE_TO_FIND_BEST_MASTER", metrics.HA_HEAL, metrics.FAIL, "BestRankedMaster is nil")
 							reqLogger.Error(fmt.Errorf("unexpected Error - BestRankedMaster is nil"), "HaStatusRedistribute - BestRankedMaster")
