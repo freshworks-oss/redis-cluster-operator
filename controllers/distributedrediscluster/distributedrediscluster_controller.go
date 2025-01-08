@@ -35,7 +35,6 @@ import (
 	"github.com/dinesh-murugiah/rediscluster-operator/utils/redisutil"
 	"github.com/go-logr/logr"
 	"github.com/spf13/pflag"
-	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -60,8 +59,6 @@ var (
 	updatePredicateCalled = false
 
 	pred predicate.Funcs
-
-	proxyPod *corev1.Pod
 )
 
 func init() {
