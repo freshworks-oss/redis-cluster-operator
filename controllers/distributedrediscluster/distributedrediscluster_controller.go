@@ -222,10 +222,6 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 				return reconcile.Result{RequeueAfter: 10 * time.Second}, nil
 			}
 
-			for _, pod := range proxyPods.Items {
-				reqLogger.Info("Proxy Pod Information", "ProxyPodName", pod.Name, "ProxyPodNodeName", pod.Spec.NodeName)
-			}
-
 			proxyPodList := clusterPods(proxyPods.Items)
 			proxyPod := findProxyPod(proxyPodList, r.ProxyPodName)
 			r.ProxyPodName = proxyPod.Name
@@ -242,7 +238,7 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 			}
 
 			r.ProxyPodAZ = nodectrl.GetZoneLabel(zoneNode)
-			reqLogger.Info("Proxy Pod AZ Information", "ProxyPodAZ", r.ProxyPodAZ)
+			reqLogger.Info("Proxy Pod is present in AZ - ", "ProxyPodAZ", r.ProxyPodAZ)
 		}
 	}
 

@@ -98,13 +98,6 @@ func (c *Ctx) DispatchMasters(proxyPodAz string) error {
 					master = c.PlaceMasterSingleAz(stsName, proxyPodAz)
 				}
 			} else {
-				// if proxyPodAz == "" {
-				// 	master = c.PlaceMasters(stsName)
-				// } else {
-				// 	c.log.Info("Proceeding to PlaceMasterSingleAz Function for Master Placement", "STS Name", stsName, "Proxy Pod AZ", proxyPodAz)
-				// 	master = c.PlaceMasterSingleAz(stsName, proxyPodAz)
-				// 	c.log.Info("Selected Master Details", master.ID, master.IP, master.NodeName, master.Zonename)
-				// }
 				master = c.PlaceMasters(stsName)
 			}
 			if master == nil {
@@ -162,12 +155,6 @@ func (c *Ctx) PlaceMasters(ssName string) *redisutil.Node {
 }
 
 func (c *Ctx) PlaceMasterSingleAz(ssName string, proxyPodAz string) *redisutil.Node {
-	// var allMasters redisutil.Nodes
-	// allMasters = append(allMasters, c.currentMasters...)
-	// for _, master := range c.newMastersBySts {
-	// 	allMasters = append(allMasters, master)
-	// }
-
 	nodes := c.nodes[ssName]
 	c.log.Info("Iterating STS", "StatefulSet", ssName)
 	for _, cNode := range nodes {
@@ -178,14 +165,6 @@ func (c *Ctx) PlaceMasterSingleAz(ssName string, proxyPodAz string) *redisutil.N
 		}
 		c.log.Info("Node Zone is equal to Proxy Pod AZ", "Node Zone", cNode.Zonename, "Proxy Pod AZ", proxyPodAz)
 		return cNode
-		// _, err := allMasters.GetNodesByFunc(func(node *redisutil.Node) bool {
-		// 	return node.NodeName == cNode.NodeName
-		// })
-
-		// c.log.Info("Checking if the node is already a master", "Node Name", cNode.NodeName, "Node IP", cNode.IP, "Node Role", cNode.GetRole())
-		// if err != nil {
-		// 	return cNode
-		// }
 	}
 
 	c.bestEffort = true
