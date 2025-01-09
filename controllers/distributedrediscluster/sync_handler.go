@@ -33,14 +33,16 @@ const (
 )
 
 type syncContext struct {
-	cluster         *redisv1alpha1.DistributedRedisCluster
-	clusterInfos    *redisutil.ClusterInfos
-	admin           redisutil.IAdmin
-	healer          manager.IHeal
-	pods            []*corev1.Pod
-	reqLogger       logr.Logger
-	client          client.Client
-	configMapClient k8sutil.IConfigMapControl
+	cluster              *redisv1alpha1.DistributedRedisCluster
+	clusterInfos         *redisutil.ClusterInfos
+	admin                redisutil.IAdmin
+	healer               manager.IHeal
+	pods                 []*corev1.Pod
+	proxyPods            []*corev1.Pod
+	reqLogger            logr.Logger
+	client               client.Client
+	configMapClient      k8sutil.IConfigMapControl
+	isSingleAzDeployment bool
 }
 
 func (r *DistributedRedisClusterReconciler) ensureCluster(ctx *syncContext, update bool) (redisv1alpha1.StsEnsureStatus, error) {
@@ -105,6 +107,43 @@ func (r *DistributedRedisClusterReconciler) waitPodReady(ctx *syncContext) error
 	}
 	if err := r.Checker.CheckRedisNodeNum(ctx.cluster); err != nil {
 		return Requeue.Wrap(err, "CheckRedisNodeNum")
+	}
+
+	if ctx.isSingleAzDeployment {
+		// This is a single AZ deployment for Proxy and Redis Masters.
+		nodectrl := k8sutil.NewNodeController(r.Client, r.MetricsClient)
+		// Check if proxy pods have come up
+		if len(ctx.proxyPods) == 0 {
+			return Requeue.New("Proxy Pod is not found! Waiting for the Proxy Pod to be created.")
+		}
+
+		// Check if all proxy pods are in running state
+		var proxyPodsRunning bool = true
+		for _, pod := range ctx.proxyPods {
+			if pod.Status.Phase != "Running" {
+				proxyPodsRunning = false
+			}
+		}
+
+		if !proxyPodsRunning {
+			return Requeue.New("Proxy Pod is not in Running state! Waiting for the Proxy Pod to be in Running state.")
+		}
+
+		proxyPod := findProxyPod(ctx.proxyPods, r.ProxyPodName)
+		r.ProxyPodName = proxyPod.Name
+
+		zoneNode, err := nodectrl.GetNode(proxyPod.Spec.NodeName)
+		if err != nil {
+			return Requeue.Wrap(err, "GetNode returned error!")
+		}
+
+		r.ProxyPodAZ = nodectrl.GetZoneLabel(zoneNode)
+
+		if r.ProxyPodAZ != "unknown" {
+			return nil
+		} else {
+			return Requeue.New("Proxy Pod AZ is unknown! Waiting for the Proxy Pod AZ to be available.")
+		}
 	}
 
 	return nil

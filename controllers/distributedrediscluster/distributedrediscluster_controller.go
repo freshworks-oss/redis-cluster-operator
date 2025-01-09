@@ -190,60 +190,61 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 				break
 			}
 		}
-		if redisMasterSingleAz {
+		// if redisMasterSingleAz {
 
-			nodectrl := k8sutil.NewNodeController(r.Client, r.MetricsClient)
+		// 	nodectrl := k8sutil.NewNodeController(r.Client, r.MetricsClient)
 
-			proxyPods, err := r.StatefulSetController.GetStatefulSetPodsByLabels(request.Namespace, getProxyLabels(request.Namespace))
-			if err != nil {
-				r.MetricsClient.ReconcileCluster(request.Namespace, request.Name, "GET_PROXY_PODS_BY_LABELS", metrics.RECONCILE, metrics.FAIL, err.Error())
-				return reconcile.Result{}, Kubernetes.Wrap(err, "GetStatefulSetPods")
-			}
+		// 	proxyPods, err := r.StatefulSetController.GetStatefulSetPodsByLabels(request.Namespace, getProxyLabels(request.Namespace))
+		// 	if err != nil {
+		// 		r.MetricsClient.ReconcileCluster(request.Namespace, request.Name, "GET_PROXY_PODS_BY_LABELS", metrics.RECONCILE, metrics.FAIL, err.Error())
+		// 		return reconcile.Result{}, Kubernetes.Wrap(err, "GetStatefulSetPods")
+		// 	}
 
-			// Check if proxy pods have come up
-			if len(proxyPods.Items) == 0 {
-				reqLogger.Info("Proxy Pod is not found! Waiting for the Proxy Pod to be created.")
-				return reconcile.Result{RequeueAfter: 10 * time.Second}, nil
-			}
+		// 	// Check if proxy pods have come up
+		// 	if len(proxyPods.Items) == 0 {
+		// 		reqLogger.Info("Proxy Pod is not found! Waiting for the Proxy Pod to be created.")
+		// 		return reconcile.Result{RequeueAfter: 10 * time.Second}, nil
+		// 	}
 
-			// Check if all proxy pods are in running state
-			var proxyPodsRunning bool = true
-			for _, pod := range proxyPods.Items {
-				if pod.Status.Phase != "Running" {
-					proxyPodsRunning = false
-				}
-			}
+		// 	// Check if all proxy pods are in running state
+		// 	var proxyPodsRunning bool = true
+		// 	for _, pod := range proxyPods.Items {
+		// 		if pod.Status.Phase != "Running" {
+		// 			proxyPodsRunning = false
+		// 		}
+		// 	}
 
-			if !proxyPodsRunning {
-				reqLogger.Info("One of the Proxy Pod is not in Running state! Waiting for all Proxy Pods to be in Running state.")
-				return reconcile.Result{RequeueAfter: 10 * time.Second}, nil
-			}
+		// 	if !proxyPodsRunning {
+		// 		reqLogger.Info("One of the Proxy Pod is not in Running state! Waiting for all Proxy Pods to be in Running state.")
+		// 		return reconcile.Result{RequeueAfter: 10 * time.Second}, nil
+		// 	}
 
-			proxyPodList := clusterPods(proxyPods.Items)
-			proxyPod := findProxyPod(proxyPodList, r.ProxyPodName)
-			r.ProxyPodName = proxyPod.Name
+		// 	proxyPodList := clusterPods(proxyPods.Items)
+		// 	proxyPod := findProxyPod(proxyPodList, r.ProxyPodName)
+		// 	r.ProxyPodName = proxyPod.Name
 
-			if proxyPod.Status.Phase != "Running" { // Check why selected proxyPod is not running.
-				reqLogger.Info("Proxy Pod is not in Running state! Waiting for the Proxy Pod to be in Running state.", "ProxyPodName", proxyPod.Name)
-				return reconcile.Result{RequeueAfter: 10 * time.Second}, nil
-			}
+		// 	if proxyPod.Status.Phase != "Running" { // Check why selected proxyPod is not running.
+		// 		reqLogger.Info("Proxy Pod is not in Running state! Waiting for the Proxy Pod to be in Running state.", "ProxyPodName", proxyPod.Name)
+		// 		return reconcile.Result{RequeueAfter: 10 * time.Second}, nil
+		// 	}
 
-			zoneNode, err := nodectrl.GetNode(proxyPod.Spec.NodeName)
-			if err != nil {
-				reqLogger.Error(err, "GetNode Returned Error!")
-				return reconcile.Result{}, err
-			}
+		// 	zoneNode, err := nodectrl.GetNode(proxyPod.Spec.NodeName)
+		// 	if err != nil {
+		// 		reqLogger.Error(err, "GetNode Returned Error!")
+		// 		return reconcile.Result{}, err
+		// 	}
 
-			r.ProxyPodAZ = nodectrl.GetZoneLabel(zoneNode)
-			reqLogger.Info("Proxy Pod is present in AZ - ", "ProxyPodAZ", r.ProxyPodAZ)
-		}
+		// 	r.ProxyPodAZ = nodectrl.GetZoneLabel(zoneNode)
+		// 	reqLogger.Info("Proxy Pod is present in AZ - ", "ProxyPodAZ", r.ProxyPodAZ)
+		// }
 	}
 
 	syncCtx := &syncContext{
-		cluster:         instance,
-		reqLogger:       reqLogger,
-		client:          r.Client,
-		configMapClient: k8sutil.NewConfigMapController(r.Client, r.MetricsClient),
+		cluster:              instance,
+		reqLogger:            reqLogger,
+		client:               r.Client,
+		configMapClient:      k8sutil.NewConfigMapController(r.Client, r.MetricsClient),
+		isSingleAzDeployment: redisMasterSingleAz,
 	}
 	var STSEnsureStatus rediskunv1alpha1.StsEnsureStatus = rediskunv1alpha1.STSNotEnsured
 	var haStatus rediskunv1alpha1.HaStatus = rediskunv1alpha1.HaStatusUnknown
@@ -289,12 +290,25 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 
 	syncCtx.pods = clusterPods(redisClusterPods.Items)
 	reqLogger.V(6).Info("debug cluster pods", "", syncCtx.pods)
+
+	if syncCtx.isSingleAzDeployment {
+		proxyPods, err := r.StatefulSetController.GetStatefulSetPodsByLabels(request.Namespace, getProxyLabels(request.Namespace))
+		if err != nil {
+			r.MetricsClient.ReconcileCluster(request.Namespace, request.Name, "GET_PROXY_PODS_BY_LABELS", metrics.RECONCILE, metrics.FAIL, err.Error())
+			return reconcile.Result{}, Kubernetes.Wrap(err, "GetStatefulSetPods")
+		}
+		syncCtx.proxyPods = clusterPods(proxyPods.Items)
+		reqLogger.V(6).Info("debug cluster proxy pods", "", syncCtx.proxyPods)
+	}
+
 	syncCtx.healer = clustermanger.NewHealer(&heal.CheckAndHeal{
-		Logger:        reqLogger,
-		PodControl:    k8sutil.NewPodController(r.Client, r.MetricsClient),
-		Pods:          syncCtx.pods,
-		DryRun:        false,
-		MetricsClient: r.MetricsClient,
+		Logger:               reqLogger,
+		PodControl:           k8sutil.NewPodController(r.Client, r.MetricsClient),
+		Pods:                 syncCtx.pods,
+		DryRun:               false,
+		MetricsClient:        r.MetricsClient,
+		PrxoyPods:            syncCtx.proxyPods,
+		IsSingleAzDeployment: syncCtx.isSingleAzDeployment,
 	})
 	err = r.waitPodReady(syncCtx)
 	if err != nil {
