@@ -190,53 +190,6 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 				break
 			}
 		}
-		// if redisMasterSingleAz {
-
-		// 	nodectrl := k8sutil.NewNodeController(r.Client, r.MetricsClient)
-
-		// 	proxyPods, err := r.StatefulSetController.GetStatefulSetPodsByLabels(request.Namespace, getProxyLabels(request.Namespace))
-		// 	if err != nil {
-		// 		r.MetricsClient.ReconcileCluster(request.Namespace, request.Name, "GET_PROXY_PODS_BY_LABELS", metrics.RECONCILE, metrics.FAIL, err.Error())
-		// 		return reconcile.Result{}, Kubernetes.Wrap(err, "GetStatefulSetPods")
-		// 	}
-
-		// 	// Check if proxy pods have come up
-		// 	if len(proxyPods.Items) == 0 {
-		// 		reqLogger.Info("Proxy Pod is not found! Waiting for the Proxy Pod to be created.")
-		// 		return reconcile.Result{RequeueAfter: 10 * time.Second}, nil
-		// 	}
-
-		// 	// Check if all proxy pods are in running state
-		// 	var proxyPodsRunning bool = true
-		// 	for _, pod := range proxyPods.Items {
-		// 		if pod.Status.Phase != "Running" {
-		// 			proxyPodsRunning = false
-		// 		}
-		// 	}
-
-		// 	if !proxyPodsRunning {
-		// 		reqLogger.Info("One of the Proxy Pod is not in Running state! Waiting for all Proxy Pods to be in Running state.")
-		// 		return reconcile.Result{RequeueAfter: 10 * time.Second}, nil
-		// 	}
-
-		// 	proxyPodList := clusterPods(proxyPods.Items)
-		// 	proxyPod := findProxyPod(proxyPodList, r.ProxyPodName)
-		// 	r.ProxyPodName = proxyPod.Name
-
-		// 	if proxyPod.Status.Phase != "Running" { // Check why selected proxyPod is not running.
-		// 		reqLogger.Info("Proxy Pod is not in Running state! Waiting for the Proxy Pod to be in Running state.", "ProxyPodName", proxyPod.Name)
-		// 		return reconcile.Result{RequeueAfter: 10 * time.Second}, nil
-		// 	}
-
-		// 	zoneNode, err := nodectrl.GetNode(proxyPod.Spec.NodeName)
-		// 	if err != nil {
-		// 		reqLogger.Error(err, "GetNode Returned Error!")
-		// 		return reconcile.Result{}, err
-		// 	}
-
-		// 	r.ProxyPodAZ = nodectrl.GetZoneLabel(zoneNode)
-		// 	reqLogger.Info("Proxy Pod is present in AZ - ", "ProxyPodAZ", r.ProxyPodAZ)
-		// }
 	}
 
 	syncCtx := &syncContext{
