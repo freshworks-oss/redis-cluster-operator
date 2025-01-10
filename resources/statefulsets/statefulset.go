@@ -19,7 +19,6 @@ import (
 )
 
 var log = logf.Log.WithName("resource_statefulset")
-var ssNameList []string
 
 const (
 	redisConfStorageVolumeName   = "redis-conf"
@@ -196,7 +195,6 @@ func getAffinity(cluster *redisv1alpha1.DistributedRedisCluster, labels map[stri
 	if cluster.Spec.Affinity != nil {
 		affinity = cluster.Spec.Affinity
 	}
-
 	// pod  anti affinity for every pod in a redis cluster on node level (preferred weighted anti-affinity for every pod, mandatady on STS level)
 	if cluster.Spec.RequiredAntiAffinity {
 		if affinity.PodAntiAffinity == nil {
