@@ -109,42 +109,34 @@ func (r *DistributedRedisClusterReconciler) waitPodReady(ctx *syncContext) error
 		return Requeue.Wrap(err, "CheckRedisNodeNum")
 	}
 
-	if ctx.isSingleAzDeployment {
-		// This is a single AZ deployment for Proxy and Redis Masters.
-		nodectrl := k8sutil.NewNodeController(r.Client, r.MetricsClient)
-		// Check if proxy pods have come up
-		if len(ctx.proxyPods) == 0 {
-			return Requeue.New("Proxy Pod is not found! Waiting for the Proxy Pod to be created.")
-		}
-
-		// Check if all proxy pods are in running state
-		var proxyPodsRunning bool = true
-		for _, pod := range ctx.proxyPods {
-			if pod.Status.Phase != "Running" {
-				proxyPodsRunning = false
-			}
-		}
-
-		if !proxyPodsRunning {
-			return Requeue.New("Proxy Pod is not in Running state! Waiting for the Proxy Pod to be in Running state.")
-		}
-
-		proxyPod := findProxyPod(ctx.proxyPods, r.ProxyPodName)
-		r.ProxyPodName = proxyPod.Name
-
-		zoneNode, err := nodectrl.GetNode(proxyPod.Spec.NodeName)
-		if err != nil {
-			return Requeue.Wrap(err, "GetNode returned error!")
-		}
-
-		r.ProxyPodAZ = nodectrl.GetZoneLabel(zoneNode)
-
-		if r.ProxyPodAZ != "unknown" {
-			return nil
-		} else {
-			return Requeue.New("Proxy Pod AZ is unknown! Waiting for the Proxy Pod AZ to be available.")
+	if !ctx.isSingleAzDeployment {
+		return nil
+	}
+	// This is a single AZ deployment for Proxy and Redis Masters.
+	if len(ctx.proxyPods) == 0 {
+		return Requeue.New("waiting for proxy pod creation")
+	}
+	for _, pod := range ctx.proxyPods {
+		if pod.Status.Phase != "Running" {
+			return Requeue.New("waiting for proxy pod to be in running state")
 		}
 	}
+
+	proxyPod := findProxyPod(ctx.proxyPods, r.ProxyPodName)
+	nodectrl := k8sutil.NewNodeController(r.Client, r.MetricsClient)
+
+	zoneNode, err := nodectrl.GetNode(proxyPod.Spec.NodeName)
+	if err != nil {
+		return Requeue.Wrap(err, "getNode returned error!")
+	}
+
+	az := nodectrl.GetZoneLabel(zoneNode)
+	if az == "unknown" {
+		return Requeue.New("waiting for proxy pod AZ to be available")
+	}
+
+	r.ProxyPodName = proxyPod.Name
+	r.ProxyPodAZ = az
 
 	return nil
 }
