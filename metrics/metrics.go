@@ -2,7 +2,6 @@ package metrics
 
 import (
 	"fmt"
-	"log"
 	"strings"
 	"sync"
 	"time"
@@ -264,7 +263,6 @@ func (r *recorder) removeStaleMetrics() {
 		for _, label := range i {
 			metricsDeletedCount += r.recordRedisOperation.DeletePartialMatch(label)
 		}
-		log.Printf("Number of delted metrics %v", metricsDeletedCount)
 		time.Sleep(metricsGCIntervalMinutes * time.Minute)
 	}
 }
