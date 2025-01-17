@@ -129,6 +129,7 @@ func CheckallZonesActive(cluster *redisv1alpha1.DistributedRedisCluster, reqLogg
 
 func buildHAStatus(clusterInfos *redisutil.ClusterInfos, cluster *redisv1alpha1.DistributedRedisCluster, reqLogger logr.Logger) (*clustering.RankingInfo, redisv1alpha1.HaStatus, redisutil.Nodes, error) {
 
+	reqLogger.Info("buildHAStatus", "clusterInfos ProxyAZ", clusterInfos.ProxyPodAz)
 	var haPlacedMasterCount int32 = 0
 	var misplacedMasters redisutil.Nodes = make([]*redisutil.Node, 0)
 
@@ -165,6 +166,7 @@ func buildHAStatus(clusterInfos *redisutil.ClusterInfos, cluster *redisv1alpha1.
 			}
 		}
 	}
+	reqLogger.Info("buildHAStatus", "haPlacedMasterCount", haPlacedMasterCount, "cluster.Spec.MasterSize", cluster.Spec.MasterSize)
 
 	if haPlacedMasterCount != cluster.Spec.MasterSize {
 		err := fmt.Errorf("master placement not suitable for cluster ha")

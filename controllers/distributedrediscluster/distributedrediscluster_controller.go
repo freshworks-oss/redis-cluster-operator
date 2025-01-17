@@ -475,7 +475,7 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 
 	newClusterInfos, err := admin.GetClusterInfos(context, instance.Namespace, instance.Name)
 	if proxyAz != "" {
-		clusterInfos.ProxyPodAz = proxyAz
+		newClusterInfos.ProxyPodAz = proxyAz
 	}
 	if err != nil {
 		r.MetricsClient.ReconcileCluster(request.Namespace, request.Name, "GET_CLUSTER_INFO", metrics.RECONCILE, metrics.FAIL, err.Error())
