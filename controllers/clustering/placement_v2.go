@@ -79,7 +79,6 @@ func (c *Ctx) sortRedisNodeByStatefulSet(nodes redisutil.Nodes) map[string]redis
 }
 
 func (c *Ctx) DispatchMasters() error {
-	c.log.Info("DispatchMasters", "HA Satus", c.hastatus, "Single AZ Deployment", c.proxyPodAz)
 	var placementErr error
 	zoneRankingInfo := NewRankingInfo(c.haconfig, c.nodes, int32(c.expectedMasterNum), int32(c.expectedReplicaCount), c.clusterName, c.log)
 	zoneRankingInfo.ApplyZoneRankingPerNodeDistribution()
@@ -97,10 +96,8 @@ func (c *Ctx) DispatchMasters() error {
 					c.log.Info("DispatchMasters", "HA Satus Not desired when creating cluster", c.hastatus)
 				}
 				if c.proxyPodAz == "" {
-					c.log.Info("Calling PlaceMastersHA")
 					master = c.PlaceMastersHA(stsName, zoneRankingInfo)
 				} else {
-					c.log.Info("Calling PlaceMastersSingleHA")
 					master, placementErr = c.PlaceMasterSingleAz(stsName, c.proxyPodAz)
 					if placementErr != nil {
 						return placementErr

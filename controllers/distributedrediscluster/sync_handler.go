@@ -114,7 +114,6 @@ func (r *DistributedRedisClusterReconciler) waitPodReady(ctx *syncContext) error
 		return nil
 	}
 
-	ctx.reqLogger.Info("IS singleAz deployment", "SAZ", ctx.isSingleAzDeployment)
 	// This is a single AZ deployment for Proxy and Redis Masters.
 	if len(ctx.proxyPods) == 0 {
 		return Requeue.New("waiting for proxy pod creation")
