@@ -176,6 +176,7 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 	}
 
 	isSingleAzDeployment := verifyIfSingleAzDeployment(instance)
+	reqLogger.Info("isSingleAzDeployment", "isSingleAzDeployment", isSingleAzDeployment)
 
 	syncCtx := &syncContext{
 		cluster:              instance,
@@ -230,6 +231,7 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 	reqLogger.V(6).Info("debug cluster pods", "", syncCtx.pods)
 
 	proxyPodErrCheck := proxyPods(syncCtx, r, request)
+	reqLogger.Info("proxyPods", "List", len(syncCtx.proxyPods))
 	if proxyPodErrCheck != nil {
 		r.MetricsClient.ReconcileCluster(request.Namespace, request.Name, "GET_PROXY_PODS_BY_LABELS", metrics.RECONCILE, metrics.FAIL, proxyPodErrCheck.Error())
 		return reconcile.Result{}, Kubernetes.Wrap(err, "GetProxyPods")
@@ -311,6 +313,7 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 		}
 	}
 	proxyAz, err := findProxyAz(r, syncCtx)
+	reqLogger.Info("findProxyAz", "proxyAz", proxyAz, "err", err)
 	if err != nil {
 		r.MetricsClient.ReconcileCluster(request.Namespace, request.Name, "FIND_PROXY_AZ", metrics.RECONCILE, metrics.FAIL, err.Error())
 		reqLogger.Error(err, "findProxyAz", "Error when finding proxy az", err)

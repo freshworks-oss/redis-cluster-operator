@@ -77,6 +77,8 @@ func (c *Ctx) sortRedisNodeByStatefulSet(nodes redisutil.Nodes) map[string]redis
 }
 
 func (c *Ctx) DispatchMasters(proxyPodAz string) error {
+	c.log.Info("DispatchMasters", "HA Satus", c.hastatus, "Single AZ Deployment", proxyPodAz)
+	var placementErr error
 	zoneRankingInfo := NewRankingInfo(c.haconfig, c.nodes, int32(c.expectedMasterNum), int32(c.expectedReplicaCount), c.clusterName, c.log)
 	zoneRankingInfo.ApplyZoneRankingPerNodeDistribution()
 	for i := 0; i < c.expectedMasterNum; i++ {
@@ -93,9 +95,14 @@ func (c *Ctx) DispatchMasters(proxyPodAz string) error {
 					c.log.Info("DispatchMasters", "HA Satus Not desired when creating cluster", c.hastatus)
 				}
 				if proxyPodAz == "" {
+					c.log.Info("Calling PlaceMastersHA")
 					master = c.PlaceMastersHA(stsName, zoneRankingInfo)
 				} else {
-					master = c.PlaceMasterSingleAz(stsName, proxyPodAz)
+					c.log.Info("Calling PlaceMastersSingleHA")
+					master, placementErr = c.PlaceMasterSingleAz(stsName, proxyPodAz)
+					if placementErr != nil {
+						return placementErr
+					}
 				}
 			} else {
 				master = c.PlaceMasters(stsName)
@@ -154,7 +161,7 @@ func (c *Ctx) PlaceMasters(ssName string) *redisutil.Node {
 	return nodes[0]
 }
 
-func (c *Ctx) PlaceMasterSingleAz(ssName string, proxyPodAz string) *redisutil.Node {
+func (c *Ctx) PlaceMasterSingleAz(ssName string, proxyPodAz string) (*redisutil.Node, error) {
 	nodes := c.nodes[ssName]
 	c.log.Info("Iterating STS", "StatefulSet", ssName)
 	for _, cNode := range nodes {
@@ -164,13 +171,10 @@ func (c *Ctx) PlaceMasterSingleAz(ssName string, proxyPodAz string) *redisutil.N
 			continue
 		}
 		c.log.Info("Node Zone is equal to Proxy Pod AZ", "Node Zone", cNode.Zonename, "Proxy Pod AZ", proxyPodAz)
-		return cNode
+		return cNode, nil
 	}
-
-	c.log.Info("no available nodes in the specified AZ for master placement",
-		"az", proxyPodAz,
-		"select", nodes[0].IP)
-	return nodes[0]
+	c.log.Info("No Node Zone is equal to Proxy Pod AZ", "Proxy Pod AZ", proxyPodAz)
+	return nil, fmt.Errorf("unable to find node in AZ %s", proxyPodAz)
 }
 
 func (c *Ctx) PlaceSlaves() error {
