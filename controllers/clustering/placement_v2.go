@@ -25,6 +25,7 @@ type Ctx struct {
 	bestEffort           bool
 	haconfig             *redisv1alpha1.HAspec
 	hastatus             redisv1alpha1.HaStatus
+	proxyPodAz           string
 }
 
 func NewCtx(haconf *redisv1alpha1.HAspec, cluster *redisutil.Cluster, nodes redisutil.Nodes, masterNum int32, replicaCount int32, clusterName string, log logr.Logger) *Ctx {
@@ -38,6 +39,7 @@ func NewCtx(haconf *redisv1alpha1.HAspec, cluster *redisutil.Cluster, nodes redi
 		newMastersBySts:      make(map[string]*redisutil.Node),
 		haconfig:             haconf,
 		hastatus:             cluster.HaStatus,
+		proxyPodAz:           string(""),
 	}
 	ctx.nodes = ctx.sortRedisNodeByStatefulSet(nodes)
 	return ctx
@@ -76,8 +78,8 @@ func (c *Ctx) sortRedisNodeByStatefulSet(nodes redisutil.Nodes) map[string]redis
 	return nodesByStatefulSet
 }
 
-func (c *Ctx) DispatchMasters(proxyPodAz string) error {
-	c.log.Info("DispatchMasters", "HA Satus", c.hastatus, "Single AZ Deployment", proxyPodAz)
+func (c *Ctx) DispatchMasters() error {
+	c.log.Info("DispatchMasters", "HA Satus", c.hastatus, "Single AZ Deployment", c.proxyPodAz)
 	var placementErr error
 	zoneRankingInfo := NewRankingInfo(c.haconfig, c.nodes, int32(c.expectedMasterNum), int32(c.expectedReplicaCount), c.clusterName, c.log)
 	zoneRankingInfo.ApplyZoneRankingPerNodeDistribution()
@@ -94,12 +96,12 @@ func (c *Ctx) DispatchMasters(proxyPodAz string) error {
 				if c.hastatus != redisv1alpha1.HaStatusCreating {
 					c.log.Info("DispatchMasters", "HA Satus Not desired when creating cluster", c.hastatus)
 				}
-				if proxyPodAz == "" {
+				if c.proxyPodAz == "" {
 					c.log.Info("Calling PlaceMastersHA")
 					master = c.PlaceMastersHA(stsName, zoneRankingInfo)
 				} else {
 					c.log.Info("Calling PlaceMastersSingleHA")
-					master, placementErr = c.PlaceMasterSingleAz(stsName, proxyPodAz)
+					master, placementErr = c.PlaceMasterSingleAz(stsName, c.proxyPodAz)
 					if placementErr != nil {
 						return placementErr
 					}
@@ -141,6 +143,10 @@ func (c *Ctx) PlaceMastersHA(ssName string, zoneRankingInfo *RankingInfo) *redis
 
 }
 
+func (c *Ctx) SetProxyAz(proxyPodAz string) {
+	c.proxyPodAz = proxyPodAz
+}
+
 func (c *Ctx) PlaceMasters(ssName string) *redisutil.Node {
 	var allMasters redisutil.Nodes
 	allMasters = append(allMasters, c.currentMasters...)
@@ -163,17 +169,12 @@ func (c *Ctx) PlaceMasters(ssName string) *redisutil.Node {
 
 func (c *Ctx) PlaceMasterSingleAz(ssName string, proxyPodAz string) (*redisutil.Node, error) {
 	nodes := c.nodes[ssName]
-	c.log.Info("Iterating STS", "StatefulSet", ssName)
 	for _, cNode := range nodes {
-		c.log.Info("STS Node Details", "Node Zone", cNode.Zonename, "STS Name", ssName)
 		if cNode.Zonename != proxyPodAz {
-			c.log.Info("Node Zone is not equal to Proxy Pod AZ", "Node Zone", cNode.Zonename, "Proxy Pod AZ", proxyPodAz)
 			continue
 		}
-		c.log.Info("Node Zone is equal to Proxy Pod AZ", "Node Zone", cNode.Zonename, "Proxy Pod AZ", proxyPodAz)
 		return cNode, nil
 	}
-	c.log.Info("No Node Zone is equal to Proxy Pod AZ", "Proxy Pod AZ", proxyPodAz)
 	return nil, fmt.Errorf("unable to find node in AZ %s", proxyPodAz)
 }
 

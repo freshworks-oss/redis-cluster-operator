@@ -294,6 +294,10 @@ func (c *RankingInfo) GetBestRankedNodeinAllZonesPerSTS(stsname string) (*redisu
 	var bestRankedNode *redisutil.Node = nil
 	var rankedNodes = make(map[int][]*redisutil.Node)
 
+	if c.ProxyAz != "" {
+		return c.GetHAPlacedNodeinSTS(stsname)
+	}
+
 	//If there are replica(s) in the STS,and if those replica(s) donot have master
 	// then select the best ranked node from the replicas
 	if len(c.replicaNodesBySTS[stsname]) > 0 && (c.masternodeBySTS[stsname] == nil || c.masternodeBySTS[stsname].TotalSlots() == 0) {

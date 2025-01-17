@@ -378,7 +378,10 @@ func (r *DistributedRedisClusterReconciler) syncCluster(ctx *syncContext, contex
 	}
 	clusterCtx := clustering.NewCtx(cluster.Spec.HaConfig, rCluster, nodes, cluster.Spec.MasterSize, cluster.Spec.ClusterReplicas, cluster.Name, ctx.reqLogger)
 	//Create a New Ranking Info Every time we need to place masters
-	if err := clusterCtx.DispatchMasters(ctx.clusterInfos.ProxyPodAz); err != nil {
+	if ctx.clusterInfos.ProxyPodAz != "" {
+		clusterCtx.SetProxyAz(ctx.clusterInfos.ProxyPodAz)
+	}
+	if err := clusterCtx.DispatchMasters(); err != nil {
 		r.MetricsClient.ReconcileCluster(cluster.Namespace, cluster.Name, "DISPATCH_MASTER", metrics.SYNC_CLUSTER, metrics.FAIL, err.Error())
 		return Cluster.Wrap(err, "DispatchMasters")
 	}
