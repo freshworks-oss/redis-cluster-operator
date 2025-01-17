@@ -167,7 +167,6 @@ func (c *Ctx) PlaceMasterSingleAz(ssName string, proxyPodAz string) *redisutil.N
 		return cNode
 	}
 
-	c.bestEffort = true
 	c.log.Info("no available nodes in the specified AZ for master placement",
 		"az", proxyPodAz,
 		"select", nodes[0].IP)

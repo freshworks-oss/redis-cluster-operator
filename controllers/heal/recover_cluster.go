@@ -10,7 +10,7 @@ import (
 )
 
 func (c *CheckAndHeal) CheckandRecoverCluster(cluster *redisv1alpha1.DistributedRedisCluster, infos *redisutil.ClusterInfos, admin redisutil.IAdmin, context context.Context) (bool, bool, error) {
-
+	//TODO: Handle the case for singleAZ deployment too.
 	var stopReconcile bool = false
 	haRanking := clustering.CreateRankingFromClusterInfo(cluster.Spec.HaConfig, infos, cluster.Spec.MasterSize, cluster.Spec.ClusterReplicas, cluster.Name, c.Logger)
 	if haRanking == nil {

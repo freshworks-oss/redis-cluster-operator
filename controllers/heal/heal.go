@@ -9,11 +9,9 @@ import (
 )
 
 type CheckAndHeal struct {
-	Logger               logr.Logger
-	PodControl           k8sutil.IPodControl
-	Pods                 []*corev1.Pod
-	PrxoyPods            []*corev1.Pod
-	DryRun               bool
-	MetricsClient        metrics.Recorder
-	IsSingleAzDeployment bool
+	Logger        logr.Logger
+	PodControl    k8sutil.IPodControl
+	Pods          []*corev1.Pod
+	DryRun        bool
+	MetricsClient metrics.Recorder
 }

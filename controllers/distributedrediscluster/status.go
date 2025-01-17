@@ -127,7 +127,7 @@ func CheckallZonesActive(cluster *redisv1alpha1.DistributedRedisCluster, reqLogg
 	}
 }
 
-func buildHAStatus(clusterInfos *redisutil.ClusterInfos, cluster *redisv1alpha1.DistributedRedisCluster, reqLogger logr.Logger, proxyPodAz string) (*clustering.RankingInfo, redisv1alpha1.HaStatus, redisutil.Nodes, error) {
+func buildHAStatus(clusterInfos *redisutil.ClusterInfos, cluster *redisv1alpha1.DistributedRedisCluster, reqLogger logr.Logger) (*clustering.RankingInfo, redisv1alpha1.HaStatus, redisutil.Nodes, error) {
 
 	var haPlacedMasterCount int32 = 0
 	var misplacedMasters redisutil.Nodes = make([]*redisutil.Node, 0)
@@ -151,14 +151,14 @@ func buildHAStatus(clusterInfos *redisutil.ClusterInfos, cluster *redisv1alpha1.
 	}
 
 	for _, node := range masterNodes {
-		if proxyPodAz == "" {
+		if clusterInfos.ProxyPodAz == "" {
 			if node.ZoneDistributionRank >= clustering.HaplacedMasterRankThreshold {
 				haPlacedMasterCount++
 			} else {
 				misplacedMasters = append(misplacedMasters, node)
 			}
 		} else {
-			if node.Zonename == proxyPodAz {
+			if node.Zonename == clusterInfos.ProxyPodAz {
 				haPlacedMasterCount++
 			} else {
 				misplacedMasters = append(misplacedMasters, node)

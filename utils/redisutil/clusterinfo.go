@@ -51,6 +51,7 @@ type ClusterInfos struct {
 	Status           string
 	ClusterState     clusterstate
 	ClusterNokReason map[string]string
+	ProxyPodAz       string
 }
 
 // NewNodeInfos returns an instance of NodeInfo

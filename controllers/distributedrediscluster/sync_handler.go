@@ -116,28 +116,12 @@ func (r *DistributedRedisClusterReconciler) waitPodReady(ctx *syncContext) error
 	if len(ctx.proxyPods) == 0 {
 		return Requeue.New("waiting for proxy pod creation")
 	}
+
 	for _, pod := range ctx.proxyPods {
 		if pod.Status.Phase != "Running" {
 			return Requeue.New("waiting for proxy pod to be in running state")
 		}
 	}
-
-	proxyPod := findProxyPod(ctx.proxyPods, r.ProxyPodName)
-	nodectrl := k8sutil.NewNodeController(r.Client, r.MetricsClient)
-
-	zoneNode, err := nodectrl.GetNode(proxyPod.Spec.NodeName)
-	if err != nil {
-		return Requeue.Wrap(err, "getNode returned error!")
-	}
-
-	az := nodectrl.GetZoneLabel(zoneNode)
-	if az == "unknown" {
-		return Requeue.New("waiting for proxy pod AZ to be available")
-	}
-
-	r.ProxyPodName = proxyPod.Name
-	r.ProxyPodAZ = az
-
 	return nil
 }
 
@@ -379,7 +363,7 @@ func (r *DistributedRedisClusterReconciler) waitForClusterJoin(ctx *syncContext,
 	return nil
 }
 
-func (r *DistributedRedisClusterReconciler) syncCluster(ctx *syncContext, context context.Context, instance *rediskunv1alpha1.DistributedRedisCluster, proxyPodAz string) error {
+func (r *DistributedRedisClusterReconciler) syncCluster(ctx *syncContext, context context.Context, instance *rediskunv1alpha1.DistributedRedisCluster) error {
 	cluster := ctx.cluster
 	admin := ctx.admin
 	clusterInfos := ctx.clusterInfos
@@ -391,7 +375,7 @@ func (r *DistributedRedisClusterReconciler) syncCluster(ctx *syncContext, contex
 	}
 	clusterCtx := clustering.NewCtx(cluster.Spec.HaConfig, rCluster, nodes, cluster.Spec.MasterSize, cluster.Spec.ClusterReplicas, cluster.Name, ctx.reqLogger)
 	//Create a New Ranking Info Every time we need to place masters
-	if err := clusterCtx.DispatchMasters(proxyPodAz); err != nil {
+	if err := clusterCtx.DispatchMasters(ctx.clusterInfos.ProxyPodAz); err != nil {
 		r.MetricsClient.ReconcileCluster(cluster.Namespace, cluster.Name, "DISPATCH_MASTER", metrics.SYNC_CLUSTER, metrics.FAIL, err.Error())
 		return Cluster.Wrap(err, "DispatchMasters")
 	}

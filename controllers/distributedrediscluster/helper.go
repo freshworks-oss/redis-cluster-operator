@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	redisv1alpha1 "github.com/dinesh-murugiah/rediscluster-operator/api/v1alpha1"
@@ -138,18 +139,46 @@ func clusterPods(pods []corev1.Pod) []*corev1.Pod {
 	return podSlice
 }
 
-func findProxyPod(pods []*corev1.Pod, podName string) *corev1.Pod {
-	if podName == "" {
-		return pods[0] //First Time - So, we will return the first pod
+func proxyPods(syncContext *syncContext, r *DistributedRedisClusterReconciler, request ctrl.Request) error {
+	if syncContext.isSingleAzDeployment { //move this to new function called proxyPods
+		proxyPods, err := r.StatefulSetController.GetStatefulSetPodsByLabels(request.Namespace, getProxyLabels(request.Namespace))
+		if err != nil {
+			return err
+		}
+		syncContext.proxyPods = clusterPods(proxyPods.Items)
 	}
+	return nil
+}
 
-	for _, pod := range pods {
-		if pod.Name == podName {
-			return pod // Found the pod, so we will return the stored pod details
+func findProxyAz(r *DistributedRedisClusterReconciler, syncCtx *syncContext) (string, error) {
+	if syncCtx.isSingleAzDeployment {
+		nodectrl := k8sutil.NewNodeController(r.Client, r.MetricsClient)
+		zoneNode, err := nodectrl.GetNode(syncCtx.proxyPods[0].Spec.NodeName)
+		if err != nil {
+			return "", fmt.Errorf("unable to find node %s", syncCtx.proxyPods[0].Spec.NodeName)
+		}
+
+		az := nodectrl.GetZoneLabel(zoneNode)
+		if az == "unknown" {
+			return "", fmt.Errorf("waiting for proxy pod AZ to be available")
+		}
+
+		return az, nil
+	}
+	return "", nil
+}
+
+func verifyIfSingleAzDeployment(instance *redisv1alpha1.DistributedRedisCluster) bool {
+	if instance.Spec.HaConfig.HaEnabled && instance.Spec.HaConfig.ZonesInfo != nil {
+		// Check if value exists as value "RedisMasterSingleAz" in ZonesInfo.
+		// If Yes, get the AZ information of the Proxy pods of this namespace.
+		for _, value := range instance.Spec.HaConfig.ZonesInfo {
+			if value == "RedisMasterSingleAz" {
+				return true
+			}
 		}
 	}
-
-	return pods[0] // If we are here, then proxyPod would have got restarted or got scheudled to different az. So, return the first pod.
+	return false
 }
 
 func needClusterOperation(cluster *redisv1alpha1.DistributedRedisCluster, reqLogger logr.Logger) bool {
