@@ -319,9 +319,6 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 		reqLogger.Error(err, "findProxyAz", "Error when finding proxy az", err)
 		return reconcile.Result{RequeueAfter: 10 * time.Second}, nil
 	}
-	if proxyAz != "" {
-		healClusterInfo.ProxyPodAz = proxyAz
-	}
 
 	updateErr := UpdateClusterInfos(healClusterInfo, syncCtx.pods, r.Client, reqLogger, r.MetricsClient)
 	if updateErr != nil {
@@ -383,6 +380,9 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 
 	syncCtx.admin = admin
 	syncCtx.clusterInfos = clusterInfos
+	if proxyAz != "" {
+		clusterInfos.ProxyPodAz = proxyAz
+	}
 
 	err1 := UpdateClusterInfos(clusterInfos, syncCtx.pods, r.Client, reqLogger, r.MetricsClient)
 	if err1 != nil {
