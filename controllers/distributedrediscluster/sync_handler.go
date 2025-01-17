@@ -110,7 +110,6 @@ func (r *DistributedRedisClusterReconciler) waitPodReady(ctx *syncContext) error
 	}
 
 	if !ctx.isSingleAzDeployment {
-		ctx.reqLogger.Info("Not singleAz deployment", "SAZ", ctx.isSingleAzDeployment)
 		return nil
 	}
 
