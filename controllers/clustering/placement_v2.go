@@ -98,7 +98,7 @@ func (c *Ctx) DispatchMasters() error {
 				if c.proxyPodAz == "" {
 					master = c.PlaceMastersHA(stsName, zoneRankingInfo)
 				} else {
-					master, placementErr = c.PlaceMasterSingleAz(stsName, c.proxyPodAz)
+					master, placementErr = c.PlaceMasterSingleAz(stsName)
 					if placementErr != nil {
 						return placementErr
 					}
@@ -164,15 +164,15 @@ func (c *Ctx) PlaceMasters(ssName string) *redisutil.Node {
 	return nodes[0]
 }
 
-func (c *Ctx) PlaceMasterSingleAz(ssName string, proxyPodAz string) (*redisutil.Node, error) {
+func (c *Ctx) PlaceMasterSingleAz(ssName string) (*redisutil.Node, error) {
 	nodes := c.nodes[ssName]
 	for _, cNode := range nodes {
-		if cNode.Zonename != proxyPodAz {
+		if cNode.Zonename != c.proxyPodAz {
 			continue
 		}
 		return cNode, nil
 	}
-	return nil, fmt.Errorf("unable to find node in AZ %s", proxyPodAz)
+	return nil, fmt.Errorf("unable to find node in AZ %s", c.proxyPodAz)
 }
 
 func (c *Ctx) PlaceSlaves() error {
