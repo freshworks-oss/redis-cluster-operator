@@ -119,11 +119,13 @@ func (r *DistributedRedisClusterReconciler) waitPodReady(ctx *syncContext) error
 	}
 
 	for _, pod := range ctx.proxyPods {
-		if pod.Status.Phase != "Running" {
-			return Requeue.New("waiting for proxy pod to be in running state")
+		if pod.Status.Phase == "Running" {
+			return nil // Found a running proxy pod, proceed further.
 		}
 	}
-	return nil
+
+	// No running proxy pod found
+	return Requeue.New("waiting for proxy pod to be in running state")
 }
 
 func (r *DistributedRedisClusterReconciler) validateAndSetDefault(cluster *redisv1alpha1.DistributedRedisCluster, reqLogger logr.Logger) error {
