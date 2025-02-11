@@ -32,6 +32,7 @@ type RankingInfo struct {
 	BestRankedMasterBySTS    map[string]*redisutil.Node
 	//currentMasters    redisutil.Nodes
 	haconfig *redisv1alpha1.HAspec
+	ProxyAz  string
 }
 
 // This function will create a new RankingInfo object and initialize the ranking info for the nodes data
@@ -73,6 +74,7 @@ func NewRankingInfo(haconf *redisv1alpha1.HAspec, nodes map[string]redisutil.Nod
 		haconfig:                 haconf,
 		CurrentMastersbyZone:     make(map[string]redisutil.Nodes),
 		BestRankedMasterBySTS:    make(map[string]*redisutil.Node),
+		ProxyAz:                  string(""),
 	}
 	nri.InitRankingInfo(nodes)
 	for zone := range haconf.ZonesInfo {
@@ -190,6 +192,22 @@ func (c *RankingInfo) GetHAPlacedNodeinSTS(stsname string) (*redisutil.Node, err
 
 	var bestRankedNode *redisutil.Node = nil
 
+	if c.ProxyAz != "" {
+		stsNameNodes := c.replicaNodesBySTS[stsname]
+		if len(stsNameNodes) == 0 {
+			return nil, fmt.Errorf("no nodes found for the statefulset %s", stsname)
+		}
+
+		for _, node := range stsNameNodes {
+			if node.Zonename == c.ProxyAz {
+				bestRankedNode = node
+				return bestRankedNode, nil
+			}
+		}
+
+		return nil, fmt.Errorf("no nodes found in zone %s for the statefulset %s", c.ProxyAz, stsname)
+	}
+
 	var leastMastersZone = make(map[int][]string)
 	var leastNodesZone = make(map[int][]string)
 	var masterCount int = 0
@@ -275,6 +293,10 @@ func (c *RankingInfo) GetBestRankedNodeinAllZonesPerSTS(stsname string) (*redisu
 
 	var bestRankedNode *redisutil.Node = nil
 	var rankedNodes = make(map[int][]*redisutil.Node)
+
+	if c.ProxyAz != "" {
+		return c.GetHAPlacedNodeinSTS(stsname)
+	}
 
 	//If there are replica(s) in the STS,and if those replica(s) donot have master
 	// then select the best ranked node from the replicas

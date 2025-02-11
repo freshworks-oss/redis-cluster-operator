@@ -151,11 +151,18 @@ func buildHAStatus(clusterInfos *redisutil.ClusterInfos, cluster *redisv1alpha1.
 	}
 
 	for _, node := range masterNodes {
-
-		if node.ZoneDistributionRank >= clustering.HaplacedMasterRankThreshold {
-			haPlacedMasterCount++
+		if clusterInfos.ProxyPodAz == "" {
+			if node.ZoneDistributionRank >= clustering.HaplacedMasterRankThreshold {
+				haPlacedMasterCount++
+			} else {
+				misplacedMasters = append(misplacedMasters, node)
+			}
 		} else {
-			misplacedMasters = append(misplacedMasters, node)
+			if node.Zonename == clusterInfos.ProxyPodAz {
+				haPlacedMasterCount++
+			} else {
+				misplacedMasters = append(misplacedMasters, node)
+			}
 		}
 	}
 

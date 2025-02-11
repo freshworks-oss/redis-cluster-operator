@@ -70,8 +70,8 @@ DOCKER_REGISTRY=local
 BIN_DIR=bin/operator
 DEVREPO=$(REPO)
 
-BINARY_VERSION_RELEASE=v0.0.52
-BINARY_VERSION_DEV=test-metrics-fix
+BINARY_VERSION_RELEASE=v0.0.53
+BINARY_VERSION_DEV=singleAzTest15
 
 ECR_REPO=redis-cluster-operator
 ECR_DEV_REPO=redis-cluster-operator-dev

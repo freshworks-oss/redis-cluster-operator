@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	redisv1alpha1 "github.com/dinesh-murugiah/rediscluster-operator/api/v1alpha1"
@@ -136,6 +137,73 @@ func clusterPods(pods []corev1.Pod) []*corev1.Pod {
 		}
 	}
 	return podSlice
+}
+
+func proxyPods(syncContext *syncContext, r *DistributedRedisClusterReconciler, request ctrl.Request) error {
+	if syncContext.isSingleAzDeployment { //move this to new function called proxyPods
+		proxyPods, err := r.StatefulSetController.GetStatefulSetPodsByLabels(request.Namespace, getProxyLabels(request.Namespace))
+		if err != nil {
+			return err
+		}
+		syncContext.proxyPods = clusterPods(proxyPods.Items)
+	}
+	return nil
+}
+
+func checkProxyPodsInSameAz(syncContext *syncContext, r *DistributedRedisClusterReconciler) (string, error) {
+	if len(syncContext.proxyPods) == 0 {
+		return "", fmt.Errorf("proxy pods are empty")
+	}
+
+	nodectrl := k8sutil.NewNodeController(r.Client, r.MetricsClient)
+	azSet := make(map[string][]string) // map of AZ to pod names
+
+	// Collect AZs for all pods
+	for _, pod := range syncContext.proxyPods {
+		zoneNode, err := nodectrl.GetNode(pod.Spec.NodeName)
+		if err != nil {
+			return "", fmt.Errorf("unable to find node %s: %v", pod.Spec.NodeName, err)
+		}
+
+		az := nodectrl.GetZoneLabel(zoneNode)
+		if az == "unknown" {
+			return "", fmt.Errorf("waiting for AZ information for pod %s on node %s", pod.Name, pod.Spec.NodeName)
+		}
+
+		azSet[az] = append(azSet[az], pod.Name)
+	}
+
+	// If we have more than one AZ, throw an error
+	if len(azSet) > 1 {
+		return "", fmt.Errorf("proxy pods are spread across multiple availability zones, cannot proceed as this is singleAz deployment")
+	}
+
+	for az := range azSet {
+		return az, nil
+	}
+
+	return "", nil
+}
+
+func findProxyAz(r *DistributedRedisClusterReconciler, syncCtx *syncContext) (string, error) {
+	if syncCtx.isSingleAzDeployment {
+		err, az := checkProxyPodsInSameAz(syncCtx, r)
+		return err, az
+	}
+	return "", nil
+}
+
+func verifyIfSingleAzDeployment(instance *redisv1alpha1.DistributedRedisCluster) bool {
+	if instance.Spec.HaConfig.HaEnabled && instance.Spec.HaConfig.ZonesInfo != nil {
+		// Check if value exists as value "RedisMasterSingleAz" in ZonesInfo.
+		// If Yes, get the AZ information of the Proxy pods of this namespace.
+		for _, value := range instance.Spec.HaConfig.ZonesInfo {
+			if value == "RedisMasterSingleAz" {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func needClusterOperation(cluster *redisv1alpha1.DistributedRedisCluster, reqLogger logr.Logger) bool {

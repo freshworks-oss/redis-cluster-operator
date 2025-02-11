@@ -67,7 +67,6 @@ func (r *realEnsureResource) EnsureRedisPDB(cluster *redisv1alpha1.DistributedRe
 	return nil
 }
 func (r *realEnsureResource) EnsureRedisStatefulsets(cluster *redisv1alpha1.DistributedRedisCluster, labels map[string]string, update bool) (redisv1alpha1.StsEnsureStatus, error) {
-
 	var StsCreatedcount int = 0
 	var StsUpdateCount int = 0
 	var StsNoUpdateCount int = 0

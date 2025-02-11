@@ -33,14 +33,16 @@ const (
 )
 
 type syncContext struct {
-	cluster         *redisv1alpha1.DistributedRedisCluster
-	clusterInfos    *redisutil.ClusterInfos
-	admin           redisutil.IAdmin
-	healer          manager.IHeal
-	pods            []*corev1.Pod
-	reqLogger       logr.Logger
-	client          client.Client
-	configMapClient k8sutil.IConfigMapControl
+	cluster              *redisv1alpha1.DistributedRedisCluster
+	clusterInfos         *redisutil.ClusterInfos
+	admin                redisutil.IAdmin
+	healer               manager.IHeal
+	pods                 []*corev1.Pod
+	proxyPods            []*corev1.Pod
+	reqLogger            logr.Logger
+	client               client.Client
+	configMapClient      k8sutil.IConfigMapControl
+	isSingleAzDeployment bool
 }
 
 func (r *DistributedRedisClusterReconciler) ensureCluster(ctx *syncContext, update bool) (redisv1alpha1.StsEnsureStatus, error) {
@@ -107,7 +109,23 @@ func (r *DistributedRedisClusterReconciler) waitPodReady(ctx *syncContext) error
 		return Requeue.Wrap(err, "CheckRedisNodeNum")
 	}
 
-	return nil
+	if !ctx.isSingleAzDeployment {
+		return nil
+	}
+
+	// This is a single AZ deployment for Proxy and Redis Masters.
+	if len(ctx.proxyPods) == 0 {
+		return Requeue.New("waiting for proxy pod creation")
+	}
+
+	for _, pod := range ctx.proxyPods {
+		if pod.Status.Phase == "Running" {
+			return nil // Found a running proxy pod, proceed further.
+		}
+	}
+
+	// No running proxy pod found
+	return Requeue.New("waiting for proxy pod to be in running state")
 }
 
 func (r *DistributedRedisClusterReconciler) validateAndSetDefault(cluster *redisv1alpha1.DistributedRedisCluster, reqLogger logr.Logger) error {
@@ -360,6 +378,9 @@ func (r *DistributedRedisClusterReconciler) syncCluster(ctx *syncContext, contex
 	}
 	clusterCtx := clustering.NewCtx(cluster.Spec.HaConfig, rCluster, nodes, cluster.Spec.MasterSize, cluster.Spec.ClusterReplicas, cluster.Name, ctx.reqLogger)
 	//Create a New Ranking Info Every time we need to place masters
+	if ctx.clusterInfos.ProxyPodAz != "" {
+		clusterCtx.SetProxyAz(ctx.clusterInfos.ProxyPodAz)
+	}
 	if err := clusterCtx.DispatchMasters(); err != nil {
 		r.MetricsClient.ReconcileCluster(cluster.Namespace, cluster.Name, "DISPATCH_MASTER", metrics.SYNC_CLUSTER, metrics.FAIL, err.Error())
 		return Cluster.Wrap(err, "DispatchMasters")

@@ -71,6 +71,14 @@ func FlagSet() *pflag.FlagSet {
 	return controllerFlagSet
 }
 
+func getProxyLabels(namespace string) map[string]string {
+	return map[string]string{
+		"app":       "redis-proxy",
+		"service":   namespace,
+		"component": "redis-cluster",
+	}
+}
+
 // DistributedRedisClusterReconciler reconciles a DistributedRedisCluster object
 type DistributedRedisClusterReconciler struct {
 	client.Client
@@ -167,15 +175,19 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 		return reconcile.Result{}, err
 	}
 
+	isSingleAzDeployment := verifyIfSingleAzDeployment(instance)
+
 	syncCtx := &syncContext{
-		cluster:         instance,
-		reqLogger:       reqLogger,
-		client:          r.Client,
-		configMapClient: k8sutil.NewConfigMapController(r.Client, r.MetricsClient),
+		cluster:              instance,
+		reqLogger:            reqLogger,
+		client:               r.Client,
+		configMapClient:      k8sutil.NewConfigMapController(r.Client, r.MetricsClient),
+		isSingleAzDeployment: isSingleAzDeployment,
 	}
 	var STSEnsureStatus rediskunv1alpha1.StsEnsureStatus = rediskunv1alpha1.STSNotEnsured
 	var haStatus rediskunv1alpha1.HaStatus = rediskunv1alpha1.HaStatusUnknown
 	STSEnsureStatus, err = r.ensureCluster(syncCtx, updatePredicateCalled)
+
 	// Make sure to update the predicate called flag to false
 	updatePredicateCalled = false
 	if err != nil {
@@ -216,6 +228,13 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 
 	syncCtx.pods = clusterPods(redisClusterPods.Items)
 	reqLogger.V(6).Info("debug cluster pods", "", syncCtx.pods)
+
+	proxyPodErrCheck := proxyPods(syncCtx, r, request)
+	if proxyPodErrCheck != nil {
+		r.MetricsClient.ReconcileCluster(request.Namespace, request.Name, "GET_PROXY_PODS_BY_LABELS", metrics.RECONCILE, metrics.FAIL, proxyPodErrCheck.Error())
+		return reconcile.Result{}, Kubernetes.Wrap(err, "GetProxyPods")
+	}
+
 	syncCtx.healer = clustermanger.NewHealer(&heal.CheckAndHeal{
 		Logger:        reqLogger,
 		PodControl:    k8sutil.NewPodController(r.Client, r.MetricsClient),
@@ -291,6 +310,13 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 			}
 		}
 	}
+	proxyAz, err := findProxyAz(r, syncCtx)
+	if err != nil {
+		r.MetricsClient.ReconcileCluster(request.Namespace, request.Name, "FIND_PROXY_AZ", metrics.RECONCILE, metrics.FAIL, err.Error())
+		reqLogger.Error(err, "findProxyAz", "Error when finding proxy az", err)
+		return reconcile.Result{RequeueAfter: 10 * time.Second}, nil
+	}
+
 	updateErr := UpdateClusterInfos(healClusterInfo, syncCtx.pods, r.Client, reqLogger, r.MetricsClient)
 	if updateErr != nil {
 		r.MetricsClient.ReconcileCluster(request.Namespace, request.Name, "UPDATE_CLUSTER_INFO", metrics.RECONCILE, metrics.FAIL, updateErr.Error())
@@ -351,6 +377,9 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 
 	syncCtx.admin = admin
 	syncCtx.clusterInfos = clusterInfos
+	if proxyAz != "" {
+		clusterInfos.ProxyPodAz = proxyAz
+	}
 
 	err1 := UpdateClusterInfos(clusterInfos, syncCtx.pods, r.Client, reqLogger, r.MetricsClient)
 	if err1 != nil {
@@ -442,6 +471,9 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 	r.MetricsClient.ReconcileClusterGauge(request.Namespace, request.Name, "SYNC_CLUSTER", float64(0))
 
 	newClusterInfos, err := admin.GetClusterInfos(context, instance.Namespace, instance.Name)
+	if proxyAz != "" {
+		newClusterInfos.ProxyPodAz = proxyAz
+	}
 	if err != nil {
 		r.MetricsClient.ReconcileCluster(request.Namespace, request.Name, "GET_CLUSTER_INFO", metrics.RECONCILE, metrics.FAIL, err.Error())
 		reqLogger.Info("GetClusterInfos", "clusterInfos.Status", clusterInfos.Status)
@@ -533,6 +565,7 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 				r.MetricsClient.ReconcileClusterGauge(request.Namespace, request.Name, "HA_HEAL", float64(1))
 				//check if any masters needs to be failedover
 				haRanking, haStatus, displacedMasters, _ := buildHAStatus(newClusterInfos, instance, reqLogger)
+				haRanking.ProxyAz = clusterInfos.ProxyPodAz
 				if haStatus == rediskunv1alpha1.HaStatusFailed {
 					r.MetricsClient.ReconcileCluster(request.Namespace, request.Name, "BUILD_HA_STATUS", metrics.HA_HEAL, metrics.FAIL, "HaStatusFailed")
 					reqLogger.Error(fmt.Errorf("unexpected Error - HaStatusFailed"), "HaStatusFailed When trying to Distribute Masters")

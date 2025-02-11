@@ -25,6 +25,7 @@ type Ctx struct {
 	bestEffort           bool
 	haconfig             *redisv1alpha1.HAspec
 	hastatus             redisv1alpha1.HaStatus
+	proxyPodAz           string
 }
 
 func NewCtx(haconf *redisv1alpha1.HAspec, cluster *redisutil.Cluster, nodes redisutil.Nodes, masterNum int32, replicaCount int32, clusterName string, log logr.Logger) *Ctx {
@@ -38,6 +39,7 @@ func NewCtx(haconf *redisv1alpha1.HAspec, cluster *redisutil.Cluster, nodes redi
 		newMastersBySts:      make(map[string]*redisutil.Node),
 		haconfig:             haconf,
 		hastatus:             cluster.HaStatus,
+		proxyPodAz:           string(""),
 	}
 	ctx.nodes = ctx.sortRedisNodeByStatefulSet(nodes)
 	return ctx
@@ -77,6 +79,7 @@ func (c *Ctx) sortRedisNodeByStatefulSet(nodes redisutil.Nodes) map[string]redis
 }
 
 func (c *Ctx) DispatchMasters() error {
+	var placementErr error
 	zoneRankingInfo := NewRankingInfo(c.haconfig, c.nodes, int32(c.expectedMasterNum), int32(c.expectedReplicaCount), c.clusterName, c.log)
 	zoneRankingInfo.ApplyZoneRankingPerNodeDistribution()
 	for i := 0; i < c.expectedMasterNum; i++ {
@@ -92,7 +95,14 @@ func (c *Ctx) DispatchMasters() error {
 				if c.hastatus != redisv1alpha1.HaStatusCreating {
 					c.log.Info("DispatchMasters", "HA Satus Not desired when creating cluster", c.hastatus)
 				}
-				master = c.PlaceMastersHA(stsName, zoneRankingInfo)
+				if c.proxyPodAz == "" {
+					master = c.PlaceMastersHA(stsName, zoneRankingInfo)
+				} else {
+					master, placementErr = c.PlaceMasterSingleAz(stsName)
+					if placementErr != nil {
+						return placementErr
+					}
+				}
 			} else {
 				master = c.PlaceMasters(stsName)
 			}
@@ -130,6 +140,10 @@ func (c *Ctx) PlaceMastersHA(ssName string, zoneRankingInfo *RankingInfo) *redis
 
 }
 
+func (c *Ctx) SetProxyAz(proxyPodAz string) {
+	c.proxyPodAz = proxyPodAz
+}
+
 func (c *Ctx) PlaceMasters(ssName string) *redisutil.Node {
 	var allMasters redisutil.Nodes
 	allMasters = append(allMasters, c.currentMasters...)
@@ -148,6 +162,17 @@ func (c *Ctx) PlaceMasters(ssName string) *redisutil.Node {
 	c.bestEffort = true
 	c.log.Info("the pod are not spread enough on VMs to have only one master by VM", "select", nodes[0].IP)
 	return nodes[0]
+}
+
+func (c *Ctx) PlaceMasterSingleAz(ssName string) (*redisutil.Node, error) {
+	nodes := c.nodes[ssName]
+	for _, cNode := range nodes {
+		if cNode.Zonename != c.proxyPodAz {
+			continue
+		}
+		return cNode, nil
+	}
+	return nil, fmt.Errorf("unable to find node in AZ %s", c.proxyPodAz)
 }
 
 func (c *Ctx) PlaceSlaves() error {
