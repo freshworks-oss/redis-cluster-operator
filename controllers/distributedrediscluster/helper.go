@@ -160,7 +160,7 @@ func checkProxyPodsInSameAz(syncContext *syncContext, r *DistributedRedisCluster
 
 	// Collect AZs for all pods
 	for _, pod := range syncContext.proxyPods {
-		zoneNode, err := r.NodeController.GetNode(pod.Spec.NodeName)
+		zoneNode, err := nodectrl.GetNode(pod.Spec.NodeName)
 		if err != nil {
 			return "", fmt.Errorf("unable to find node %s: %v", pod.Spec.NodeName, err)
 		}
