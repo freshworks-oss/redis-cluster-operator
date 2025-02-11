@@ -150,20 +150,45 @@ func proxyPods(syncContext *syncContext, r *DistributedRedisClusterReconciler, r
 	return nil
 }
 
-func findProxyAz(r *DistributedRedisClusterReconciler, syncCtx *syncContext) (string, error) {
-	if syncCtx.isSingleAzDeployment {
-		nodectrl := k8sutil.NewNodeController(r.Client, r.MetricsClient)
-		zoneNode, err := nodectrl.GetNode(syncCtx.proxyPods[0].Spec.NodeName)
+func checkProxyPodsInSameAz(syncContext *syncContext, r *DistributedRedisClusterReconciler) (string, error) {
+	if len(syncContext.proxyPods) == 0 {
+		return "", fmt.Errorf("proxy pods are empty")
+	}
+
+	nodectrl := k8sutil.NewNodeController(r.Client, r.MetricsClient)
+	azSet := make(map[string][]string) // map of AZ to pod names
+
+	// Collect AZs for all pods
+	for _, pod := range syncContext.proxyPods {
+		zoneNode, err := r.NodeController.GetNode(pod.Spec.NodeName)
 		if err != nil {
-			return "", fmt.Errorf("unable to find node %s", syncCtx.proxyPods[0].Spec.NodeName)
+			return "", fmt.Errorf("unable to find node %s: %v", pod.Spec.NodeName, err)
 		}
 
 		az := nodectrl.GetZoneLabel(zoneNode)
 		if az == "unknown" {
-			return "", fmt.Errorf("waiting for proxy pod AZ to be available")
+			return "", fmt.Errorf("waiting for AZ information for pod %s on node %s", pod.Name, pod.Spec.NodeName)
 		}
 
+		azSet[az] = append(azSet[az], pod.Name)
+	}
+
+	// If we have more than one AZ, throw an error
+	if len(azSet) > 1 {
+		return "", fmt.Errorf("proxy pods are spread across multiple availability zones, cannot proceed as this is singleAz deployment")
+	}
+
+	for az := range azSet {
 		return az, nil
+	}
+
+	return "", nil
+}
+
+func findProxyAz(r *DistributedRedisClusterReconciler, syncCtx *syncContext) (string, error) {
+	if syncCtx.isSingleAzDeployment {
+		err, az := checkProxyPodsInSameAz(syncCtx, r)
+		return err, az
 	}
 	return "", nil
 }
