@@ -68,7 +68,7 @@ func GenerateAclcommands(log logr.Logger, client client.Client, cluster *redisv1
 		if !exists {
 			log.Info("ACL config added", "user", aclUser)
 			aclcommands[key] = fmt.Sprintf("acl setuser %s", newAclData[aclUser])
-		} else if existingVersion != newVersion {
+		} else if existingVersion != newVersion && aclUser != "admin" {
 			log.Info("ACL config updated", "user", aclUser)
 			aclcommands[key] = fmt.Sprintf("acl setuser %s", newAclData[aclUser])
 		}
