@@ -594,11 +594,38 @@ func (r *DistributedRedisClusterReconciler) checkandUpdatePods(admin redisutil.I
 		return false, err
 	}
 	ssUR, err := r.getStatefulsetUpdatedRevision(ctx)
+
+	var updateMaster, updateSlave bool = false, false
+
+	// Check update annotations
+	if val, exists := ctx.cluster.Annotations["update_master"]; exists && val == "true" {
+		updateMaster = true
+	}
+	if val, exists := ctx.cluster.Annotations["update_slave"]; exists && val == "true" {
+		updateSlave = true
+	}
+	// Handle slave updates
 	for _, slave_ip := range slave_ips {
 		ok, err = r.IsSlaveReady(slave_ip, admin, context)
 		if err != nil {
 			return false, err
 		}
+
+		if updateSlave {
+			// Add force-reschedule annotation to slave pods
+			client := k8sutil.NewPodController(r.Client, r.MetricsClient)
+			for _, pod := range ctx.pods {
+				if err := r.setRescheduleAnnotation(string(redisv1alpha1.RedisClusterNodeRoleSlave), pod, client); err != nil {
+					return false, err
+				}
+			}
+
+			// Remove the annotation from CR
+			if err := r.removeUpdateAnnotationIfExists(ctx, context, "update_slave"); err != nil {
+				return false, err
+			}
+		}
+
 		if ok {
 			updated, err = r.updatePodIfNeeded(slave_ip, ctx.pods, ssUR, ctx.reqLogger, ctx.cluster.Namespace, string(redisv1alpha1.RedisClusterNodeRoleSlave))
 			if err != nil {
@@ -624,9 +651,30 @@ func (r *DistributedRedisClusterReconciler) checkandUpdatePods(admin redisutil.I
 		ctx.reqLogger.Info("Slaves are not ready")
 		return true, err
 	}
+
+	// Handle master updates
 	if ok {
+		if updateMaster {
+			// Add force-reschedule annotation to master pods
+			client := k8sutil.NewPodController(r.Client, r.MetricsClient)
+			for _, pod := range ctx.pods {
+				if err := r.setRescheduleAnnotation(string(redisv1alpha1.RedisClusterNodeRoleMaster), pod, client); err != nil {
+					return false, err
+				}
+			}
+
+			// Remove the annotation from CR
+			if err := r.removeUpdateAnnotationIfExists(ctx, context, "update_master"); err != nil {
+				return false, err
+			}
+		}
+
+		// Update masters one by one
 		for _, master_ip := range master_ips {
 			updated, err = r.updatePodIfNeeded(master_ip, ctx.pods, ssUR, ctx.reqLogger, ctx.cluster.Namespace, string(redisv1alpha1.RedisClusterNodeRoleMaster))
+			if err != nil {
+				return false, err
+			}
 			if updated {
 				waiter := &waitStatefulSetUpdating{
 					name:                  "waitStatefulSetUpdating",
@@ -636,15 +684,15 @@ func (r *DistributedRedisClusterReconciler) checkandUpdatePods(admin redisutil.I
 					cluster:               ctx.cluster,
 				}
 				if err := waiting(waiter, ctx.reqLogger); err != nil {
-					ctx.reqLogger.Info("Im inside wait loop error")
+					ctx.reqLogger.Info("Error waiting for master update")
 					return false, err
 				}
-				ctx.reqLogger.Info("Master is updated")
-				return true, err
+				ctx.reqLogger.Info("Master is updated", "master_ip", master_ip)
+				return true, nil // Return after each master update to ensure one-by-one updates
 			}
 		}
 	}
-	return false, err
+	return false, nil
 }
 
 func (r *DistributedRedisClusterReconciler) IsSlaveReady(ip string, admin redisutil.IAdmin, ctx context.Context) (bool, error) {
@@ -673,7 +721,6 @@ func (r *DistributedRedisClusterReconciler) updatePodIfNeeded(ip string, pods []
 			re := regexp.MustCompile(pattern)
 			stsNumStr := re.FindStringSubmatch(pod.Name)
 			if len(stsNumStr) < 2 {
-				// TODO: Add error logs in all functions
 				log.Info("pattern not found or unable to extract shard number")
 				return false, fmt.Errorf("pattern not found or unable to extract shard number")
 			}
@@ -682,12 +729,23 @@ func (r *DistributedRedisClusterReconciler) updatePodIfNeeded(ip string, pods []
 				log.Info("unable to convert shard number to int")
 				return false, fmt.Errorf("unable to convert pod hash identifier to int")
 			}
+
+			// Check if force update is needed for this pod
+			forceUpdate := false
+			if pod.Annotations != nil {
+				if _, exists := pod.Annotations["force-reschedule"]; exists {
+					forceUpdate = true
+				}
+			}
+
 			pod_hash := strings.Split((pod.ObjectMeta.Labels[v1.ControllerRevisionHashLabelKey]), "-")
 			if len(pod_hash) < 3 {
 				return false, fmt.Errorf("pod hash is invalid")
 			}
 			client := k8sutil.NewPodController(r.Client, r.MetricsClient)
-			if revision_hashes[stsIdentifier] != pod_hash[len(pod_hash)-1] {
+
+			// Delete pod if hash is different or force update is requested
+			if revision_hashes[stsIdentifier] != pod_hash[len(pod_hash)-1] || forceUpdate {
 				err := client.DeletePodByName(namespace, pod.Name)
 				if err != nil {
 					return false, err
@@ -714,6 +772,28 @@ func (r *DistributedRedisClusterReconciler) setRoleLabelIfNeeded(ip string, pod 
 		}
 	}
 	return client.UpdatePodLabels(pod, redisv1alpha1.RedisRoleLabelKey, role)
+}
+
+// Function to handle pod annotation updates for specific roles
+func (r *DistributedRedisClusterReconciler) setRescheduleAnnotation(role string, pod *corev1.Pod, client k8sutil.IPodControl) error {
+	if pod.Labels["role"] == role {
+		if err := client.UpdatePodAnnotations(pod, "force-reschedule", "true"); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// Function to remove annotations from cluster resource
+func (r *DistributedRedisClusterReconciler) removeUpdateAnnotationIfExists(ctx *syncContext, context context.Context, annotationKey string) error {
+	if _, exists := ctx.cluster.Annotations[annotationKey]; exists {
+		delete(ctx.cluster.Annotations, annotationKey)
+		if err := r.Update(context, ctx.cluster); err != nil {
+			return err
+		}
+		ctx.reqLogger.Info(annotationKey + " annotation cleaned up")
+	}
+	return nil
 }
 
 func (r *DistributedRedisClusterReconciler) setPodAnnotationIfNeeded(role string, pod *corev1.Pod, client k8sutil.IPodControl) error {

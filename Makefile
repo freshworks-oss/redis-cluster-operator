@@ -70,7 +70,7 @@ DOCKER_REGISTRY=local
 BIN_DIR=bin/operator
 DEVREPO=$(REPO)
 
-BINARY_VERSION_RELEASE=v0.0.54
+BINARY_VERSION_RELEASE=v0.0.55
 BINARY_VERSION_DEV=adminsecret-bugfix
 
 ECR_REPO=redis-cluster-operator
