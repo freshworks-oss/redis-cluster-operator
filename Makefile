@@ -71,7 +71,7 @@ BIN_DIR=bin/operator
 DEVREPO=$(REPO)
 
 BINARY_VERSION_RELEASE=v0.0.55
-BINARY_VERSION_DEV=adminsecret-bugfix
+BINARY_VERSION_DEV=heal_fix
 
 ECR_REPO=redis-cluster-operator
 ECR_DEV_REPO=redis-cluster-operator-dev

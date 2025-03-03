@@ -643,6 +643,7 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 		} else {
 			reqLogger.Info("HAhealing not required", "haStatus", haStatus)
 			r.MetricsClient.SetClusterOK(instance.Namespace, instance.Name, float64(3))
+			r.MetricsClient.ReconcileClusterGauge(request.Namespace, request.Name, "HA_HEAL", float64(0))
 			if err := r.CrController.UpdateCrdAnnotations(instance, "reDistributeNode", "false"); err != nil {
 				r.MetricsClient.ReconcileClusterGauge(request.Namespace, request.Name, "HA_HEAL", float64(1))
 				r.MetricsClient.ReconcileCluster(request.Namespace, request.Name, "UPDATE_CR_ANNOTATION", metrics.HA_HEAL, metrics.FAIL, err.Error())
