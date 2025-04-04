@@ -64,6 +64,9 @@ const (
 	ALLOT_SLOTS_TO_NEW_MASTERS   = "ALLOT_SLOTS_TO_NEW_MASTERS"
 	SCALE_DOWN                   = "SCALE_DOWN"
 	CHECK_AND_UPDATE_REDIS_PODS  = "CHECK_AND_UPDATE_REDIS_PODS"
+	CLIENT_PAUSE                 = "CLIENT_PAUSE"
+	CLIENT_KILL                  = "CLIENT_KILL"
+	PUBSUB_CLIENT_KILL           = "PUBSUB_CLIENT_KILL"
 	metricsGCIntervalMinutes     = 5
 )
 

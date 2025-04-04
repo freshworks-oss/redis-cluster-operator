@@ -127,6 +127,8 @@ type IAdmin interface {
 	GetReplicationStatus(ip string, ctx context.Context, namespace string, name string) (string, ReplicationInfo, error)
 
 	GetInfoReplication(ipPort string, ctx context.Context, namespace string, name string) (ReplicationInfo, error)
+
+	DrainClientsInOldMaster(ctx context.Context, node *Node, namespace string, name string) error
 }
 
 // AdminOptions optional options for redis admin
@@ -1005,4 +1007,31 @@ func (a *Admin) GetReplicationStatus(ip string, ctx context.Context, namespace s
 	a.log.Info("Replica status NOK", "status", status)
 	return status, replInfo, fmt.Errorf("replica status NOK")
 
+}
+
+func (a *Admin) DrainClientsInOldMaster(ctx context.Context, node *Node, namespace string, name string) error {
+	c, err := a.Connections().Get(ctx, node.IPPort())
+	if err != nil {
+		return err
+	}
+
+	// Kill all normal clients
+	respNormal := c.Do(ctx, "CLIENT", "KILL", "TYPE", "NORMAL")
+	a.log.Info("Killed normal clients in the old master", "response", respNormal)
+	err = a.Connections().ValidateResp(ctx, respNormal, node.IPPort(), "unable to kill normal clients in old master")
+	utils.RecordRedisMetrics(namespace, name, metrics.CLIENT_KILL, node.IPPort(), err, a.metrics)
+	if err != nil {
+		return err
+	}
+
+	// Kill all PubSub clients
+	respPubSub := c.Do(ctx, "CLIENT", "KILL", "TYPE", "PUBSUB")
+	a.log.Info("Killed PubSub clients in the old master", "response", respPubSub)
+	err = a.Connections().ValidateResp(ctx, respPubSub, node.IPPort(), "unable to kill PubSub clients in old master")
+	utils.RecordRedisMetrics(namespace, name, metrics.PUBSUB_CLIENT_KILL, node.IPPort(), err, a.metrics)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }

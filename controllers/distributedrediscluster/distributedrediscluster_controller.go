@@ -791,11 +791,19 @@ func (r *DistributedRedisClusterReconciler) FailoverMastersbySTS(cluster *redisk
 
 	} else if failoverNode.Role == redisutil.RedisSlaveRole && failoverNode.LinkState == redisutil.RedisLinkStateConnected {
 		reqLogger.Info("Node to be promoted to master", "nodeID", failoverNode.ID, "nodeIP", failoverNode.IP, "nodeRole", failoverNode.Role, "nodeStatefulSet", failoverNode.StatefulSet, "nodeZone", failoverNode.Zonename, "nodePodName", failoverNode.PodName, "nodeNodeName", failoverNode.NodeName)
-		//promote node to master
+
+		//Promote node to master
 		err := admin.FailoverSlaveToMaster(context, failoverNode, redisutil.RedisFailoverDefault, cluster.Namespace, cluster.Name)
 		if err != nil {
 			reqLogger.Error(err, "FailoverSlaveToMaster", "Failed", err)
 			return Requeue.Wrap(err, "FailoverSlaveToMaster Failed")
+		}
+
+		// Drain clients in old master
+		err = admin.DrainClientsInOldMaster(context, displacedMaster, cluster.Namespace, cluster.Name)
+		if err != nil {
+			reqLogger.Error(err, "DrainClientsInOldMaster", "Failed", err)
+			return Requeue.Wrap(err, "DrainClientsInOldMaster Failed")
 		}
 	} else {
 		err1 := fmt.Errorf("invalid Role %s", failoverNode.Role)
