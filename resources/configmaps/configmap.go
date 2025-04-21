@@ -36,6 +36,8 @@ func NewConfigMapForCR(cluster *redisv1alpha1.DistributedRedisCluster, labels ma
 	// Fixed Nodes.conf does not update IP address of a node when IP changes after restart,
 	// see more https://github.com/antirez/redis/issues/4645.
 	fixIPContent := `#!/bin/sh
+echo "Delaying bootup for 5 seconds to honour the node timeout and seamless failover" >&2
+sleep 5
 CLUSTER_CONFIG="/data/nodes.conf"
 if [ -f ${CLUSTER_CONFIG} ]; then
     if [ -z "${POD_IP}" ]; then
