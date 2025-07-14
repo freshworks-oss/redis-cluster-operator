@@ -185,6 +185,7 @@ func NewClient(ctx context.Context, addr string, password string, cnxTimeout tim
 		Password:   password,
 		Username:   "admin",
 		ClientName: "default",
+		Protocol:   2, // Pin to RESP2 for Redis 7.2 compatibility
 	})
 	ping := client.Ping(ctx)
 	err := fmt.Errorf("unable to PING %s", addr)
@@ -301,8 +302,8 @@ func (cnx *AdminConnections) connect(ctx context.Context, addr string) (*redis.C
 	return c, err
 }
 
-// // ValidateResp check the redis resp, eventually reconnect on connection error
-// // in case of error, customize the error, log it and return it
+// ValidateResp check the redis resp, eventually reconnect on connection error
+// in case of error, customize the error, log it and return it
 func (cnx *AdminConnections) ValidateResp(ctx context.Context, resp *redis.Cmd, addr, errMessage string) error {
 	if resp == nil {
 		cnx.log.Error(fmt.Errorf("%s: unable to connect to node %s", errMessage, addr), "")
@@ -311,7 +312,7 @@ func (cnx *AdminConnections) ValidateResp(ctx context.Context, resp *redis.Cmd, 
 	if resp.Err() != nil {
 		cnx.handleError(ctx, addr, resp.Err())
 		cnx.log.Error(resp.Err(), fmt.Sprintf("%s: unexpected error on node %s", errMessage, addr))
-		err := fmt.Errorf("%s: unexpected error on node %s: %d", errMessage, addr, resp.Err())
+		err := fmt.Errorf("%s: unexpected error on node %s: %v", errMessage, addr, resp.Err())
 		return err
 	}
 	return nil
