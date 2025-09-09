@@ -21,6 +21,9 @@ func RecordK8sMetrics(namespace string, kind string, object string, operation st
 }
 
 func RecordRedisMetrics(namespace string, name string, operation string, ip string, err error, metricsRecorder metrics.Recorder) {
+	if metricsRecorder == nil {
+		return // Skip metrics recording if recorder is nil
+	}
 	if err == nil {
 		metricsRecorder.RecordRedisOperation(namespace, name, operation, ip, metrics.SUCCESS, "nil")
 	} else {
