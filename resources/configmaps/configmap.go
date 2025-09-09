@@ -49,7 +49,7 @@ if [ -f ${CLUSTER_CONFIG} ]; then
 fi
 exec "$@"`
 
-	redisConfContent := generateRedisConfContent(cluster.Spec.Config)
+	redisConfContent := generateRedisConfContent(cluster.Spec.Config, cluster.Spec.Image)
 	return &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:            RedisConfigMapName(cluster.Name),
@@ -250,14 +250,18 @@ func GenerateAclconf(conflog logr.Logger, client client.Client, cluster *redisv1
 	}
 	return buffer.String(), secretversion, nil
 }
-func generateRedisConfContent(configMap map[string]string) string {
+func generateRedisConfContent(configMap map[string]string, redisImage string) string {
 
 	var buffer bytes.Buffer
 
-	// Write the acl file
-	aclfilepath := "/acl/" + Aclfile
-	buffer.WriteString(fmt.Sprintf("%s %s", "aclfile", aclfilepath))
-	buffer.WriteString("\n")
+	// Check if Redis version supports ACL (6.0+)
+	if supportsACL(redisImage) {
+		// Write the acl file
+		aclfilepath := "/acl/" + Aclfile
+		buffer.WriteString(fmt.Sprintf("%s %s", "aclfile", aclfilepath))
+		buffer.WriteString("\n")
+	}
+
 	buffer.WriteString(fmt.Sprintf("%s %s", "dir", "/backup"))
 	buffer.WriteString("\n")
 
@@ -280,6 +284,17 @@ func generateRedisConfContent(configMap map[string]string) string {
 		buffer.WriteString("\n")
 	}
 	return buffer.String()
+}
+
+// supportsACL checks if the Redis version supports ACL (Redis 6.0+)
+func supportsACL(redisImage string) bool {
+	// Simple version detection based on image tag
+	// This is a basic implementation - in production, you might want more sophisticated version parsing
+	if strings.Contains(redisImage, ":5.") || strings.Contains(redisImage, ":4.") || strings.Contains(redisImage, ":3.") {
+		return false
+	}
+	// Default to true for Redis 6.0+ and unknown versions
+	return true
 }
 
 func RedisConfigMapName(clusterName string) string {

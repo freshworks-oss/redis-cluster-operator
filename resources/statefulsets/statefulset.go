@@ -60,18 +60,20 @@ func NewStatefulSetForCR(cluster *redisv1alpha1.DistributedRedisCluster, ssName,
 	} else {
 		password = redisPassword(cluster)
 	}
-	terminationGracePeriodSeconds := cluster.Spec.TerminationGracePeriod
-	if *cluster.Spec.TerminationGracePeriod > int64(0) {
-		terminationGracePeriodSeconds = cluster.Spec.TerminationGracePeriod
-	} else {
-		*terminationGracePeriodSeconds = int64(30) //take default if not provided
+	var terminationGracePeriodSeconds *int64
+	defaultValue := int64(30)
+	terminationGracePeriodSeconds = &defaultValue
+	if cluster.Spec.TerminationGracePeriod != nil {
+		if *cluster.Spec.TerminationGracePeriod > int64(0) {
+			terminationGracePeriodSeconds = cluster.Spec.TerminationGracePeriod
+		}
 	}
 
 	//Enable affinity and topology spread constraints only if haenabled is true
 	var affinity *corev1.Affinity
 	var topologySpreadConstraints []corev1.TopologySpreadConstraint
 	affinity = getAffinity(cluster, labels)
-	if cluster.Spec.HaConfig.HaEnabled {
+	if cluster.Spec.HaConfig != nil && cluster.Spec.HaConfig.HaEnabled {
 		topologySpreadConstraints = getTopolgyspreadConstraints(cluster, ssName)
 	}
 
@@ -169,7 +171,7 @@ func getAffinity(cluster *redisv1alpha1.DistributedRedisCluster, labels map[stri
 	var affinity *corev1.Affinity = nil
 	var nodeAffinity *corev1.NodeAffinity = nil
 	// haEnabled is true, then use pod anti-affinity is enfored on node level and the RequiredAntiAffinity and other affinity definitions are ignored
-	if cluster.Spec.HaConfig.HaEnabled {
+	if cluster.Spec.HaConfig != nil && cluster.Spec.HaConfig.HaEnabled {
 		// Check if Nodeaffinity is passed and if present, add it to Affinity
 		if cluster.Spec.Affinity != nil {
 			if cluster.Spec.Affinity.NodeAffinity != nil {
