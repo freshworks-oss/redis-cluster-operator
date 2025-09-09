@@ -39,8 +39,8 @@ func TestError_Error(t *testing.T) {
 	}
 }
 
-// TestNodeNotFoundedError tests the nodeNotFoundedError constant
-func TestNodeNotFoundedError(t *testing.T) {
+// TestNodeNotFoundError tests the nodeNotFoundedError constant
+func TestNodeNotFoundError(t *testing.T) {
 	err := nodeNotFoundedError
 	expectedMessage := "node not founded"
 
