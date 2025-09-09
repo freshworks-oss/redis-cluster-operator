@@ -625,9 +625,7 @@ func TestVolumeMounts(t *testing.T) {
 	}
 
 	assert.True(t, mountNames["redis-data"], "redis-data mount should be present")
-	assert.True(t, mountNames["redis-data"], "redis-data mount should be present for backup too")
 	assert.True(t, mountNames["redis-modules"], "redis-modules mount should be present")
-	assert.True(t, mountNames["redis-data"], "redis-data mount should be present")
 }
 
 func TestEmptyVolume(t *testing.T) {
