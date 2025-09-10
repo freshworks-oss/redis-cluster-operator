@@ -565,6 +565,10 @@ func (a *Admin) AttachNodeToCluster(ctx context.Context, addr string, namespace 
 
 // GetAllConfig get redis config by CONFIG GET *
 func (a *Admin) GetAllConfig(ctx context.Context, c *redis.Client, addr string, namespace string, name string) (map[string]string, error) {
+	if c == nil {
+		return nil, fmt.Errorf("redis client is nil")
+	}
+
 	resp := c.Do(ctx, "CONFIG", "GET", "*")
 	err := a.Connections().ValidateResp(ctx, resp, addr, "unable to retrieve config")
 	utils.RecordRedisMetrics(namespace, name, metrics.REDIS_CONFIG_GET, addr, err, a.metrics)
