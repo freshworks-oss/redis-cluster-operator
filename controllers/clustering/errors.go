@@ -44,11 +44,19 @@ func (errorType ErrorType) Wrap(err error, msg string) error {
 
 // Wrap creates a new wrapped error with formatted message
 func (errorType ErrorType) Wrapf(err error, msg string, args ...interface{}) error {
+	if err == nil {
+		// Create an error that represents wrapping nil
+		wrappedMsg := fmt.Sprintf(msg, args...) + ": <nil>"
+		return customError{errorType: errorType, originalError: errors.New(wrappedMsg)}
+	}
 	return customError{errorType: errorType, originalError: errors.Wrapf(err, msg, args...)}
 }
 
 // Error returns the mssage of a customError
 func (error customError) Error() string {
+	if error.originalError == nil {
+		return "<nil>"
+	}
 	return error.originalError.Error()
 }
 
@@ -69,11 +77,22 @@ func Wrap(err error, msg string) error {
 
 // Cause gives the original error
 func Cause(err error) error {
+	if err == nil {
+		return nil
+	}
+	if customErr, ok := err.(customError); ok {
+		return errors.Cause(customErr.originalError)
+	}
 	return errors.Cause(err)
 }
 
 // Wrapf an error with format string
 func Wrapf(err error, msg string, args ...interface{}) error {
+	if err == nil {
+		// Create an error that represents wrapping nil
+		wrappedMsg := fmt.Sprintf(msg, args...) + ": <nil>"
+		return customError{errorType: NoType, originalError: errors.New(wrappedMsg)}
+	}
 	wrappedError := errors.Wrapf(err, msg, args...)
 	if customErr, ok := err.(customError); ok {
 		return customError{
