@@ -617,18 +617,41 @@ func TestListUntrustedNodes_NilInputs(t *testing.T) {
 }
 
 func TestCheckIfPodNameExistAndIsReused_EdgeCases(t *testing.T) {
-	// Test with empty PodName
-	exist, reused := checkIfPodNameExistAndIsReused(&redisutil.Node{PodName: ""}, []*corev1.Pod{})
-	assert.False(t, exist)
-	assert.False(t, reused)
+	tests := []struct {
+		name       string
+		node       *redisutil.Node
+		pods       []*corev1.Pod
+		wantExist  bool
+		wantReused bool
+	}{
+		{
+			name:       "empty PodName",
+			node:       &redisutil.Node{PodName: ""},
+			pods:       []*corev1.Pod{},
+			wantExist:  false,
+			wantReused: false,
+		},
+		{
+			name:       "nil pod list",
+			node:       &redisutil.Node{PodName: "test-pod"},
+			pods:       nil,
+			wantExist:  false,
+			wantReused: false,
+		},
+		{
+			name:       "empty pod list",
+			node:       &redisutil.Node{PodName: "test-pod"},
+			pods:       []*corev1.Pod{},
+			wantExist:  false,
+			wantReused: false,
+		},
+	}
 
-	// Test with nil pod list
-	exist, reused = checkIfPodNameExistAndIsReused(&redisutil.Node{PodName: "test-pod"}, nil)
-	assert.False(t, exist)
-	assert.False(t, reused)
-
-	// Test with empty pod list
-	exist, reused = checkIfPodNameExistAndIsReused(&redisutil.Node{PodName: "test-pod"}, []*corev1.Pod{})
-	assert.False(t, exist)
-	assert.False(t, reused)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			exist, reused := checkIfPodNameExistAndIsReused(tt.node, tt.pods)
+			assert.Equal(t, tt.wantExist, exist)
+			assert.Equal(t, tt.wantReused, reused)
+		})
+	}
 }

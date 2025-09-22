@@ -232,7 +232,7 @@ func TestEnsureRedisPDB(t *testing.T) {
 			name:          "Create PDB when PDB enabled and not exists",
 			cluster:       createTestClusterForEnsurer("test-cluster", "test-ns"),
 			labels:        map[string]string{"app": "redis"},
-			expectedError: true, // The implementation has a bug - it returns the original "not found" error even after successful creation
+			expectedError: true, // Implementation bug: after creating the PDB when it is not found, the function still returns the original "not found" error instead of nil, because the error from the GetPodDisruptionBudget call is not cleared after successful creation.
 			mockSetup: func(mockPDB *MockPodDisruptionBudgetControl) {
 				// Mock first PDB as not found (will return error due to implementation bug)
 				mockPDB.On("GetPodDisruptionBudget", "test-ns", mock.AnythingOfType("string")).Return(
