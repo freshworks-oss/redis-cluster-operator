@@ -5,7 +5,7 @@ import (
 
 	"k8s.io/apimachinery/pkg/util/errors"
 
-	redisv1alpha1 "github.com/dinesh-murugiah/rediscluster-operator/api/v1alpha1"
+	redisv1alpha1 "github.com/freshworks/redis-cluster-operator/api/v1alpha1"
 )
 
 // FixTerminatingPods used to for the deletion of pod blocked in terminating status.

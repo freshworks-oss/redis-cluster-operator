@@ -4,8 +4,8 @@ import (
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 
-	"github.com/dinesh-murugiah/rediscluster-operator/metrics"
-	"github.com/dinesh-murugiah/rediscluster-operator/utils/k8sutil"
+	"github.com/freshworks/redis-cluster-operator/metrics"
+	"github.com/freshworks/redis-cluster-operator/utils/k8sutil"
 )
 
 type CheckAndHeal struct {

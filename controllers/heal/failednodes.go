@@ -5,8 +5,8 @@ import (
 
 	"k8s.io/apimachinery/pkg/util/errors"
 
-	redisv1alpha1 "github.com/dinesh-murugiah/rediscluster-operator/api/v1alpha1"
-	"github.com/dinesh-murugiah/rediscluster-operator/utils/redisutil"
+	redisv1alpha1 "github.com/freshworks/redis-cluster-operator/api/v1alpha1"
+	"github.com/freshworks/redis-cluster-operator/utils/redisutil"
 	"github.com/go-logr/logr"
 )
 

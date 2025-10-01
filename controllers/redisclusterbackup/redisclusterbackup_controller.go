@@ -33,11 +33,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	//rediskunv1alpha1 "github.com/dinesh-murugiah/rediscluster-operator/api/v1alpha1"
-	redisv1alpha1 "github.com/dinesh-murugiah/rediscluster-operator/api/v1alpha1"
-	"github.com/dinesh-murugiah/rediscluster-operator/metrics"
-	utils "github.com/dinesh-murugiah/rediscluster-operator/utils/commonutils"
-	"github.com/dinesh-murugiah/rediscluster-operator/utils/k8sutil"
+	//rediskunv1alpha1 "github.com/freshworks/redis-cluster-operator/api/v1alpha1"
+	redisv1alpha1 "github.com/freshworks/redis-cluster-operator/api/v1alpha1"
+	"github.com/freshworks/redis-cluster-operator/metrics"
+	utils "github.com/freshworks/redis-cluster-operator/utils/commonutils"
+	"github.com/freshworks/redis-cluster-operator/utils/k8sutil"
 	"github.com/spf13/pflag"
 )
 

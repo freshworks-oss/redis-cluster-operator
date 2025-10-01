@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dinesh-murugiah/rediscluster-operator/utils/testutil"
+	"github.com/freshworks/redis-cluster-operator/utils/testutil"
 	redis "github.com/redis/go-redis/v9"
 )
 

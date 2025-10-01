@@ -6,12 +6,12 @@ import (
 
 	"k8s.io/apimachinery/pkg/types"
 
-	"github.com/dinesh-murugiah/rediscluster-operator/metrics"
-	utils "github.com/dinesh-murugiah/rediscluster-operator/utils/commonutils"
+	"github.com/freshworks/redis-cluster-operator/metrics"
+	utils "github.com/freshworks/redis-cluster-operator/utils/commonutils"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	redisv1alpha1 "github.com/dinesh-murugiah/rediscluster-operator/api/v1alpha1"
+	redisv1alpha1 "github.com/freshworks/redis-cluster-operator/api/v1alpha1"
 )
 
 // ICustomResource defines the interface that uses to update cr status

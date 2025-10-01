@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
-	uuid "github.com/satori/go.uuid"
+	"github.com/google/uuid"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -42,7 +42,7 @@ func (g *GoRedis) StuffingData(round, n int) error {
 	for i := 0; i < round; i++ {
 		group.Go(func() error {
 			for j := 0; j < n; j++ {
-				key := uuid.NewV4().String()
+				key := uuid.New().String()
 				if err := g.client.Set(ctx, key, key, 0).Err(); err != nil {
 					return err
 				}

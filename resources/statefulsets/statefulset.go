@@ -11,11 +11,11 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
-	redisv1alpha1 "github.com/dinesh-murugiah/rediscluster-operator/api/v1alpha1"
-	config "github.com/dinesh-murugiah/rediscluster-operator/redisconfig"
+	redisv1alpha1 "github.com/freshworks/redis-cluster-operator/api/v1alpha1"
+	config "github.com/freshworks/redis-cluster-operator/redisconfig"
 
-	"github.com/dinesh-murugiah/rediscluster-operator/resources/configmaps"
-	utils "github.com/dinesh-murugiah/rediscluster-operator/utils/commonutils"
+	"github.com/freshworks/redis-cluster-operator/resources/configmaps"
+	utils "github.com/freshworks/redis-cluster-operator/utils/commonutils"
 )
 
 var log = logf.Log.WithName("resource_statefulset")
@@ -276,7 +276,7 @@ func createPersistentVolumeClaim(claimname string, labels map[string]string, siz
 		},
 		Spec: corev1.PersistentVolumeClaimSpec{
 			AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteMany},
-			Resources: corev1.ResourceRequirements{
+			Resources: corev1.VolumeResourceRequirements{
 				Requests: corev1.ResourceList{
 					corev1.ResourceStorage: size,
 				},

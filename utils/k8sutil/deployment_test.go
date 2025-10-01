@@ -11,7 +11,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	"github.com/dinesh-murugiah/rediscluster-operator/utils/testutil"
+	"github.com/freshworks/redis-cluster-operator/utils/testutil"
 )
 
 func TestNewDeploymentController(t *testing.T) {

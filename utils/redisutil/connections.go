@@ -9,7 +9,7 @@ import (
 	"os"
 	"time"
 
-	utils "github.com/dinesh-murugiah/rediscluster-operator/utils/commonutils"
+	utils "github.com/freshworks/redis-cluster-operator/utils/commonutils"
 	"github.com/go-logr/logr"
 	redis "github.com/redis/go-redis/v9"
 )

@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/dinesh-murugiah/rediscluster-operator/utils/redisutil"
+	"github.com/freshworks/redis-cluster-operator/utils/redisutil"
 )
 
 // AttachingSlavesToMaster used to attach slaves to there masters

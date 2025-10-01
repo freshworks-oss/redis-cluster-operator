@@ -9,13 +9,13 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	redisv1alpha1 "github.com/dinesh-murugiah/rediscluster-operator/api/v1alpha1"
-	"github.com/dinesh-murugiah/rediscluster-operator/metrics"
-	"github.com/dinesh-murugiah/rediscluster-operator/resources/configmaps"
-	"github.com/dinesh-murugiah/rediscluster-operator/resources/poddisruptionbudgets"
-	"github.com/dinesh-murugiah/rediscluster-operator/resources/services"
-	"github.com/dinesh-murugiah/rediscluster-operator/resources/statefulsets"
-	"github.com/dinesh-murugiah/rediscluster-operator/utils/k8sutil"
+	redisv1alpha1 "github.com/freshworks/redis-cluster-operator/api/v1alpha1"
+	"github.com/freshworks/redis-cluster-operator/metrics"
+	"github.com/freshworks/redis-cluster-operator/resources/configmaps"
+	"github.com/freshworks/redis-cluster-operator/resources/poddisruptionbudgets"
+	"github.com/freshworks/redis-cluster-operator/resources/services"
+	"github.com/freshworks/redis-cluster-operator/resources/statefulsets"
+	"github.com/freshworks/redis-cluster-operator/utils/k8sutil"
 )
 
 type IEnsureResource interface {

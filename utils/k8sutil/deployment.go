@@ -3,8 +3,8 @@ package k8sutil
 import (
 	"context"
 
-	"github.com/dinesh-murugiah/rediscluster-operator/metrics"
-	utils "github.com/dinesh-murugiah/rediscluster-operator/utils/commonutils"
+	"github.com/freshworks/redis-cluster-operator/metrics"
+	utils "github.com/freshworks/redis-cluster-operator/utils/commonutils"
 	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"

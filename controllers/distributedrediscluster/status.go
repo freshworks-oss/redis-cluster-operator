@@ -11,13 +11,13 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	redisv1alpha1 "github.com/dinesh-murugiah/rediscluster-operator/api/v1alpha1"
-	"github.com/dinesh-murugiah/rediscluster-operator/controllers/clustering"
-	"github.com/dinesh-murugiah/rediscluster-operator/metrics"
-	"github.com/dinesh-murugiah/rediscluster-operator/resources/configmaps"
-	utils "github.com/dinesh-murugiah/rediscluster-operator/utils/commonutils"
-	"github.com/dinesh-murugiah/rediscluster-operator/utils/k8sutil"
-	"github.com/dinesh-murugiah/rediscluster-operator/utils/redisutil"
+	redisv1alpha1 "github.com/freshworks/redis-cluster-operator/api/v1alpha1"
+	"github.com/freshworks/redis-cluster-operator/controllers/clustering"
+	"github.com/freshworks/redis-cluster-operator/metrics"
+	"github.com/freshworks/redis-cluster-operator/resources/configmaps"
+	utils "github.com/freshworks/redis-cluster-operator/utils/commonutils"
+	"github.com/freshworks/redis-cluster-operator/utils/k8sutil"
+	"github.com/freshworks/redis-cluster-operator/utils/redisutil"
 )
 
 func SetClusterFailed(status *redisv1alpha1.DistributedRedisClusterStatus, reason string) {

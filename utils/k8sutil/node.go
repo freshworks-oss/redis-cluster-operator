@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/dinesh-murugiah/rediscluster-operator/metrics"
-	utils "github.com/dinesh-murugiah/rediscluster-operator/utils/commonutils"
+	"github.com/freshworks/redis-cluster-operator/metrics"
+	utils "github.com/freshworks/redis-cluster-operator/utils/commonutils"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
