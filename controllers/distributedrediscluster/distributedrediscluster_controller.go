@@ -176,6 +176,7 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 	}
 
 	isSingleAzDeployment := verifyIfSingleAzDeployment(instance)
+	reqLogger.V(4).Info("HA configuration check", "isSingleAzDeployment", isSingleAzDeployment, "haConfig", instance.Spec.HaConfig != nil)
 
 	syncCtx := &syncContext{
 		cluster:              instance,

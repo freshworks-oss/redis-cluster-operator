@@ -118,7 +118,7 @@ func newRedisCluster(infos *redisutil.ClusterInfos, cluster *redisv1alpha1.Distr
 
 		//reqLogger.Info("newRedisCluster", "STS", node.StatefulSet, "NodeName", node.NodeName, "Zone", node.Zonename)
 
-		if cluster.Spec.HaConfig.HaEnabled && (node.Zonename == "" || node.Zonename == "unknown") {
+		if cluster.Spec.HaConfig != nil && cluster.Spec.HaConfig.HaEnabled && (node.Zonename == "" || node.Zonename == "unknown") {
 			err1 := fmt.Errorf("zone label not found in node %s", node.NodeName)
 			reqLogger.Error(err1, "Unable to find Zone label", "err", err1)
 			return nil, nil, err1
@@ -194,6 +194,11 @@ func findProxyAz(r *DistributedRedisClusterReconciler, syncCtx *syncContext) (st
 }
 
 func verifyIfSingleAzDeployment(instance *redisv1alpha1.DistributedRedisCluster) bool {
+	if instance.Spec.HaConfig == nil {
+		// HaConfig is not defined, which is normal for non-HA deployments
+		return false
+	}
+
 	if instance.Spec.HaConfig.HaEnabled && instance.Spec.HaConfig.ZonesInfo != nil {
 		// Check if value exists as value "RedisMasterSingleAz" in ZonesInfo.
 		// If Yes, get the AZ information of the Proxy pods of this namespace.

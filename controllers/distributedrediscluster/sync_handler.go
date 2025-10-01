@@ -102,7 +102,11 @@ func (r *DistributedRedisClusterReconciler) ensureCluster(ctx *syncContext, upda
 }
 
 func (r *DistributedRedisClusterReconciler) waitPodReady(ctx *syncContext) error {
-	if _, err := ctx.healer.FixTerminatingPods(ctx.cluster, time.Duration(*ctx.cluster.Spec.TerminationGracePeriod)); err != nil {
+	var terminationGracePeriod int64 = 30 // default value
+	if ctx.cluster.Spec.TerminationGracePeriod != nil {
+		terminationGracePeriod = *ctx.cluster.Spec.TerminationGracePeriod
+	}
+	if _, err := ctx.healer.FixTerminatingPods(ctx.cluster, time.Duration(terminationGracePeriod)); err != nil {
 		return Kubernetes.Wrap(err, "FixTerminatingPods")
 	}
 	if err := r.Checker.CheckRedisNodeNum(ctx.cluster); err != nil {
@@ -152,7 +156,7 @@ func (r *DistributedRedisClusterReconciler) validateAndSetDefault(cluster *redis
 		return err
 
 	} else {
-		if cluster.Spec.HaConfig.HaEnabled {
+		if cluster.Spec.HaConfig != nil && cluster.Spec.HaConfig.HaEnabled {
 			//limit the HA solution to 3 zones , neither lesser nor higher
 			if cluster.Spec.HaConfig.ZonesInfo == nil || (len(cluster.Spec.HaConfig.ZonesInfo) != 3) {
 				err = fmt.Errorf("haspec missing zone info or incorrect zone info")
@@ -167,10 +171,12 @@ func (r *DistributedRedisClusterReconciler) validateAndSetDefault(cluster *redis
 	}
 
 	// TODO: DR-1173 Move this to validation webhook
-	for _, container := range *cluster.Spec.Monitor {
-		if container.Image == "" || container.Prometheus == nil || (container.Prometheus.Port < 1024 || container.Prometheus.Port > 49151) {
-			err = fmt.Errorf("incorrect / required fields missing for monitor")
-			return err
+	if cluster.Spec.Monitor != nil {
+		for _, container := range *cluster.Spec.Monitor {
+			if container.Image == "" || container.Prometheus == nil || (container.Prometheus.Port < 1024 || container.Prometheus.Port > 49151) {
+				err = fmt.Errorf("incorrect / required fields missing for monitor")
+				return err
+			}
 		}
 	}
 
