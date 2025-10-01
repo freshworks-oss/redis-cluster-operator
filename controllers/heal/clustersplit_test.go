@@ -49,13 +49,13 @@ func (m *MockAdminConnections) ValidateResp(ctx context.Context, resp interface{
 
 // Tests for buildClustersLists helper function
 func Test_buildClustersLists(t *testing.T) {
-	// In the test below, we cannot directly use initialize redisutil.NodeSlice in redisutil.NodeInfos, this is a go vet issue: https://github.com/golang/go/issues/9171
+	// Initialize redisutil.Nodes variables for better test readability and reusability
 	ip1 := redisutil.Nodes{{IP: "ip1", Port: "1234"}}
 	ip2 := redisutil.Nodes{{IP: "ip2", Port: "1234"}}
 	ip56 := redisutil.Nodes{{IP: "ip5", Port: "1234"}, {IP: "ip6", Port: "1234"}}
 	ip64 := redisutil.Nodes{{IP: "ip6", Port: "1234"}, {IP: "ip4", Port: "1234"}}
 	ip54 := redisutil.Nodes{{IP: "ip5", Port: "1234"}, {IP: "ip4", Port: "1234"}}
-	// end of workaround
+
 	testCases := []struct {
 		input  *redisutil.ClusterInfos
 		output []cluster

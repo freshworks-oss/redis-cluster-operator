@@ -232,13 +232,29 @@ func TestEnsureRedisPDB(t *testing.T) {
 			name:          "Create PDB when PDB enabled and not exists",
 			cluster:       createTestClusterForEnsurer("test-cluster", "test-ns"),
 			labels:        map[string]string{"app": "redis"},
-			expectedError: true, // Implementation bug: after creating the PDB when it is not found, the function still returns the original "not found" error instead of nil, because the error from the GetPodDisruptionBudget call is not cleared after successful creation.
+			expectedError: false, // Fixed: after creating the PDB when it is not found, the function now correctly returns nil on successful creation
 			mockSetup: func(mockPDB *MockPodDisruptionBudgetControl) {
-				// Mock first PDB as not found (will return error due to implementation bug)
+				// Mock all 3 PDBs as not found, then successfully created
+				for i := 0; i < 3; i++ {
+					mockPDB.On("GetPodDisruptionBudget", "test-ns", mock.AnythingOfType("string")).Return(
+						(*policyv1.PodDisruptionBudget)(nil),
+						errors.NewNotFound(schema.GroupResource{Resource: "poddisruptionbudget"}, "test-name")).Once()
+					mockPDB.On("CreatePodDisruptionBudget", mock.AnythingOfType("*v1.PodDisruptionBudget")).Return(nil).Once()
+				}
+			},
+		},
+		{
+			name:          "Error when PDB creation fails",
+			cluster:       createTestClusterForEnsurer("test-cluster", "test-ns"),
+			labels:        map[string]string{"app": "redis"},
+			expectedError: true,
+			mockSetup: func(mockPDB *MockPodDisruptionBudgetControl) {
+				// Mock PDB as not found, then creation fails
 				mockPDB.On("GetPodDisruptionBudget", "test-ns", mock.AnythingOfType("string")).Return(
 					(*policyv1.PodDisruptionBudget)(nil),
 					errors.NewNotFound(schema.GroupResource{Resource: "poddisruptionbudget"}, "test-name")).Once()
-				mockPDB.On("CreatePodDisruptionBudget", mock.AnythingOfType("*v1.PodDisruptionBudget")).Return(nil).Once()
+				mockPDB.On("CreatePodDisruptionBudget", mock.AnythingOfType("*v1.PodDisruptionBudget")).Return(
+					fmt.Errorf("failed to create PDB")).Once()
 			},
 		},
 		{

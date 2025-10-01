@@ -9,12 +9,12 @@ import (
 // TestEventConstants tests the event constant values
 func TestEventConstants(t *testing.T) {
 	t.Run("BackupError constant", func(t *testing.T) {
-		assert.Equal(t, "BakcupError", BackupError)
+		assert.Equal(t, "BackupError", BackupError)
 		assert.NotEmpty(t, BackupError)
 	})
 
 	t.Run("BackupFailed constant", func(t *testing.T) {
-		assert.Equal(t, "BakcupFailed", BackupFailed)
+		assert.Equal(t, "BackupFailed", BackupFailed)
 		assert.NotEmpty(t, BackupFailed)
 	})
 
@@ -67,20 +67,14 @@ func TestEventConstantsNotEmpty(t *testing.T) {
 	}
 }
 
-// TestEventConstantsTypos checks for common typos in constant values
-func TestEventConstantsTypos(t *testing.T) {
-	t.Run("Check for typos in BackupError", func(t *testing.T) {
-		// Note: The constant has a typo "BakcupError" instead of "BackupError"
-		// This test documents the current state - if this is intentional, keep as is
-		// If it's a typo that should be fixed, update the constant in event.go
-		assert.Equal(t, "BakcupError", BackupError, "BackupError constant value")
+// TestEventConstantsSpelling checks that constant values have correct spelling
+func TestEventConstantsSpelling(t *testing.T) {
+	t.Run("Check BackupError spelling", func(t *testing.T) {
+		assert.Equal(t, "BackupError", BackupError, "BackupError constant should have correct spelling")
 	})
 
-	t.Run("Check for typos in BackupFailed", func(t *testing.T) {
-		// Note: The constant has a typo "BakcupFailed" instead of "BackupFailed"
-		// This test documents the current state - if this is intentional, keep as is
-		// If it's a typo that should be fixed, update the constant in event.go
-		assert.Equal(t, "BakcupFailed", BackupFailed, "BackupFailed constant value")
+	t.Run("Check BackupFailed spelling", func(t *testing.T) {
+		assert.Equal(t, "BackupFailed", BackupFailed, "BackupFailed constant should have correct spelling")
 	})
 }
 
