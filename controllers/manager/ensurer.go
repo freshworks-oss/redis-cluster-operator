@@ -225,8 +225,7 @@ func (r *realEnsureResource) ensureRedisPDB(cluster *redisv1alpha1.DistributedRe
 		r.logger.WithValues("PDB.Namespace", cluster.Namespace, "PDB.Name", name).
 			Info("creating a new PodDisruptionBudget")
 		pdb := poddisruptionbudgets.NewPodDisruptionBudgetForCR(cluster, name, labels)
-		_ = r.pdbClient.CreatePodDisruptionBudget(pdb)
-		return err
+		return r.pdbClient.CreatePodDisruptionBudget(pdb)
 	}
 	return err
 }

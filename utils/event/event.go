@@ -1,8 +1,8 @@
 package event
 
 const (
-	BackupError      string = "BakcupError"
-	BackupFailed     string = "BakcupFailed"
+	BackupError      string = "BackupError"
+	BackupFailed     string = "BackupFailed"
 	Starting         string = "Starting"
 	Successful       string = "Successful"
 	BackupSuccessful string = "SuccessfulBackup"
