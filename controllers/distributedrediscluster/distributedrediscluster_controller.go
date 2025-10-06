@@ -284,17 +284,17 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 	if err != nil {
 		r.MetricsClient.ReconcileCluster(request.Namespace, request.Name, "CHECK_UPDATE_PASSWORD", metrics.RECONCILE, metrics.FAIL, err.Error())
 		reqLogger.WithValues("err", err).Info("error checking / updating password")
-		SetSecretStatus(newsecretStatus, rediskunv1alpha1.SecretStatusACLUpdateError)
+		SetSecretStatus(newsecretStatus, string(rediskunv1alpha1.SecretStatusACLUpdateError))
 	}
 	if secretver != nil {
-		SetSecretStatus(newsecretStatus, rediskunv1alpha1.SecretStatusACLUpdateSuccess)
+		SetSecretStatus(newsecretStatus, string(rediskunv1alpha1.SecretStatusACLUpdateSuccess))
 		newsecretStatus.SecretsVer = make(map[string]string)
 		for key, value := range secretver {
 			newsecretStatus.SecretsVer[key] = value
 		}
 	} else {
 		if err == nil {
-			SetSecretStatus(newsecretStatus, rediskunv1alpha1.SecretStatusACLIntact)
+			SetSecretStatus(newsecretStatus, string(rediskunv1alpha1.SecretStatusACLIntact))
 		}
 	}
 	r.updateClusterIfNeed(instance, newsecretStatus, reqLogger)

@@ -50,7 +50,7 @@ func SetClusterUpdating(status *redisv1alpha1.DistributedRedisClusterStatus, rea
 	status.Reason = reason
 }
 
-func SetSecretStatus(status *redisv1alpha1.DistributedRedisClusterStatus, secretstate redisv1alpha1.SecretStatus) {
+func SetSecretStatus(status *redisv1alpha1.DistributedRedisClusterStatus, secretstate string) {
 	status.SecretStatus = secretstate
 }
 
@@ -394,10 +394,10 @@ func UpdateSecretsStatus(instance *redisv1alpha1.DistributedRedisCluster, newSta
 	if instance.Status.SecretStatus == "" {
 		secretVersions, err := configmaps.Getsecretversions(reqLogger, client, instance)
 		if err != nil {
-			SetSecretStatus(newStatus, redisv1alpha1.SecretStatusACLConfError)
+			SetSecretStatus(newStatus, string(redisv1alpha1.SecretStatusACLConfError))
 			return err
 		} else {
-			SetSecretStatus(newStatus, redisv1alpha1.SecretStatusACLConfDone)
+			SetSecretStatus(newStatus, string(redisv1alpha1.SecretStatusACLConfDone))
 			newStatus.SecretsVer = make(map[string]string)
 			for key, value := range secretVersions {
 				newStatus.SecretsVer[key] = value
