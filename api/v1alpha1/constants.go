@@ -105,6 +105,22 @@ const (
 	AclStatusUpdated AclStatus = "AclConfUpdated"
 )
 
+// SecretStatus represents the status of ACL secret configuration
+type SecretStatus string
+
+const (
+	// SecretStatusACLIntact indicates ACL configuration is unchanged
+	SecretStatusACLIntact SecretStatus = "ACLintact"
+	// SecretStatusACLUpdateSuccess indicates ACL configuration was successfully updated
+	SecretStatusACLUpdateSuccess SecretStatus = "ACLupdateSuccess"
+	// SecretStatusACLUpdateError indicates ACL configuration update failed
+	SecretStatusACLUpdateError SecretStatus = "ACLupdateERR"
+	// SecretStatusACLConfDone indicates ACL configuration is complete
+	SecretStatusACLConfDone SecretStatus = "aclconfdone"
+	// SecretStatusACLConfError indicates ACL configuration encountered an error
+	SecretStatusACLConfError SecretStatus = "aclconferror"
+)
+
 // NodesPlacementInfo Redis Nodes placement mode information
 type NodesPlacementInfo string
 

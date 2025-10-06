@@ -149,7 +149,7 @@ type DistributedRedisClusterStatus struct {
 	// Important: Run "make" to regenerate code after modifying this file
 	Status               ClusterStatus      `json:"status"`
 	HAStatus             HaStatus           `json:"haStatus"`
-	SecretStatus         string             `json:"secretstatus"`
+	SecretStatus         SecretStatus       `json:"secretstatus"`
 	SecretsVer           map[string]string  `json:"secretverisons"`
 	Reason               string             `json:"reason,omitempty"`
 	NumberOfMaster       int32              `json:"numberOfMaster,omitempty"`

@@ -127,7 +127,7 @@ func TestSetClusterResetPassword(t *testing.T) {
 
 func TestSetSecretStatus(t *testing.T) {
 	status := &redisv1alpha1.DistributedRedisClusterStatus{}
-	secretState := "ACLupdateSuccess"
+	secretState := redisv1alpha1.SecretStatusACLUpdateSuccess
 
 	SetSecretStatus(status, secretState)
 
@@ -329,12 +329,12 @@ func TestCompareStatus(t *testing.T) {
 			name: "Different secret status",
 			old: func() *redisv1alpha1.DistributedRedisClusterStatus {
 				status := testutil.CreateTestStatus(redisv1alpha1.ClusterStatusOK, "All good", 3, 1, 1)
-				status.SecretStatus = "ACLintact"
+				status.SecretStatus = redisv1alpha1.SecretStatusACLIntact
 				return status
 			}(),
 			new: func() *redisv1alpha1.DistributedRedisClusterStatus {
 				status := testutil.CreateTestStatus(redisv1alpha1.ClusterStatusOK, "All good", 3, 1, 1)
-				status.SecretStatus = "ACLupdateSuccess"
+				status.SecretStatus = redisv1alpha1.SecretStatusACLUpdateSuccess
 				return status
 			}(),
 			expected: true,
@@ -555,7 +555,7 @@ func TestUpdateSecretsStatus(t *testing.T) {
 	tests := []struct {
 		name           string
 		instance       *redisv1alpha1.DistributedRedisCluster
-		expectedStatus string
+		expectedStatus redisv1alpha1.SecretStatus
 		expectedError  bool
 		createSecret   bool
 	}{
@@ -568,7 +568,7 @@ func TestUpdateSecretsStatus(t *testing.T) {
 				cluster.Spec.AdminSecret = &corev1.LocalObjectReference{Name: "admin-secret"}
 				return cluster
 			}(),
-			expectedStatus: "aclconfdone",
+			expectedStatus: redisv1alpha1.SecretStatusACLConfDone,
 			expectedError:  false,
 			createSecret:   true,
 		},
@@ -576,11 +576,11 @@ func TestUpdateSecretsStatus(t *testing.T) {
 			name: "Existing secret status - no change",
 			instance: func() *redisv1alpha1.DistributedRedisCluster {
 				cluster := testutil.CreateTestCluster("test-cluster", "test-ns")
-				cluster.Status.SecretStatus = "ACLintact"
+				cluster.Status.SecretStatus = redisv1alpha1.SecretStatusACLIntact
 				cluster.Spec.AdminSecret = &corev1.LocalObjectReference{Name: "admin-secret"}
 				return cluster
 			}(),
-			expectedStatus: "ACLintact",
+			expectedStatus: redisv1alpha1.SecretStatusACLIntact,
 			expectedError:  false,
 			createSecret:   true,
 		},

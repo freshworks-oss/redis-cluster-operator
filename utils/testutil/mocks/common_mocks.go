@@ -11,7 +11,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
@@ -28,21 +27,6 @@ func (m *MockExecer) ExecCommandInPodSet(podSet []*corev1.Pod, cmd ...string) er
 func (m *MockExecer) ExecCommand(ctx context.Context, podName, namespace, container string, command []string) (string, string, error) {
 	args := m.Called(ctx, podName, namespace, container, command)
 	return args.String(0), args.String(1), args.Error(2)
-}
-
-// MockObject provides a generic mock for Kubernetes objects
-type MockObject struct {
-	mock.Mock
-}
-
-func (m *MockObject) GetObjectKind() runtime.Object {
-	args := m.Called()
-	return args.Get(0).(runtime.Object)
-}
-
-func (m *MockObject) DeepCopyObject() runtime.Object {
-	args := m.Called()
-	return args.Get(0).(runtime.Object)
 }
 
 // MockBuilder provides a unified mock for building test scenarios

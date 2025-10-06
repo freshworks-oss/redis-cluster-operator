@@ -170,7 +170,7 @@ func CreateTestStatus(status redisv1alpha1.ClusterStatus, reason string, masters
 		MinReplicationFactor: minRep,
 		MaxReplicationFactor: maxRep,
 		HAStatus:             redisv1alpha1.HaStatusHealthy,
-		SecretStatus:         "ACLintact",
+		SecretStatus:         redisv1alpha1.SecretStatusACLIntact,
 		SecretsVer:           map[string]string{"secret1": "v1"},
 	}
 }
