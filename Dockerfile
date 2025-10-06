@@ -6,7 +6,7 @@ ARG TARGETOS
 ARG TARGETARCH
 
 ARG PROJECT_NAME=rediscluster-operator
-ARG REPO_PATH=github.com/dinesh-murugiah/$PROJECT_NAME
+ARG REPO_PATH=github.com/freshworks/$PROJECT_NAME
 ARG BUILD_PATH=${REPO_PATH}
 
 # Build version and commit should be passed in when performing docker build

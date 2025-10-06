@@ -17,10 +17,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	rediskunv1alpha1 "github.com/dinesh-murugiah/rediscluster-operator/api/v1alpha1"
-	"github.com/dinesh-murugiah/rediscluster-operator/metrics"
-	"github.com/dinesh-murugiah/rediscluster-operator/utils/testutil"
-	"github.com/dinesh-murugiah/rediscluster-operator/utils/testutil/mocks"
+	rediskunv1alpha1 "github.com/freshworks/redis-cluster-operator/api/v1alpha1"
+	"github.com/freshworks/redis-cluster-operator/metrics"
+	"github.com/freshworks/redis-cluster-operator/utils/testutil"
+	"github.com/freshworks/redis-cluster-operator/utils/testutil/mocks"
 )
 
 // MockMetricsRecorder is defined in sync_handler_test.go to avoid duplication

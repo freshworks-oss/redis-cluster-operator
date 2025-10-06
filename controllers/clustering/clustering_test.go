@@ -9,15 +9,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 
-<<<<<<< HEAD
-	rediskunv1alpha1 "github.com/dinesh-murugiah/rediscluster-operator/api/v1alpha1"
-	"github.com/dinesh-murugiah/rediscluster-operator/utils/redisutil"
-	"github.com/dinesh-murugiah/rediscluster-operator/utils/testutil/mocks"
-=======
 	rediskunv1alpha1 "github.com/freshworks/redis-cluster-operator/api/v1alpha1"
 	"github.com/freshworks/redis-cluster-operator/utils/redisutil"
-	"github.com/redis/go-redis/v9"
->>>>>>> 0750c73 (Upstep changes and changing base import to opensource repo)
+	"github.com/freshworks/redis-cluster-operator/utils/testutil/mocks"
 )
 
 // Use consolidated mocks from testutil package

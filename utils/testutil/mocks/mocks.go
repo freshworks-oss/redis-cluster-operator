@@ -10,7 +10,7 @@
 //
 // Usage:
 //
-//	import "github.com/dinesh-murugiah/rediscluster-operator/utils/testutil/mocks"
+//	import "github.com/freshworks/redis-cluster-operator/utils/testutil/mocks"
 //
 //	mockSts := &mocks.MockStatefulSetController{}
 //	mockRedis := &mocks.MockRedisAdmin{}
