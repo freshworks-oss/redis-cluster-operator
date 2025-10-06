@@ -176,6 +176,7 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 	}
 
 	isSingleAzDeployment := verifyIfSingleAzDeployment(instance)
+	reqLogger.V(4).Info("HA configuration check", "isSingleAzDeployment", isSingleAzDeployment, "haConfig", instance.Spec.HaConfig != nil)
 
 	syncCtx := &syncContext{
 		cluster:              instance,
@@ -283,17 +284,17 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 	if err != nil {
 		r.MetricsClient.ReconcileCluster(request.Namespace, request.Name, "CHECK_UPDATE_PASSWORD", metrics.RECONCILE, metrics.FAIL, err.Error())
 		reqLogger.WithValues("err", err).Info("error checking / updating password")
-		SetSecretStatus(newsecretStatus, "ACLupdateERR")
+		SetSecretStatus(newsecretStatus, string(rediskunv1alpha1.SecretStatusACLUpdateError))
 	}
 	if secretver != nil {
-		SetSecretStatus(newsecretStatus, "ACLupdateSuccess")
+		SetSecretStatus(newsecretStatus, string(rediskunv1alpha1.SecretStatusACLUpdateSuccess))
 		newsecretStatus.SecretsVer = make(map[string]string)
 		for key, value := range secretver {
 			newsecretStatus.SecretsVer[key] = value
 		}
 	} else {
 		if err == nil {
-			SetSecretStatus(newsecretStatus, "ACLintact")
+			SetSecretStatus(newsecretStatus, string(rediskunv1alpha1.SecretStatusACLIntact))
 		}
 	}
 	r.updateClusterIfNeed(instance, newsecretStatus, reqLogger)
@@ -493,7 +494,7 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 		_, haStatus, _, _ = buildHAStatus(newClusterInfos, instance, reqLogger)
 		SetHAStatus(newStatus, haStatus)
 	}
-	clusterHealthOk := CheackandUpdateClusterHealth(newStatus, newClusterInfos, instance, reqLogger)
+	clusterHealthOk := CheckAndUpdateClusterHealth(newStatus, newClusterInfos, instance, reqLogger)
 	r.updateClusterIfNeed(instance, newStatus, reqLogger)
 	// This part of code is very un optimally called , First need to optimise checkandUpdatePods, the above
 	// buildClusterStatus has to be called only once , that data needs to be used for calling both checkandUpdatePods and updateLabels

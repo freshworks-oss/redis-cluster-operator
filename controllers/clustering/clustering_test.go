@@ -11,183 +11,13 @@ import (
 
 	rediskunv1alpha1 "github.com/dinesh-murugiah/rediscluster-operator/api/v1alpha1"
 	"github.com/dinesh-murugiah/rediscluster-operator/utils/redisutil"
-	"github.com/redis/go-redis/v9"
+	"github.com/dinesh-murugiah/rediscluster-operator/utils/testutil/mocks"
 )
 
-// Mock implementations
-type MockAdmin struct {
-	mock.Mock
-}
+// Use consolidated mocks from testutil package
+type MockAdmin = mocks.MockRedisAdmin
 
-func (m *MockAdmin) Connections() redisutil.IAdminConnections {
-	args := m.Called()
-	return args.Get(0).(redisutil.IAdminConnections)
-}
-
-func (m *MockAdmin) GetHashMaxSlot() redisutil.Slot {
-	args := m.Called()
-	return redisutil.Slot(args.Int(0))
-}
-
-func (m *MockAdmin) AddSlots(ctx context.Context, addr string, slots []redisutil.Slot) error {
-	args := m.Called(ctx, addr, slots)
-	return args.Error(0)
-}
-
-func (m *MockAdmin) SetSlots(ctx context.Context, addr, state string, slots []redisutil.Slot, nodeID string, namespace, name string) error {
-	args := m.Called(ctx, addr, state, slots, nodeID, namespace, name)
-	return args.Error(0)
-}
-
-func (m *MockAdmin) MigrateKeys(ctx context.Context, addr string, dest *redisutil.Node, slots []redisutil.Slot, batch int, timeout int, replace bool, namespace, name string) (int, error) {
-	args := m.Called(ctx, addr, dest, slots, batch, timeout, replace, namespace, name)
-	return args.Int(0), args.Error(1)
-}
-
-func (m *MockAdmin) ForgetNode(ctx context.Context, nodeID, namespace, name string) error {
-	args := m.Called(ctx, nodeID, namespace, name)
-	return args.Error(0)
-}
-
-func (m *MockAdmin) FailoverSlaveToMaster(ctx context.Context, slave *redisutil.Node, takeoverType redisutil.RedisFailover, namespace, name string) error {
-	args := m.Called(ctx, slave, takeoverType, namespace, name)
-	return args.Error(0)
-}
-
-func (m *MockAdmin) AttachNodeToCluster(ctx context.Context, addr, namespace, name string) error {
-	args := m.Called(ctx, addr, namespace, name)
-	return args.Error(0)
-}
-
-func (m *MockAdmin) FlushAndReset(ctx context.Context, addr string, resetType string, namespace, name string) error {
-	args := m.Called(ctx, addr, resetType, namespace, name)
-	return args.Error(0)
-}
-
-func (m *MockAdmin) AttachSlaveToMaster(ctx context.Context, slave *redisutil.Node, masterID string, namespace, name string) error {
-	args := m.Called(ctx, slave, masterID, namespace, name)
-	return args.Error(0)
-}
-
-func (m *MockAdmin) Close(ctx context.Context) {
-	m.Called(ctx)
-}
-
-func (m *MockAdmin) GetClusterInfos(ctx context.Context, namespace, name string) (*redisutil.ClusterInfos, error) {
-	args := m.Called(ctx, namespace, name)
-	return args.Get(0).(*redisutil.ClusterInfos), args.Error(1)
-}
-
-func (m *MockAdmin) ClusterManagerNodeIsEmpty(ctx context.Context, namespace, name string) (bool, error) {
-	args := m.Called(ctx, namespace, name)
-	return args.Bool(0), args.Error(1)
-}
-
-func (m *MockAdmin) SetConfigEpoch(ctx context.Context, namespace, name string) error {
-	args := m.Called(ctx, namespace, name)
-	return args.Error(0)
-}
-
-func (m *MockAdmin) SetConfigIfNeed(ctx context.Context, newConfig map[string]string, namespace, name string) error {
-	args := m.Called(ctx, newConfig, namespace, name)
-	return args.Error(0)
-}
-
-func (m *MockAdmin) GetAllConfig(ctx context.Context, c *redis.Client, addr, namespace, name string) (map[string]string, error) {
-	args := m.Called(ctx, c, addr, namespace, name)
-	return args.Get(0).(map[string]string), args.Error(1)
-}
-
-func (m *MockAdmin) DetachSlave(ctx context.Context, slave *redisutil.Node, namespace, name string) error {
-	args := m.Called(ctx, slave, namespace, name)
-	return args.Error(0)
-}
-
-func (m *MockAdmin) SetSlot(ctx context.Context, addr, action string, slot redisutil.Slot, nodeID, namespace, name string) error {
-	args := m.Called(ctx, addr, action, slot, nodeID, namespace, name)
-	return args.Error(0)
-}
-
-func (m *MockAdmin) MigrateKeysInSlot(ctx context.Context, addr string, dest *redisutil.Node, slot redisutil.Slot, batch, timeout int, replace bool, namespace, name string) (int, error) {
-	args := m.Called(ctx, addr, dest, slot, batch, timeout, replace, namespace, name)
-	return args.Int(0), args.Error(1)
-}
-
-func (m *MockAdmin) ResetPassword(ctx context.Context, newPassword, namespace, name string) error {
-	args := m.Called(ctx, newPassword, namespace, name)
-	return args.Error(0)
-}
-
-func (m *MockAdmin) GetReplicationStatus(ip string, ctx context.Context, namespace, name string) (string, redisutil.ReplicationInfo, error) {
-	args := m.Called(ip, ctx, namespace, name)
-	return args.String(0), args.Get(1).(redisutil.ReplicationInfo), args.Error(2)
-}
-
-func (m *MockAdmin) GetInfoReplication(ipPort string, ctx context.Context, namespace, name string) (redisutil.ReplicationInfo, error) {
-	args := m.Called(ipPort, ctx, namespace, name)
-	return args.Get(0).(redisutil.ReplicationInfo), args.Error(1)
-}
-
-func (m *MockAdmin) DrainClientsInOldMaster(ctx context.Context, node *redisutil.Node, namespace, name string) error {
-	args := m.Called(ctx, node, namespace, name)
-	return args.Error(0)
-}
-
-type MockAdminConnections struct {
-	mock.Mock
-}
-
-func (m *MockAdminConnections) Add(ctx context.Context, addr string) error {
-	args := m.Called(ctx, addr)
-	return args.Error(0)
-}
-
-func (m *MockAdminConnections) Remove(ctx context.Context, addr string) {
-	m.Called(ctx, addr)
-}
-
-func (m *MockAdminConnections) Get(ctx context.Context, addr string) (*redis.Client, error) {
-	args := m.Called(ctx, addr)
-	return args.Get(0).(*redis.Client), args.Error(1)
-}
-
-func (m *MockAdminConnections) GetRandom() (*redis.Client, error) {
-	args := m.Called()
-	return args.Get(0).(*redis.Client), args.Error(1)
-}
-
-func (m *MockAdminConnections) GetDifferentFrom(addr string) (*redis.Client, error) {
-	args := m.Called(addr)
-	return args.Get(0).(*redis.Client), args.Error(1)
-}
-
-func (m *MockAdminConnections) GetAll() map[string]*redis.Client {
-	args := m.Called()
-	return args.Get(0).(map[string]*redis.Client)
-}
-
-func (m *MockAdminConnections) GetSelected(addrs []string) map[string]*redis.Client {
-	args := m.Called(addrs)
-	return args.Get(0).(map[string]*redis.Client)
-}
-
-func (m *MockAdminConnections) Reconnect(ctx context.Context, addr string) error {
-	args := m.Called(ctx, addr)
-	return args.Error(0)
-}
-
-func (m *MockAdminConnections) AddAll(ctx context.Context, addrs []string) {
-	m.Called(ctx, addrs)
-}
-
-func (m *MockAdminConnections) ReplaceAll(ctx context.Context, addrs []string) {
-	m.Called(ctx, addrs)
-}
-
-func (m *MockAdminConnections) ValidateResp(ctx context.Context, resp *redis.Cmd, addr, errMessage string) error {
-	args := m.Called(ctx, resp, addr, errMessage)
-	return args.Error(0)
-}
+type MockAdminConnections = mocks.MockAdminConnections
 
 // Helper function to create test nodes
 func createTestNodes() redisutil.Nodes {
@@ -355,24 +185,24 @@ func TestDispatchMasters(t *testing.T) {
 			} else {
 				assert.NoError(t, err, "Should not return error")
 				assert.Len(t, newMasters, tt.expectedMasters, "Should have correct number of new masters")
-				
+
 				// Verify cluster status and placement
 				assert.Equal(t, tt.expectedStatus, tt.cluster.Status, "Cluster status should be set correctly")
 				assert.Equal(t, tt.expectedPlacement, tt.cluster.NodesPlacement, "Nodes placement should be set correctly")
-				
+
 				// Verify sorting - newMasters should be sorted by ID
 				if len(newMasters) > 1 {
 					for i := 1; i < len(newMasters); i++ {
 						assert.True(t, newMasters[i-1].ID < newMasters[i].ID, "New masters should be sorted by ID")
 					}
 				}
-				
+
 				// Verify currentMasters contains only masters with slots
 				for _, master := range currentMasters {
 					assert.True(t, master.TotalSlots() > 0, "Current masters should have slots")
 					assert.Equal(t, rediskunv1alpha1.RedisClusterNodeRoleMaster, master.GetRole(), "Should be master role")
 				}
-				
+
 				// Verify allMasters contains all master nodes
 				expectedAllMasters := tt.nodes.FilterByFunc(func(node *redisutil.Node) bool {
 					return node.GetRole() == rediskunv1alpha1.RedisClusterNodeRoleMaster
@@ -832,10 +662,10 @@ func TestCtx_sortRedisNodeByStatefulSet(t *testing.T) {
 
 func TestCtx_retrieveSlotToMigrateFrom(t *testing.T) {
 	tests := []struct {
-		name              string
-		oldMasterNodes    redisutil.Nodes
-		nbSlotByNode      int
-		expectedSlots     map[string]int // NodeID -> expected number of slots to migrate
+		name           string
+		oldMasterNodes redisutil.Nodes
+		nbSlotByNode   int
+		expectedSlots  map[string]int // NodeID -> expected number of slots to migrate
 	}{
 		{
 			name: "Normal case - nodes with excess slots",
@@ -866,7 +696,7 @@ func TestCtx_retrieveSlotToMigrateFrom(t *testing.T) {
 					return node
 				}(),
 			},
-			nbSlotByNode: 100,
+			nbSlotByNode:  100,
 			expectedSlots: map[string]int{}, // No slots to migrate
 		},
 		{
@@ -878,7 +708,7 @@ func TestCtx_retrieveSlotToMigrateFrom(t *testing.T) {
 					return node
 				}(),
 			},
-			nbSlotByNode: 100,
+			nbSlotByNode:  100,
 			expectedSlots: map[string]int{}, // No slots to migrate
 		},
 		{
@@ -907,10 +737,10 @@ func TestCtx_retrieveSlotToMigrateFrom(t *testing.T) {
 			},
 		},
 		{
-			name: "Empty nodes list",
+			name:           "Empty nodes list",
 			oldMasterNodes: redisutil.Nodes{},
-			nbSlotByNode: 100,
-			expectedSlots: map[string]int{}, // No slots to migrate
+			nbSlotByNode:   100,
+			expectedSlots:  map[string]int{}, // No slots to migrate
 		},
 		{
 			name: "Single slot excess",
@@ -944,7 +774,7 @@ func TestCtx_retrieveSlotToMigrateFrom(t *testing.T) {
 				slots, exists := result[nodeID]
 				assert.True(t, exists, "Node %s should have slots to migrate", nodeID)
 				assert.Len(t, slots, expectedCount, "Node %s should have %d slots to migrate", nodeID, expectedCount)
-				
+
 				// Verify slots are unique and in order
 				if len(slots) > 1 {
 					for i := 1; i < len(slots); i++ {
@@ -1235,7 +1065,13 @@ func TestCtx_DispatchSlotToNewMasters(t *testing.T) {
 			expectedError:  true,
 			setupMocks: func(admin *MockAdmin) {
 				admin.On("GetHashMaxSlot").Return(16383)
+				// AddSlots will be called for new masters and should fail
 				admin.On("AddSlots", mock.Anything, mock.Anything, mock.Anything).Return(fmt.Errorf("addslots failed"))
+				// SetSlots and MigrateKeys will be called for slot migration between existing masters
+				admin.On("SetSlots", mock.Anything, mock.Anything, "IMPORTING", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
+				admin.On("SetSlots", mock.Anything, mock.Anything, "MIGRATING", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
+				admin.On("MigrateKeys", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(0, nil)
+				admin.On("SetSlots", mock.Anything, mock.Anything, "NODE", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 			},
 		},
 		{
