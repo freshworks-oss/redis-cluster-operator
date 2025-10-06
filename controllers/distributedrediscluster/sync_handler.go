@@ -106,7 +106,7 @@ func (r *DistributedRedisClusterReconciler) waitPodReady(ctx *syncContext) error
 	if ctx.cluster.Spec.TerminationGracePeriod != nil {
 		terminationGracePeriod = *ctx.cluster.Spec.TerminationGracePeriod
 	}
-	if _, err := ctx.healer.FixTerminatingPods(ctx.cluster, time.Duration(terminationGracePeriod)); err != nil {
+	if _, err := ctx.healer.FixTerminatingPods(ctx.cluster, time.Duration(terminationGracePeriod)*time.Second); err != nil {
 		return Kubernetes.Wrap(err, "FixTerminatingPods")
 	}
 	if err := r.Checker.CheckRedisNodeNum(ctx.cluster); err != nil {

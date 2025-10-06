@@ -188,8 +188,16 @@ func CreateReadyPod(name, namespace, ip, nodeName string) *corev1.Pod {
 }
 
 // ParseQuantity is a helper to parse resource quantities for tests
-func ParseQuantity(value string) resource.Quantity {
-	q, _ := resource.ParseQuantity(value)
+func ParseQuantity(value string) (resource.Quantity, error) {
+	return resource.ParseQuantity(value)
+}
+
+// MustParseQuantity is a helper that panics on invalid input - use in tests where input is known to be valid
+func MustParseQuantity(value string) resource.Quantity {
+	q, err := resource.ParseQuantity(value)
+	if err != nil {
+		panic(fmt.Sprintf("invalid quantity %q: %v", value, err))
+	}
 	return q
 }
 

@@ -18,6 +18,7 @@ import (
 	redisv1alpha1 "github.com/dinesh-murugiah/rediscluster-operator/api/v1alpha1"
 	"github.com/dinesh-murugiah/rediscluster-operator/metrics"
 	"github.com/dinesh-murugiah/rediscluster-operator/utils/testutil"
+	"github.com/dinesh-murugiah/rediscluster-operator/utils/testutil/mocks"
 )
 
 // Simple tests for sync handler functions that don't require complex mocking
@@ -74,8 +75,8 @@ func TestDbLoadedFromDiskWhenRestoreSync(t *testing.T) {
 }
 
 func TestValidateAndSetDefaultSync(t *testing.T) {
-	mockPvcController := &testutil.MockPvcController{}
-	mockCrController := &testutil.MockCrController{}
+	mockPvcController := &mocks.MockPvcController{}
+	mockCrController := &mocks.MockCustomResourceController{}
 
 	reconciler := &DistributedRedisClusterReconciler{
 		PvcController: mockPvcController,
@@ -170,9 +171,9 @@ func TestValidateAndSetDefaultSync(t *testing.T) {
 
 		// Mock PVC not found, then successful creation
 		notFoundErr := errors.NewNotFound(schema.GroupResource{Group: "", Resource: "persistentvolumeclaims"}, "redis-conf")
-		mockPvcController.On("GetPvc", cluster.Namespace, "redis-conf").Return(nil, notFoundErr)
+		mockPvcController.On("GetPvc", cluster.Namespace, "redis-conf").Return((*corev1.PersistentVolumeClaim)(nil), notFoundErr)
 		mockPvcController.On("CreatePvc", mock.AnythingOfType("*v1.PersistentVolumeClaim")).Return(nil)
-		mockPvcController.On("GetPvc", cluster.Namespace, "redis-backup").Return(nil, notFoundErr)
+		mockPvcController.On("GetPvc", cluster.Namespace, "redis-backup").Return((*corev1.PersistentVolumeClaim)(nil), notFoundErr)
 		mockPvcController.On("CreatePvc", mock.AnythingOfType("*v1.PersistentVolumeClaim")).Return(nil)
 		// Note: UpdateCR is not called during PVC creation, only if defaults need to be set
 
@@ -209,10 +210,10 @@ func TestEnsureClusterSync(t *testing.T) {
 	}
 	fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cluster).Build()
 
-	mockEnsurer := &testutil.MockEnsurer{}
+	mockEnsurer := &mocks.MockEnsurer{}
 	mockMetrics := &MockMetricsRecorder{}
-	mockPvcController := &testutil.MockPvcController{}
-	mockCrController := &testutil.MockCrController{}
+	mockPvcController := &mocks.MockPvcController{}
+	mockCrController := &mocks.MockCustomResourceController{}
 
 	reconciler := &DistributedRedisClusterReconciler{
 		Client:        fakeClient,
@@ -496,7 +497,7 @@ func TestSetRoleLabelIfNeeded(t *testing.T) {
 		}
 		pod.Labels[redisv1alpha1.RedisRoleLabelKey] = "master" // Use the constant
 
-		mockPodController := &testutil.MockPodController{}
+		mockPodController := &mocks.MockPodController{}
 		// Should not call UpdatePodLabels since label already exists
 
 		err := reconciler.setRoleLabelIfNeeded("192.168.1.1", pod, "master", "default", mockPodController)
@@ -510,7 +511,7 @@ func TestSetRoleLabelIfNeeded(t *testing.T) {
 		pod := testutil.TestPod("test-pod", "default")
 		// Pod has no role label
 
-		mockPodController := &testutil.MockPodController{}
+		mockPodController := &mocks.MockPodController{}
 		mockPodController.On("UpdatePodLabels", pod, redisv1alpha1.RedisRoleLabelKey, "master").Return(nil)
 
 		err := reconciler.setRoleLabelIfNeeded("192.168.1.1", pod, "master", "default", mockPodController)
@@ -523,7 +524,7 @@ func TestSetRoleLabelIfNeeded(t *testing.T) {
 
 		pod := testutil.TestPod("test-pod", "default")
 
-		mockPodController := &testutil.MockPodController{}
+		mockPodController := &mocks.MockPodController{}
 		mockPodController.On("UpdatePodLabels", pod, redisv1alpha1.RedisRoleLabelKey, "master").Return(assert.AnError)
 
 		err := reconciler.setRoleLabelIfNeeded("192.168.1.1", pod, "master", "default", mockPodController)
@@ -543,7 +544,7 @@ func TestSetRescheduleAnnotation(t *testing.T) {
 		}
 		pod.Labels["role"] = "master"
 
-		mockPodController := &testutil.MockPodController{}
+		mockPodController := &mocks.MockPodController{}
 		mockPodController.On("UpdatePodAnnotations", pod, "force-reschedule", "true").Return(nil)
 
 		err := reconciler.setRescheduleAnnotation("master", pod, mockPodController)
@@ -560,7 +561,7 @@ func TestSetRescheduleAnnotation(t *testing.T) {
 		}
 		pod.Labels["role"] = "slave" // Different role
 
-		mockPodController := &testutil.MockPodController{}
+		mockPodController := &mocks.MockPodController{}
 		// Should not call UpdatePodAnnotations
 
 		err := reconciler.setRescheduleAnnotation("master", pod, mockPodController)
@@ -577,7 +578,7 @@ func TestSetRescheduleAnnotation(t *testing.T) {
 		}
 		pod.Labels["role"] = "master"
 
-		mockPodController := &testutil.MockPodController{}
+		mockPodController := &mocks.MockPodController{}
 		mockPodController.On("UpdatePodAnnotations", pod, "force-reschedule", "true").Return(assert.AnError)
 
 		err := reconciler.setRescheduleAnnotation("master", pod, mockPodController)
@@ -593,7 +594,7 @@ func TestSetPodAnnotationIfNeeded(t *testing.T) {
 
 		pod := testutil.TestPod("test-pod", "default")
 
-		mockPodController := &testutil.MockPodController{}
+		mockPodController := &mocks.MockPodController{}
 		mockPodController.On("UpdatePodAnnotations", pod, redisv1alpha1.PodEvictAnnotation, "false").Return(nil)
 
 		err := reconciler.setPodAnnotationIfNeeded(string(redisv1alpha1.RedisClusterNodeRoleMaster), pod, mockPodController)
@@ -606,7 +607,7 @@ func TestSetPodAnnotationIfNeeded(t *testing.T) {
 
 		pod := testutil.TestPod("test-pod", "default")
 
-		mockPodController := &testutil.MockPodController{}
+		mockPodController := &mocks.MockPodController{}
 		mockPodController.On("UpdatePodAnnotations", pod, redisv1alpha1.PodEvictAnnotation, "true").Return(nil)
 
 		err := reconciler.setPodAnnotationIfNeeded(string(redisv1alpha1.RedisClusterNodeRoleSlave), pod, mockPodController)
@@ -619,7 +620,7 @@ func TestSetPodAnnotationIfNeeded(t *testing.T) {
 
 		pod := testutil.TestPod("test-pod", "default")
 
-		mockPodController := &testutil.MockPodController{}
+		mockPodController := &mocks.MockPodController{}
 		// Should not call UpdatePodAnnotations for invalid role
 
 		err := reconciler.setPodAnnotationIfNeeded("invalid-role", pod, mockPodController)
@@ -653,5 +654,92 @@ func TestRemoveUpdateAnnotationIfExists(t *testing.T) {
 	t.Run("Attempts to remove annotation when it exists", func(t *testing.T) {
 		// Skip this test as it requires complex client mocking
 		t.Skip("Function requires client.Update() which is complex to mock in unit tests")
+	})
+}
+
+// Test waitPodReady function with TerminationGracePeriod (verifies time.Duration conversion fix)
+func TestWaitPodReadyTerminationGracePeriod(t *testing.T) {
+	logger := logr.Discard()
+
+	t.Run("Uses default 30 seconds when TerminationGracePeriod is nil", func(t *testing.T) {
+		cluster := testutil.CreateTestCluster("drc-test", "default")
+		cluster.Spec.TerminationGracePeriod = nil // Explicitly nil
+
+		ctx := &syncContext{
+			cluster:   cluster,
+			reqLogger: logger,
+		}
+
+		mockHealer := &mocks.MockHealer{}
+		ctx.healer = mockHealer
+
+		mockChecker := &mocks.MockChecker{}
+
+		reconciler := &DistributedRedisClusterReconciler{
+			Checker: mockChecker,
+		}
+
+		// Expect FixTerminatingPods to be called with 30 seconds (30 * time.Second)
+		mockHealer.On("FixTerminatingPods", cluster, 30*time.Second).Return(false, nil)
+		mockChecker.On("CheckRedisNodeNum", cluster).Return(nil)
+
+		err := reconciler.waitPodReady(ctx)
+		assert.NoError(t, err)
+		mockHealer.AssertExpectations(t)
+		mockChecker.AssertExpectations(t)
+	})
+
+	t.Run("Uses custom TerminationGracePeriod value correctly converted to seconds", func(t *testing.T) {
+		cluster := testutil.CreateTestCluster("drc-test", "default")
+		customGracePeriod := int64(60) // 60 seconds
+		cluster.Spec.TerminationGracePeriod = &customGracePeriod
+
+		ctx := &syncContext{
+			cluster:   cluster,
+			reqLogger: logger,
+		}
+
+		mockHealer := &mocks.MockHealer{}
+		ctx.healer = mockHealer
+
+		mockChecker := &mocks.MockChecker{}
+
+		reconciler := &DistributedRedisClusterReconciler{
+			Checker: mockChecker,
+		}
+
+		// Expect FixTerminatingPods to be called with 60 seconds (60 * time.Second)
+		// This verifies the fix: time.Duration(terminationGracePeriod)*time.Second
+		mockHealer.On("FixTerminatingPods", cluster, 60*time.Second).Return(false, nil)
+		mockChecker.On("CheckRedisNodeNum", cluster).Return(nil)
+
+		err := reconciler.waitPodReady(ctx)
+		assert.NoError(t, err)
+		mockHealer.AssertExpectations(t)
+		mockChecker.AssertExpectations(t)
+	})
+
+	t.Run("Handles FixTerminatingPods error correctly", func(t *testing.T) {
+		cluster := testutil.CreateTestCluster("drc-test", "default")
+		customGracePeriod := int64(45)
+		cluster.Spec.TerminationGracePeriod = &customGracePeriod
+
+		ctx := &syncContext{
+			cluster:   cluster,
+			reqLogger: logger,
+		}
+
+		mockHealer := &mocks.MockHealer{}
+		ctx.healer = mockHealer
+
+		reconciler := &DistributedRedisClusterReconciler{}
+
+		// Expect FixTerminatingPods to return an error
+		mockHealer.On("FixTerminatingPods", cluster, 45*time.Second).Return(false, assert.AnError)
+
+		err := reconciler.waitPodReady(ctx)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "FixTerminatingPods")
+		mockHealer.AssertExpectations(t)
 	})
 }

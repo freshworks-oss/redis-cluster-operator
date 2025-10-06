@@ -14,6 +14,7 @@ import (
 	redisv1alpha1 "github.com/dinesh-murugiah/rediscluster-operator/api/v1alpha1"
 	"github.com/dinesh-murugiah/rediscluster-operator/utils/redisutil"
 	"github.com/dinesh-murugiah/rediscluster-operator/utils/testutil"
+	"github.com/dinesh-murugiah/rediscluster-operator/utils/testutil/mocks"
 )
 
 // Local helper functions to avoid circular imports
@@ -142,7 +143,7 @@ func TestSetHAStatus(t *testing.T) {
 	assert.Equal(t, haState, status.HAStatus)
 }
 
-func TestCheackandUpdateClusterHealth(t *testing.T) {
+func TestCheckAndUpdateClusterHealth(t *testing.T) {
 	tests := []struct {
 		name           string
 		clusterStatus  *redisv1alpha1.DistributedRedisClusterStatus
@@ -193,7 +194,7 @@ func TestCheackandUpdateClusterHealth(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := CheackandUpdateClusterHealth(tt.clusterStatus, tt.clusterInfos, tt.cluster, testutil.NewTestLogger())
+			result := CheckAndUpdateClusterHealth(tt.clusterStatus, tt.clusterInfos, tt.cluster, testutil.NewTestLogger())
 
 			assert.Equal(t, tt.expectedHealth, result)
 			assert.Equal(t, tt.expectedStatus, tt.clusterStatus.Status)
@@ -652,7 +653,7 @@ func TestUpdateClusterIfNeed(t *testing.T) {
 			Reason: "Scaling in progress",
 		}
 
-		mockCrController := &testutil.MockCrController{}
+		mockCrController := &mocks.MockCustomResourceController{}
 		mockCrController.On("UpdateCRStatus", cluster).Return(nil)
 
 		reconciler := &DistributedRedisClusterReconciler{

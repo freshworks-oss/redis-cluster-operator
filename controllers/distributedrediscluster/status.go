@@ -63,7 +63,7 @@ func SetClusterResetPassword(status *redisv1alpha1.DistributedRedisClusterStatus
 	status.Reason = reason
 }
 
-func CheackandUpdateClusterHealth(clusterStatus *redisv1alpha1.DistributedRedisClusterStatus, clusterInfos *redisutil.ClusterInfos, cluster *redisv1alpha1.DistributedRedisCluster, reqLogger logr.Logger) bool {
+func CheckAndUpdateClusterHealth(clusterStatus *redisv1alpha1.DistributedRedisClusterStatus, clusterInfos *redisutil.ClusterInfos, cluster *redisv1alpha1.DistributedRedisCluster, reqLogger logr.Logger) bool {
 
 	var failreason []string
 	var foundReason bool = false

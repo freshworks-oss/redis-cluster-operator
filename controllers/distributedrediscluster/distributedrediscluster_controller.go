@@ -494,7 +494,7 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 		_, haStatus, _, _ = buildHAStatus(newClusterInfos, instance, reqLogger)
 		SetHAStatus(newStatus, haStatus)
 	}
-	clusterHealthOk := CheackandUpdateClusterHealth(newStatus, newClusterInfos, instance, reqLogger)
+	clusterHealthOk := CheckAndUpdateClusterHealth(newStatus, newClusterInfos, instance, reqLogger)
 	r.updateClusterIfNeed(instance, newStatus, reqLogger)
 	// This part of code is very un optimally called , First need to optimise checkandUpdatePods, the above
 	// buildClusterStatus has to be called only once , that data needs to be used for calling both checkandUpdatePods and updateLabels

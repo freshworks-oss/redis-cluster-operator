@@ -7,6 +7,7 @@ import (
 	"github.com/go-logr/logr"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -19,79 +20,8 @@ import (
 	rediskunv1alpha1 "github.com/dinesh-murugiah/rediscluster-operator/api/v1alpha1"
 	"github.com/dinesh-murugiah/rediscluster-operator/metrics"
 	"github.com/dinesh-murugiah/rediscluster-operator/utils/testutil"
+	"github.com/dinesh-murugiah/rediscluster-operator/utils/testutil/mocks"
 )
-
-// Mock implementations for testing
-type MockEnsurer struct {
-	mock.Mock
-}
-
-func (m *MockEnsurer) EnsureRedisStatefulsets(cluster *rediskunv1alpha1.DistributedRedisCluster, labels map[string]string, update bool) (rediskunv1alpha1.StsEnsureStatus, error) {
-	args := m.Called(cluster, labels, update)
-	return args.Get(0).(rediskunv1alpha1.StsEnsureStatus), args.Error(1)
-}
-
-func (m *MockEnsurer) EnsureRedisPDB(cluster *rediskunv1alpha1.DistributedRedisCluster, labels map[string]string) error {
-	args := m.Called(cluster, labels)
-	return args.Error(0)
-}
-
-func (m *MockEnsurer) EnsureClusterShardsHeadLessSvcs(cluster *rediskunv1alpha1.DistributedRedisCluster, labels map[string]string) error {
-	args := m.Called(cluster, labels)
-	return args.Error(0)
-}
-
-func (m *MockEnsurer) EnsureClusterHeadLessSvc(cluster *rediskunv1alpha1.DistributedRedisCluster, labels map[string]string) error {
-	args := m.Called(cluster, labels)
-	return args.Error(0)
-}
-
-func (m *MockEnsurer) EnsureRedisConfigMap(cluster *rediskunv1alpha1.DistributedRedisCluster, labels map[string]string) error {
-	args := m.Called(cluster, labels)
-	return args.Error(0)
-}
-
-func (m *MockEnsurer) EnsureRedisRCloneSecret(cluster *rediskunv1alpha1.DistributedRedisCluster, labels map[string]string) error {
-	args := m.Called(cluster, labels)
-	return args.Error(0)
-}
-
-func (m *MockEnsurer) UpdateRedisStatefulsets(cluster *rediskunv1alpha1.DistributedRedisCluster, labels map[string]string) error {
-	args := m.Called(cluster, labels)
-	return args.Error(0)
-}
-
-type MockChecker struct {
-	mock.Mock
-}
-
-func (m *MockChecker) CheckRedisNodeNum(cluster *rediskunv1alpha1.DistributedRedisCluster) error {
-	args := m.Called(cluster)
-	return args.Error(0)
-}
-
-func (m *MockChecker) CheckPasswordChanged(cluster *rediskunv1alpha1.DistributedRedisCluster) (bool, map[string]string, map[string]string, error) {
-	args := m.Called(cluster)
-	return args.Bool(0), args.Get(1).(map[string]string), args.Get(2).(map[string]string), args.Error(3)
-}
-
-type MockExec struct {
-	mock.Mock
-}
-
-func (m *MockExec) ExecCommand(ctx context.Context, podName, namespace, container string, command []string) (string, string, error) {
-	args := m.Called(ctx, podName, namespace, container, command)
-	return args.String(0), args.String(1), args.Error(2)
-}
-
-type MockHealer struct {
-	mock.Mock
-}
-
-func (m *MockHealer) Heal(cluster *rediskunv1alpha1.DistributedRedisCluster, infos interface{}, admin interface{}, ctx context.Context) (bool, bool, error) {
-	args := m.Called(cluster, infos, admin, ctx)
-	return args.Bool(0), args.Bool(1), args.Error(2)
-}
 
 // MockMetricsRecorder is defined in sync_handler_test.go to avoid duplication
 
@@ -222,7 +152,7 @@ func TestDistributedRedisClusterReconciler_isScalingDown(t *testing.T) {
 	cluster := testutil.CreateTestCluster("drc-test", "default")
 
 	// Create mock StatefulSet controller
-	mockStsController := &testutil.MockStatefulSetController{}
+	mockStsController := &mocks.MockStatefulSetController{}
 
 	// Create reconciler with mock
 	reconciler := &DistributedRedisClusterReconciler{
@@ -259,7 +189,7 @@ func TestDistributedRedisClusterReconciler_isScalingDown(t *testing.T) {
 	t.Run("Returns false when error occurs", func(t *testing.T) {
 		mockStsController.ExpectedCalls = nil // Reset mock
 		mockStsController.On("ListStatefulSetByLabels", cluster.Namespace, mock.AnythingOfType("map[string]string")).Return(
-			nil, assert.AnError)
+			&appsv1.StatefulSetList{}, assert.AnError)
 
 		result := reconciler.isScalingDown(cluster, logger)
 		assert.False(t, result)

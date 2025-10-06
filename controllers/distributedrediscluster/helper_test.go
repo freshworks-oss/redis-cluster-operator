@@ -8,6 +8,7 @@ import (
 	"github.com/go-logr/logr"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -20,6 +21,7 @@ import (
 	config "github.com/dinesh-murugiah/rediscluster-operator/redisconfig"
 	"github.com/dinesh-murugiah/rediscluster-operator/utils/redisutil"
 	"github.com/dinesh-murugiah/rediscluster-operator/utils/testutil"
+	"github.com/dinesh-murugiah/rediscluster-operator/utils/testutil/mocks"
 )
 
 // Local helper functions to avoid circular imports
@@ -431,8 +433,8 @@ func TestProxyPodsAdditional(t *testing.T) {
 			isSingleAzDeployment: true, // Single AZ deployment
 		}
 
-		mockStsController := &testutil.MockStatefulSetController{}
-		mockStsController.On("GetStatefulSetPodsByLabels", cluster.Namespace, mock.AnythingOfType("map[string]string")).Return(nil, assert.AnError)
+		mockStsController := &mocks.MockStatefulSetController{}
+		mockStsController.On("GetStatefulSetPodsByLabels", cluster.Namespace, mock.AnythingOfType("map[string]string")).Return(&corev1.PodList{}, assert.AnError)
 
 		reconciler := &DistributedRedisClusterReconciler{
 			StatefulSetController: mockStsController,
@@ -463,7 +465,7 @@ func TestProxyPodsAdditional(t *testing.T) {
 			Items: []corev1.Pod{*pod1, *pod2},
 		}
 
-		mockStsController := &testutil.MockStatefulSetController{}
+		mockStsController := &mocks.MockStatefulSetController{}
 		mockStsController.On("GetStatefulSetPodsByLabels", cluster.Namespace, mock.AnythingOfType("map[string]string")).Return(pods, nil)
 
 		reconciler := &DistributedRedisClusterReconciler{
@@ -525,8 +527,8 @@ func TestWaitPodTerminatingInterfaceMethods(t *testing.T) {
 	})
 
 	t.Run("Handler returns error when StatefulSetController fails", func(t *testing.T) {
-		mockStsController := &testutil.MockStatefulSetController{}
-		mockStsController.On("GetStatefulSetPodsByLabels", cluster.Namespace, mock.AnythingOfType("map[string]string")).Return(nil, assert.AnError)
+		mockStsController := &mocks.MockStatefulSetController{}
+		mockStsController.On("GetStatefulSetPodsByLabels", cluster.Namespace, mock.AnythingOfType("map[string]string")).Return(&corev1.PodList{}, assert.AnError)
 
 		waitPod.statefulSetController = mockStsController
 
@@ -560,8 +562,8 @@ func TestWaitStatefulSetUpdatingInterfaceMethods(t *testing.T) {
 	})
 
 	t.Run("Handler returns error when StatefulSetController fails", func(t *testing.T) {
-		mockStsController := &testutil.MockStatefulSetController{}
-		mockStsController.On("ListStatefulSetByLabels", cluster.Namespace, mock.AnythingOfType("map[string]string")).Return(nil, assert.AnError)
+		mockStsController := &mocks.MockStatefulSetController{}
+		mockStsController.On("ListStatefulSetByLabels", cluster.Namespace, mock.AnythingOfType("map[string]string")).Return(&appsv1.StatefulSetList{}, assert.AnError)
 
 		waitSts.statefulSetController = mockStsController
 
