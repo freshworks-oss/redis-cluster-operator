@@ -3,7 +3,7 @@ package clustering
 import (
 	"fmt"
 
-	"github.com/dinesh-murugiah/rediscluster-operator/utils/redisutil"
+	"github.com/freshworks/redis-cluster-operator/utils/redisutil"
 )
 
 const unknownVMName = "unknown" // <-- I hope nobody will ever name a VM "unknown" because this will impact the algorythm inside that package. Maybe you should generate a mangled name or amore complex name here to reduce probability.

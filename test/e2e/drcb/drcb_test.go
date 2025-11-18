@@ -4,10 +4,10 @@ import (
 	"os"
 	"time"
 
-	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/dinesh-murugiah/rediscluster-operator/test/e2e"
+	"github.com/freshworks/redis-cluster-operator/test/e2e"
 )
 
 var (

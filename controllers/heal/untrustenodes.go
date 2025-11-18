@@ -6,8 +6,8 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/errors"
 
-	redisv1alpha1 "github.com/dinesh-murugiah/rediscluster-operator/api/v1alpha1"
-	"github.com/dinesh-murugiah/rediscluster-operator/utils/redisutil"
+	redisv1alpha1 "github.com/freshworks/redis-cluster-operator/api/v1alpha1"
+	"github.com/freshworks/redis-cluster-operator/utils/redisutil"
 )
 
 // FixUntrustedNodes used to remove Nodes that are not trusted by other nodes. It can append when a node

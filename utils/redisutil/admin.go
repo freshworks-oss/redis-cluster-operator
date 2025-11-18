@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dinesh-murugiah/rediscluster-operator/metrics"
-	utils "github.com/dinesh-murugiah/rediscluster-operator/utils/commonutils"
+	"github.com/freshworks/redis-cluster-operator/metrics"
+	utils "github.com/freshworks/redis-cluster-operator/utils/commonutils"
 	"github.com/go-logr/logr"
 	"github.com/redis/go-redis/v9"
 )

@@ -3,7 +3,7 @@
 find ./ -type f -exec awk '
     BEGIN { 
         old_str="github.com/ucloud"
-        new_str="github.com/dinesh-murugiah"
+        new_str="github.com/freshworks"
     }
     { 
         while (match($0, old_str)) {

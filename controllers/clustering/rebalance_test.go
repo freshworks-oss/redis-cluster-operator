@@ -3,7 +3,7 @@ package clustering
 import (
 	"testing"
 
-	"github.com/dinesh-murugiah/rediscluster-operator/utils/redisutil"
+	"github.com/freshworks/redis-cluster-operator/utils/redisutil"
 )
 
 func Test_computeReshardTable(t *testing.T) {

@@ -3,7 +3,7 @@ package mocks
 import (
 	"context"
 
-	"github.com/dinesh-murugiah/rediscluster-operator/utils/redisutil"
+	"github.com/freshworks/redis-cluster-operator/utils/redisutil"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/mock"
 )

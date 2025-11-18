@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 
-	redisv1alpha1 "github.com/dinesh-murugiah/rediscluster-operator/api/v1alpha1"
-	"github.com/dinesh-murugiah/rediscluster-operator/controllers/clustering"
-	"github.com/dinesh-murugiah/rediscluster-operator/utils/redisutil"
+	redisv1alpha1 "github.com/freshworks/redis-cluster-operator/api/v1alpha1"
+	"github.com/freshworks/redis-cluster-operator/controllers/clustering"
+	"github.com/freshworks/redis-cluster-operator/utils/redisutil"
 )
 
 func (c *CheckAndHeal) CheckandRecoverCluster(cluster *redisv1alpha1.DistributedRedisCluster, infos *redisutil.ClusterInfos, admin redisutil.IAdmin, context context.Context) (bool, bool, error) {

@@ -15,10 +15,10 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	redisv1alpha1 "github.com/dinesh-murugiah/rediscluster-operator/api/v1alpha1"
-	"github.com/dinesh-murugiah/rediscluster-operator/metrics"
-	"github.com/dinesh-murugiah/rediscluster-operator/utils/testutil"
-	"github.com/dinesh-murugiah/rediscluster-operator/utils/testutil/mocks"
+	redisv1alpha1 "github.com/freshworks/redis-cluster-operator/api/v1alpha1"
+	"github.com/freshworks/redis-cluster-operator/metrics"
+	"github.com/freshworks/redis-cluster-operator/utils/testutil"
+	"github.com/freshworks/redis-cluster-operator/utils/testutil/mocks"
 )
 
 // Simple tests for sync handler functions that don't require complex mocking

@@ -39,7 +39,7 @@ func (errorType ErrorType) Newf(msg string, args ...interface{}) error {
 
 // Wrap creates a new wrapped error
 func (errorType ErrorType) Wrap(err error, msg string) error {
-	return errorType.Wrapf(err, msg)
+	return errorType.Wrapf(err, "%s", msg)
 }
 
 // Wrap creates a new wrapped error with formatted message
@@ -72,7 +72,7 @@ func Newf(msg string, args ...interface{}) error {
 
 // Wrap an error with a string
 func Wrap(err error, msg string) error {
-	return Wrapf(err, msg)
+	return Wrapf(err, "%s", msg)
 }
 
 // Cause gives the original error

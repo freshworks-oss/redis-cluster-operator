@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"math"
 
-	utils "github.com/dinesh-murugiah/rediscluster-operator/utils/commonutils"
-	"github.com/dinesh-murugiah/rediscluster-operator/utils/redisutil"
+	utils "github.com/freshworks/redis-cluster-operator/utils/commonutils"
+	"github.com/freshworks/redis-cluster-operator/utils/redisutil"
 )
 
 // RebalancedCluster rebalanced a redis cluster.

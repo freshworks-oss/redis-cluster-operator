@@ -2,7 +2,7 @@
 package utils
 
 import (
-	"github.com/dinesh-murugiah/rediscluster-operator/metrics"
+	"github.com/freshworks/redis-cluster-operator/metrics"
 	"k8s.io/apimachinery/pkg/api/errors"
 )
 

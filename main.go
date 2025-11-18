@@ -39,16 +39,16 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
-	rediskunv1alpha1 "github.com/dinesh-murugiah/rediscluster-operator/api/v1alpha1"
-	"github.com/dinesh-murugiah/rediscluster-operator/controllers/distributedrediscluster"
-	clustermanger "github.com/dinesh-murugiah/rediscluster-operator/controllers/manager"
-	"github.com/dinesh-murugiah/rediscluster-operator/controllers/redisclusterbackup"
-	"github.com/dinesh-murugiah/rediscluster-operator/metrics"
-	config2 "github.com/dinesh-murugiah/rediscluster-operator/redisconfig"
-	utils "github.com/dinesh-murugiah/rediscluster-operator/utils/commonutils"
-	"github.com/dinesh-murugiah/rediscluster-operator/utils/exec"
-	"github.com/dinesh-murugiah/rediscluster-operator/utils/k8sutil"
-	"github.com/dinesh-murugiah/rediscluster-operator/version"
+	rediskunv1alpha1 "github.com/freshworks/redis-cluster-operator/api/v1alpha1"
+	"github.com/freshworks/redis-cluster-operator/controllers/distributedrediscluster"
+	clustermanger "github.com/freshworks/redis-cluster-operator/controllers/manager"
+	"github.com/freshworks/redis-cluster-operator/controllers/redisclusterbackup"
+	"github.com/freshworks/redis-cluster-operator/metrics"
+	config2 "github.com/freshworks/redis-cluster-operator/redisconfig"
+	utils "github.com/freshworks/redis-cluster-operator/utils/commonutils"
+	"github.com/freshworks/redis-cluster-operator/utils/exec"
+	"github.com/freshworks/redis-cluster-operator/utils/k8sutil"
+	"github.com/freshworks/redis-cluster-operator/version"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/spf13/pflag"
@@ -192,7 +192,7 @@ func main() {
 	if err != nil {
 		os.Exit(1)
 	}
-	restClient, err := apiutil.RESTClientForGVK(gvk, false, mgr.GetConfig(), serializer.NewCodecFactory(clientgoscheme.Scheme), httpClient)
+	restClient, err := apiutil.RESTClientForGVK(gvk, false, false, mgr.GetConfig(), serializer.NewCodecFactory(clientgoscheme.Scheme), httpClient)
 	if err != nil {
 		os.Exit(1)
 	}

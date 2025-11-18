@@ -9,9 +9,9 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 
-	redisv1alpha1 "github.com/dinesh-murugiah/rediscluster-operator/api/v1alpha1"
-	"github.com/dinesh-murugiah/rediscluster-operator/resources/deployments"
-	"github.com/dinesh-murugiah/rediscluster-operator/resources/statefulsets"
+	redisv1alpha1 "github.com/freshworks/redis-cluster-operator/api/v1alpha1"
+	"github.com/freshworks/redis-cluster-operator/resources/deployments"
+	"github.com/freshworks/redis-cluster-operator/resources/statefulsets"
 )
 
 // const (
@@ -540,7 +540,7 @@ func (r *RedisClusterBackupReconciler) ValidateBackup(backup *redisv1alpha1.Redi
 // 			mode := corev1.PersistentVolumeFilesystem
 // 			pvcSpec := &corev1.PersistentVolumeClaimSpec{
 // 				AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
-// 				Resources: corev1.ResourceRequirements{
+// 				Resources: corev1.VolumeResourceRequirements{
 // 					Requests: corev1.ResourceList{
 // 						corev1.ResourceStorage: storage.Size,
 // 					},

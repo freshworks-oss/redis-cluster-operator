@@ -9,7 +9,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
-	"github.com/dinesh-murugiah/rediscluster-operator/metrics"
+	"github.com/freshworks/redis-cluster-operator/metrics"
 )
 
 // MockRecorder is a mock implementation of metrics.Recorder

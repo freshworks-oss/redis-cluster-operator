@@ -13,15 +13,15 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	rediskunv1alpha1 "github.com/dinesh-murugiah/rediscluster-operator/api/v1alpha1"
-	redisv1alpha1 "github.com/dinesh-murugiah/rediscluster-operator/api/v1alpha1"
-	"github.com/dinesh-murugiah/rediscluster-operator/controllers/clustering"
-	"github.com/dinesh-murugiah/rediscluster-operator/controllers/manager"
-	"github.com/dinesh-murugiah/rediscluster-operator/metrics"
-	"github.com/dinesh-murugiah/rediscluster-operator/resources/configmaps"
-	"github.com/dinesh-murugiah/rediscluster-operator/resources/statefulsets"
-	"github.com/dinesh-murugiah/rediscluster-operator/utils/k8sutil"
-	"github.com/dinesh-murugiah/rediscluster-operator/utils/redisutil"
+	rediskunv1alpha1 "github.com/freshworks/redis-cluster-operator/api/v1alpha1"
+	redisv1alpha1 "github.com/freshworks/redis-cluster-operator/api/v1alpha1"
+	"github.com/freshworks/redis-cluster-operator/controllers/clustering"
+	"github.com/freshworks/redis-cluster-operator/controllers/manager"
+	"github.com/freshworks/redis-cluster-operator/metrics"
+	"github.com/freshworks/redis-cluster-operator/resources/configmaps"
+	"github.com/freshworks/redis-cluster-operator/resources/statefulsets"
+	"github.com/freshworks/redis-cluster-operator/utils/k8sutil"
+	"github.com/freshworks/redis-cluster-operator/utils/redisutil"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -221,7 +221,7 @@ func (r *DistributedRedisClusterReconciler) validateAndSetDefault(cluster *redis
 							corev1.ReadWriteMany,
 						},
 						StorageClassName: &cluster.Spec.ConfStorage.Class,
-						Resources: corev1.ResourceRequirements{
+						Resources: corev1.VolumeResourceRequirements{
 							Requests: corev1.ResourceList{
 								corev1.ResourceStorage: cluster.Spec.ConfStorage.Size,
 							},
@@ -259,7 +259,7 @@ func (r *DistributedRedisClusterReconciler) validateAndSetDefault(cluster *redis
 							corev1.ReadWriteMany,
 						},
 						StorageClassName: &cluster.Spec.ConfStorage.Class,
-						Resources: corev1.ResourceRequirements{
+						Resources: corev1.VolumeResourceRequirements{
 							Requests: corev1.ResourceList{
 								corev1.ResourceStorage: cluster.Spec.BackupStorage.Size,
 							},

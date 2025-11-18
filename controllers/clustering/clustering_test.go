@@ -9,9 +9,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 
-	rediskunv1alpha1 "github.com/dinesh-murugiah/rediscluster-operator/api/v1alpha1"
-	"github.com/dinesh-murugiah/rediscluster-operator/utils/redisutil"
-	"github.com/dinesh-murugiah/rediscluster-operator/utils/testutil/mocks"
+	rediskunv1alpha1 "github.com/freshworks/redis-cluster-operator/api/v1alpha1"
+	"github.com/freshworks/redis-cluster-operator/utils/redisutil"
+	"github.com/freshworks/redis-cluster-operator/utils/testutil/mocks"
 )
 
 // Use consolidated mocks from testutil package

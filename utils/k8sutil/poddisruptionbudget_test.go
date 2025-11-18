@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/dinesh-murugiah/rediscluster-operator/utils/testutil"
+	"github.com/freshworks/redis-cluster-operator/utils/testutil"
 	policyv1 "k8s.io/api/policy/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"

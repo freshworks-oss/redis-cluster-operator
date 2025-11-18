@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	redisv1alpha1 "github.com/dinesh-murugiah/rediscluster-operator/api/v1alpha1"
+	redisv1alpha1 "github.com/freshworks/redis-cluster-operator/api/v1alpha1"
 )
 
 func createTestDistributedRedisCluster(name, namespace string, clusterReplicas int32) *redisv1alpha1.DistributedRedisCluster {

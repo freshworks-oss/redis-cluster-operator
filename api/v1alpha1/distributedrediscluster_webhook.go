@@ -17,18 +17,18 @@ limitations under the License.
 package v1alpha1
 
 import (
+	"context"
 	"fmt"
 	"reflect"
 	"strings"
 
 	"github.com/appscode/go/log"
-	utils "github.com/dinesh-murugiah/rediscluster-operator/utils/commonutils"
+	utils "github.com/freshworks/redis-cluster-operator/utils/commonutils"
 	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilvalidation "k8s.io/apimachinery/pkg/util/validation"
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
@@ -45,22 +45,23 @@ func (r *DistributedRedisCluster) SetupWebhookWithManager(mgr ctrl.Manager) erro
 
 //+kubebuilder:webhook:path=/mutate-redis-kun-redis-kun-v1alpha1-distributedrediscluster,mutating=true,failurePolicy=fail,sideEffects=None,groups=redis.kun,resources=distributedredisclusters,verbs=create;update,versions=v1alpha1,name=mdistributedrediscluster.kb.io,admissionReviewVersions=v1
 
-var _ webhook.Defaulter = &DistributedRedisCluster{}
+var _ admission.CustomDefaulter = &DistributedRedisCluster{}
 
-// Default implements webhook.Defaulter so a webhook will be registered for the type
-func (r *DistributedRedisCluster) Default() {
+// Default implements admission.CustomDefaulter so a webhook will be registered for the type
+func (r *DistributedRedisCluster) Default(ctx context.Context, obj runtime.Object) error {
 	distributedredisclusterlog.Info("default", "name", r.Name)
 
 	// TODO(user): fill in your defaulting logic.
+	return nil
 }
 
 // TODO(user): change verbs to "verbs=create;update;delete" if you want to enable deletion validation.
 //+kubebuilder:webhook:path=/validate-redis-kun-redis-kun-v1alpha1-distributedrediscluster,mutating=false,failurePolicy=fail,sideEffects=None,groups=redis.kun,resources=distributedredisclusters,verbs=create;update,versions=v1alpha1,name=vdistributedrediscluster.kb.io,admissionReviewVersions=v1
 
-var _ webhook.Validator = &DistributedRedisCluster{}
+var _ admission.CustomValidator = &DistributedRedisCluster{}
 
-// ValidateCreate implements webhook.Validator so a webhook will be registered for the type
-func (r *DistributedRedisCluster) ValidateCreate() (admission.Warnings, error) {
+// ValidateCreate implements admission.CustomValidator so a webhook will be registered for the type
+func (r *DistributedRedisCluster) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
 	distributedredisclusterlog.Info("validate create", "name", r.Name)
 
 	if errs := utilvalidation.IsDNS1035Label(r.Spec.ServiceName); len(r.Spec.ServiceName) > 0 && len(errs) > 0 {
@@ -76,11 +77,11 @@ func (r *DistributedRedisCluster) ValidateCreate() (admission.Warnings, error) {
 	return nil, nil
 }
 
-// ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
-func (r *DistributedRedisCluster) ValidateUpdate(old runtime.Object) (admission.Warnings, error) {
+// ValidateUpdate implements admission.CustomValidator so a webhook will be registered for the type
+func (r *DistributedRedisCluster) ValidateUpdate(ctx context.Context, oldObj, newObj runtime.Object) (admission.Warnings, error) {
 	distributedredisclusterlog.Info("validate update", "name", r.Name)
 
-	oldObj, ok := old.(*DistributedRedisCluster)
+	old, ok := oldObj.(*DistributedRedisCluster)
 	if !ok {
 		err := fmt.Errorf("invalid obj type")
 		log.Error(err, "can not reflect type")
@@ -97,11 +98,11 @@ func (r *DistributedRedisCluster) ValidateUpdate(old runtime.Object) (admission.
 			}
 		}
 	*/
-	if oldObj.Status.Status == "" {
+	if old.Status.Status == "" {
 		return nil, nil
 	}
-	if compareObj(r, oldObj, distributedredisclusterlog) && oldObj.Status.Status != ClusterStatusOK {
-		return nil, fmt.Errorf("redis cluster status: [%s], wait for the status to become %s before operating", oldObj.Status.Status, ClusterStatusOK)
+	if compareObj(r, old, distributedredisclusterlog) && old.Status.Status != ClusterStatusOK {
+		return nil, fmt.Errorf("redis cluster status: [%s], wait for the status to become %s before operating", old.Status.Status, ClusterStatusOK)
 	}
 	return nil, nil
 }
@@ -127,8 +128,8 @@ func compareObj(new, old *DistributedRedisCluster, log logr.Logger) bool {
 	return false
 }
 
-// ValidateDelete implements webhook.Validator so a webhook will be registered for the type
-func (r *DistributedRedisCluster) ValidateDelete() (admission.Warnings, error) {
+// ValidateDelete implements admission.CustomValidator so a webhook will be registered for the type
+func (r *DistributedRedisCluster) ValidateDelete(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
 	distributedredisclusterlog.Info("validate delete", "name", r.Name)
 
 	// TODO(user): fill in your validation logic upon object deletion.

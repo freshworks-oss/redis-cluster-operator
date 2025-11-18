@@ -11,7 +11,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	redisv1alpha1 "github.com/dinesh-murugiah/rediscluster-operator/api/v1alpha1"
+	redisv1alpha1 "github.com/freshworks/redis-cluster-operator/api/v1alpha1"
 )
 
 // Helper function to create test cluster
