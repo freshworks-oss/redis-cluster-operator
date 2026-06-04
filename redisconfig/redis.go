@@ -20,6 +20,8 @@ const (
 	RedisConfigFileDefault = "/redis-conf/redis.conf"
 	// RedisServerBinDefault default binary name
 	RedisServerBinDefault = "redis-server"
+	// ValkeyServerBinDefault default Valkey server binary name
+	ValkeyServerBinDefault = "valkey-server"
 	// RedisServerPortDefault default redis port
 	RedisServerPortDefault = "6379"
 	// RedisMaxMemoryDefault default redis max memory

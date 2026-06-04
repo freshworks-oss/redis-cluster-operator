@@ -14,7 +14,8 @@ import (
 const (
 	minMasterSize       = 3
 	minClusterReplicas  = 1
-	defaultRedisImage   = "redis:6.2.14-alpine"
+	defaultRedisImage   = "redis:7.2.4-alpine"
+	defaultValkeyImage  = "valkey/valkey:7.2.11-alpine"
 	defaultMonitorImage = "oliver006/redis_exporter:latest"
 )
 
@@ -22,6 +23,13 @@ const (
 	DistributedRedisClusterKind = "DistributedRedisCluster"
 	RedisClusterBackupKind      = "RedisClusterBackup"
 )
+
+func (in *DistributedRedisCluster) EffectiveEngine() DatabaseEngine {
+	if in.Spec.Engine == DatabaseEngineValkey {
+		return DatabaseEngineValkey
+	}
+	return DatabaseEngineRedis
+}
 
 func (in *DistributedRedisCluster) DefaultSpec(log logr.Logger) bool {
 	update := false
@@ -31,7 +39,11 @@ func (in *DistributedRedisCluster) DefaultSpec(log logr.Logger) bool {
 	}
 
 	if in.Spec.Image == "" {
-		in.Spec.Image = defaultRedisImage
+		if in.EffectiveEngine() == DatabaseEngineValkey {
+			in.Spec.Image = defaultValkeyImage
+		} else {
+			in.Spec.Image = defaultRedisImage
+		}
 		update = true
 	}
 

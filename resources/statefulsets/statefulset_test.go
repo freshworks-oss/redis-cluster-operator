@@ -607,8 +607,13 @@ func TestGetRedisCommand(t *testing.T) {
 	commands := getRedisCommand(cluster, password)
 
 	assert.NotEmpty(t, commands)
+	assert.Contains(t, commands, "redis-server")
 	assert.Contains(t, commands, "--requirepass no")
 	assert.Contains(t, commands, "--masterauth '$(REDIS_PASSWORD)'")
+
+	cluster.Spec.Engine = redisv1alpha1.DatabaseEngineValkey
+	commandsValkey := getRedisCommand(cluster, password)
+	assert.Contains(t, commandsValkey, "valkey-server")
 }
 
 func TestVolumeMounts(t *testing.T) {

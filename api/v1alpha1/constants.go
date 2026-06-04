@@ -8,6 +8,16 @@ const (
 	Ephemeral          StorageType = "ephemeral"
 )
 
+// DatabaseEngine selects the cluster data-plane implementation.
+type DatabaseEngine string
+
+const (
+	// DatabaseEngineRedis runs Redis-compatible nodes (default when spec.engine is empty).
+	DatabaseEngineRedis DatabaseEngine = "redis"
+	// DatabaseEngineValkey runs Valkey nodes.
+	DatabaseEngineValkey DatabaseEngine = "valkey"
+)
+
 const (
 	OperatorName      = "redis-cluster-operator"
 	LabelManagedByKey = "managed-by"

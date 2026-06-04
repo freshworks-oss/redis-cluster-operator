@@ -67,6 +67,9 @@ func (r *DistributedRedisCluster) ValidateCreate(ctx context.Context, obj runtim
 	if errs := utilvalidation.IsDNS1035Label(r.Spec.ServiceName); len(r.Spec.ServiceName) > 0 && len(errs) > 0 {
 		return nil, fmt.Errorf("the custom service is invalid: invalid value: %s, %s", r.Spec.ServiceName, strings.Join(errs, ","))
 	}
+	if err := r.ValidateEngineAndImage(); err != nil {
+		return nil, err
+	}
 	/*
 		if r.Spec.Resources != nil {
 			if errs := validation.ValidateResourceRequirements(r.Spec.Resources, field.NewPath("resources")); len(errs) > 0 {
@@ -91,6 +94,9 @@ func (r *DistributedRedisCluster) ValidateUpdate(ctx context.Context, oldObj, ne
 	if errs := utilvalidation.IsDNS1035Label(r.Spec.ServiceName); len(r.Spec.ServiceName) > 0 && len(errs) > 0 {
 		return nil, fmt.Errorf("the custom service is invalid: invalid value: %s, %s", r.Spec.ServiceName, strings.Join(errs, ","))
 	}
+	if err := r.ValidateEngineAndImage(); err != nil {
+		return nil, err
+	}
 	/*
 		if r.Spec.Resources != nil {
 			if errs := validation.ValidateResourceRequirements(r.Spec.Resources, field.NewPath("resources")); len(errs) > 0 {
@@ -112,6 +118,10 @@ func compareObj(new, old *DistributedRedisCluster, log logr.Logger) bool {
 	}
 
 	if utils.CompareStringValue("Image", new.Spec.Image, old.Spec.Image, log) {
+		return true
+	}
+
+	if utils.CompareStringValue("Engine", string(new.Spec.Engine), string(old.Spec.Engine), log) {
 		return true
 	}
 

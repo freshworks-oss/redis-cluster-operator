@@ -1724,6 +1724,10 @@ spec:
                     type: string
                 type: object
                 x-kubernetes-map-type: atomic
+              engine:
+                description: 'Engine is the database implementation: redis (default
+                  if unset), or valkey.'
+                type: string
               env:
                 items:
                   description: EnvVar represents an environment variable present in

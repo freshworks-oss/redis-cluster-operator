@@ -349,10 +349,17 @@ func ClusterHeadlessSvcName(name string, i int) string {
 	return fmt.Sprintf("%s-%s-%s%d", redisv1alpha1.CrNameShort, name, "svc-shard", i)
 }
 
+func databaseServerBinary(cluster *redisv1alpha1.DistributedRedisCluster) string {
+	if cluster.EffectiveEngine() == redisv1alpha1.DatabaseEngineValkey {
+		return config.ValkeyServerBinDefault
+	}
+	return config.RedisServerBinDefault
+}
+
 func getRedisCommand(cluster *redisv1alpha1.DistributedRedisCluster, password *corev1.EnvVar) []string {
 	cmd := []string{
 		"/conf/fix-ip.sh",
-		"redis-server",
+		databaseServerBinary(cluster),
 		"/conf/redis.conf",
 		"--cluster-enabled yes",
 		"--cluster-config-file /data/nodes.conf",

@@ -31,7 +31,10 @@ type DistributedRedisClusterSpec struct {
 	// Important: Run "make" to regenerate code after modifying this file
 
 	// Foo is an example field of DistributedRedisCluster. Edit distributedrediscluster_types.go to remove/update
-	InitContainers   []corev1.Container            `json:"initContainers,omitempty"`
+	InitContainers []corev1.Container `json:"initContainers,omitempty"`
+	// Engine is the database implementation: redis (default if unset), or valkey.
+	// +optional
+	Engine           DatabaseEngine                `json:"engine,omitempty"`
 	Image            string                        `json:"image,omitempty"`
 	ImagePullPolicy  corev1.PullPolicy             `json:"imagePullPolicy,omitempty"`
 	ImagePullSecrets []corev1.LocalObjectReference `json:"imagePullSecrets,omitempty"`
