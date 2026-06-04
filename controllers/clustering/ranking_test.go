@@ -387,16 +387,16 @@ func TestRankingInfo_SetCurrentMastersZoneRank(t *testing.T) {
 
 func TestRankingInfo_GetHAPlacedNodeinSTS(t *testing.T) {
 	tests := []struct {
-		name                    string
-		stsName                 string
-		proxyAz                 string
-		nodesByZone             map[string]redisutil.Nodes
-		replicaNodesBySTS       map[string]redisutil.Nodes
-		currentMastersByZone    map[string]redisutil.Nodes
+		name                     string
+		stsName                  string
+		proxyAz                  string
+		nodesByZone              map[string]redisutil.Nodes
+		replicaNodesBySTS        map[string]redisutil.Nodes
+		currentMastersByZone     map[string]redisutil.Nodes
 		nodesIndexedByZoneAndSTS map[string]map[string][]*redisutil.Node
-		zoneList                []string
-		expectedNodeID          string
-		expectError             bool
+		zoneList                 []string
+		expectedNodeID           string
+		expectError              bool
 	}{
 		{
 			name:    "Get HA placed node with proxy zone",
@@ -454,9 +454,9 @@ func TestRankingInfo_GetHAPlacedNodeinSTS(t *testing.T) {
 			expectError:    true,
 		},
 		{
-			name:    "Single zone with least masters - no proxy",
-			stsName: "sts-0",
-			proxyAz: "", // No proxy zone
+			name:     "Single zone with least masters - no proxy",
+			stsName:  "sts-0",
+			proxyAz:  "", // No proxy zone
 			zoneList: []string{"zone1", "zone2", "zone3"},
 			nodesIndexedByZoneAndSTS: map[string]map[string][]*redisutil.Node{
 				"zone1": {
@@ -470,7 +470,7 @@ func TestRankingInfo_GetHAPlacedNodeinSTS(t *testing.T) {
 				},
 			},
 			currentMastersByZone: map[string]redisutil.Nodes{
-				"zone1": {}, // 0 masters
+				"zone1": {},                                                                                                  // 0 masters
 				"zone2": {createTestNode("master1", "1.1.1.10", "zone2", "sts-1", redisv1alpha1.RedisClusterNodeRoleMaster)}, // 1 master
 				"zone3": {createTestNode("master2", "1.1.1.11", "zone3", "sts-2", redisv1alpha1.RedisClusterNodeRoleMaster)}, // 1 master
 			},
@@ -478,9 +478,9 @@ func TestRankingInfo_GetHAPlacedNodeinSTS(t *testing.T) {
 			expectError:    false,
 		},
 		{
-			name:    "Tie in master count - resolve by node count",
-			stsName: "sts-0",
-			proxyAz: "", // No proxy zone
+			name:     "Tie in master count - resolve by node count",
+			stsName:  "sts-0",
+			proxyAz:  "", // No proxy zone
 			zoneList: []string{"zone1", "zone2", "zone3"},
 			nodesIndexedByZoneAndSTS: map[string]map[string][]*redisutil.Node{
 				"zone1": {
@@ -498,16 +498,16 @@ func TestRankingInfo_GetHAPlacedNodeinSTS(t *testing.T) {
 			},
 			currentMastersByZone: map[string]redisutil.Nodes{
 				"zone1": {}, // 0 masters (tie)
-				"zone2": {}, // 0 masters (tie)  
+				"zone2": {}, // 0 masters (tie)
 				"zone3": {}, // 0 masters (tie)
 			},
 			expectedNodeID: "node1", // Should pick zone1 as it has fewer nodes (1 vs 2)
 			expectError:    false,
 		},
 		{
-			name:    "Final tie-breaking - pick first zone",
-			stsName: "sts-0",
-			proxyAz: "", // No proxy zone
+			name:     "Final tie-breaking - pick first zone",
+			stsName:  "sts-0",
+			proxyAz:  "", // No proxy zone
 			zoneList: []string{"zone1", "zone2"},
 			nodesIndexedByZoneAndSTS: map[string]map[string][]*redisutil.Node{
 				"zone1": {
@@ -525,9 +525,9 @@ func TestRankingInfo_GetHAPlacedNodeinSTS(t *testing.T) {
 			expectError:    false,
 		},
 		{
-			name:    "Complex scenario - multiple zones with different master counts",
-			stsName: "sts-0",
-			proxyAz: "", // No proxy zone
+			name:     "Complex scenario - multiple zones with different master counts",
+			stsName:  "sts-0",
+			proxyAz:  "", // No proxy zone
 			zoneList: []string{"zone1", "zone2", "zone3", "zone4"},
 			nodesIndexedByZoneAndSTS: map[string]map[string][]*redisutil.Node{
 				"zone1": {
@@ -564,19 +564,19 @@ func TestRankingInfo_GetHAPlacedNodeinSTS(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			log := logr.Discard()
-			
+
 			// Use provided zoneList or default
 			zoneList := tt.zoneList
 			if len(zoneList) == 0 {
 				zoneList = []string{"zone1", "zone2"}
 			}
-			
+
 			// Use provided NodesIndexedbyZoneAndSTS or default
 			nodesIndexedByZoneAndSTS := tt.nodesIndexedByZoneAndSTS
 			if nodesIndexedByZoneAndSTS == nil {
 				nodesIndexedByZoneAndSTS = make(map[string]map[string][]*redisutil.Node)
 			}
-			
+
 			rankingInfo := &RankingInfo{
 				log:                      log,
 				clusterName:              "test-cluster",

@@ -20,7 +20,7 @@ var _ = Describe("Restore DistributedRedisCluster From RedisClusterBackup", func
 	It("should create a DistributedRedisCluster", func() {
 		name := e2e.RandString(8)
 		password := e2e.RandString(8)
-		drc = e2e.NewDistributedRedisCluster(name, f.Namespace(), e2e.Redis5_0_4, f.PasswordName(), 3, 1)
+		drc = e2e.NewDistributedRedisCluster(name, f.Namespace(), e2e.DefaultE2ERedisImage(), f.PasswordName(), 3, 1)
 		Ω(f.CreateRedisClusterPassword(f.PasswordName(), password)).Should(Succeed())
 		Ω(f.CreateRedisCluster(drc)).Should(Succeed())
 		Eventually(e2e.IsDistributedRedisClusterProperly(f, drc), "10m", "10s").ShouldNot(HaveOccurred())

@@ -120,9 +120,23 @@ fmt: ## Run go fmt against code.
 vet: ## Run go vet against code.
 	go vet ./...
 
+# Excludes kube-backed e2e under test/e2e/drc* (needs a working kubeconfig). Run those with: make test-e2e
+TEST_PACKAGES ?= $(shell go list ./... | grep -v '/test/e2e/drc')
+
 .PHONY: test
 test: manifests generate fmt vet envtest ## Run tests.
-	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test ./... -coverprofile cover.out
+	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test $(TEST_PACKAGES) -coverprofile cover.out
+
+.PHONY: install-crds
+install-crds: manifests ## Install redis.kun CRDs into the current cluster (required before test-e2e).
+	kubectl apply -k config/crd
+
+.PHONY: test-e2e
+# Go's default test timeout is 10m; e2e uses many Eventually(..., "10m") polls. Override: make test-e2e E2E_GO_TEST_FLAGS='-timeout=1h'
+E2E_GO_TEST_FLAGS ?= -count=1 -timeout=3h -v
+E2E_GINKGO_FLAGS ?= -ginkgo.v
+test-e2e: ## Run Ginkgo e2e: install-crds; build/load image; kubectl apply -k config/default; export STORAGECLASSNAME=standard; optional E2E_REDIS_IMAGE=... if uhub is unreachable.
+	go test $(E2E_GO_TEST_FLAGS) ./test/e2e/drc/... ./test/e2e/drcb/... -args $(E2E_GINKGO_FLAGS)
 
 ##@ Build
 
@@ -164,14 +178,6 @@ image-release-dev:
 	aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin $(ECR_URI) 
 	docker buildx build --no-cache --push --platform=$(DEPLOYPLATFORMS) --tag $(ECR_URI)/$(ECR_DEV_REPO):$(BINARY_VERSION_DEV) .
 
-.PHONY: build-tools
-build-tools:
-	bash hack/docker/redis-tools/make.sh build
-
-.PHONY: docker-push
-docker-push: ## Push docker image with the manager.
-	docker push ${IMG}
-
 .PHONY: clean
 clean:
 	rm -f $(BIN_DIR)/$(PROJECT_NAME)*
@@ -211,9 +217,19 @@ deploy: manifests kustomize ## Deploy controller to the K8s cluster specified in
 	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
 	$(KUSTOMIZE) build config/default | kubectl apply -f -
 
+# Same as deploy but uses imagePullPolicy: Never (required for Minikube/kind when images are loaded locally).
+.PHONY: deploy-local
+deploy-local: manifests kustomize ## Deploy using config/overlays/local (Never pull); load images into the cluster first.
+	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
+	$(KUSTOMIZE) build config/overlays/local | kubectl apply -f -
+
 .PHONY: undeploy
 undeploy: ## Undeploy controller from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
 	$(KUSTOMIZE) build config/default | kubectl delete --ignore-not-found=$(ignore-not-found) -f -
+
+.PHONY: undeploy-local
+undeploy-local: ## Undeploy when installed with deploy-local.
+	$(KUSTOMIZE) build config/overlays/local | kubectl delete --ignore-not-found=$(ignore-not-found) -f -
 
 ##@ Build Dependencies
 
@@ -229,7 +245,14 @@ ENVTEST ?= $(LOCALBIN)/setup-envtest
 
 ## Tool Versions
 KUSTOMIZE_VERSION ?= v3.8.7
-CONTROLLER_TOOLS_VERSION ?= v0.11.1
+# Keep aligned with go.mod k8s deps (v0.34.x → controller-tools v0.19.x).
+# v0.11.x panics on apimachinery v0.34+ under modern Go; do not reuse an old bin/controller-gen.
+CONTROLLER_TOOLS_VERSION ?= v0.19.0
+# Go 1.26+ may reject `go install` of some modules until their go.mod uses two-part versions; installing with a 1.25
+# toolchain avoids that. Override with `make ... CONTROLLER_GEN_INSTALL_TOOLCHAIN=local` if you use a prebuilt binary.
+CONTROLLER_GEN_INSTALL_TOOLCHAIN ?= go1.25.8
+# Stamp forces reinstall when CONTROLLER_TOOLS_VERSION changes (Make otherwise skips recipes if bin/controller-gen exists).
+CONTROLLER_GEN_STAMP = $(LOCALBIN)/.controller-gen-$(CONTROLLER_TOOLS_VERSION)
 
 KUSTOMIZE_INSTALL_SCRIPT ?= "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh"
 .PHONY: kustomize
@@ -242,10 +265,17 @@ $(KUSTOMIZE): $(LOCALBIN)
 	test -s $(LOCALBIN)/kustomize || { curl -Ss $(KUSTOMIZE_INSTALL_SCRIPT) | bash -s -- $(subst v,,$(KUSTOMIZE_VERSION)) $(LOCALBIN); }
 
 .PHONY: controller-gen
-controller-gen: $(CONTROLLER_GEN) ## Download controller-gen locally if necessary. If wrong version is installed, it will be overwritten.
-$(CONTROLLER_GEN): $(LOCALBIN)
-	test -s $(LOCALBIN)/controller-gen && $(LOCALBIN)/controller-gen --version | grep -q $(CONTROLLER_TOOLS_VERSION) || \
-	GOBIN=$(LOCALBIN) go install sigs.k8s.io/controller-tools/cmd/controller-gen@$(CONTROLLER_TOOLS_VERSION)
+controller-gen: $(CONTROLLER_GEN_STAMP) ## Download controller-gen locally if necessary. If wrong version is installed, it will be overwritten.
+
+$(CONTROLLER_GEN_STAMP): $(LOCALBIN)
+	@if test -f $(CONTROLLER_GEN_STAMP) && test -x $(CONTROLLER_GEN) && $(CONTROLLER_GEN) --version 2>/dev/null | grep -qF "$(CONTROLLER_TOOLS_VERSION)"; then \
+		touch $(CONTROLLER_GEN_STAMP); \
+	else \
+		echo "Installing controller-gen $(CONTROLLER_TOOLS_VERSION) to $(LOCALBIN) ..."; \
+		rm -f $(CONTROLLER_GEN) $(CONTROLLER_GEN_STAMP); \
+		GOTOOLCHAIN=$(CONTROLLER_GEN_INSTALL_TOOLCHAIN) GOBIN=$(LOCALBIN) go install sigs.k8s.io/controller-tools/cmd/controller-gen@$(CONTROLLER_TOOLS_VERSION) && \
+		test -x $(CONTROLLER_GEN) && touch $(CONTROLLER_GEN_STAMP); \
+	fi
 
 .PHONY: envtest
 envtest: $(ENVTEST) ## Download envtest-setup locally if necessary.

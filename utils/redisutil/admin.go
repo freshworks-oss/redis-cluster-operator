@@ -563,6 +563,52 @@ func (a *Admin) AttachNodeToCluster(ctx context.Context, addr string, namespace 
 	return nil
 }
 
+// configScanString normalizes a CONFIG GET key or value from go-redis/RESP decoding.
+func configScanString(v interface{}) (string, bool) {
+	switch x := v.(type) {
+	case string:
+		return x, true
+	case []byte:
+		return string(x), true
+	default:
+		return "", false
+	}
+}
+
+// parseConfigGetStar converts CONFIG GET * bulk reply into a flat string map.
+// go-redis historically decoded some servers as map[interface{}]interface{}; Valkey / newer
+// combinations may return []interface{} (alternating key, value, ...). A blind map assertion panics.
+func parseConfigGetStar(res interface{}) (map[string]string, error) {
+	out := make(map[string]string)
+	switch v := res.(type) {
+	case map[interface{}]interface{}:
+		for key, value := range v {
+			keyStr, keyOk := configScanString(key)
+			valStr, valOk := configScanString(value)
+			if keyOk && valOk {
+				out[keyStr] = valStr
+			}
+		}
+		return out, nil
+	case []interface{}:
+		if len(v)%2 != 0 {
+			return nil, fmt.Errorf("CONFIG GET * key/value slice has odd length %d (truncated trailing element)", len(v))
+		}
+		for i := 0; i+1 < len(v); i += 2 {
+			keyStr, keyOk := configScanString(v[i])
+			valStr, valOk := configScanString(v[i+1])
+			if keyOk && valOk {
+				out[keyStr] = valStr
+			}
+		}
+		return out, nil
+	case nil:
+		return out, nil
+	default:
+		return nil, fmt.Errorf("unexpected CONFIG GET * result type %T", res)
+	}
+}
+
 // GetAllConfig get redis config by CONFIG GET *
 func (a *Admin) GetAllConfig(ctx context.Context, c *redis.Client, addr string, namespace string, name string) (map[string]string, error) {
 	if c == nil {
@@ -580,20 +626,10 @@ func (a *Admin) GetAllConfig(ctx context.Context, c *redis.Client, addr string, 
 	}
 
 	res, err := resp.Result()
-
-	originalMap := res.(map[interface{}]interface{})
-	convertedMap := make(map[string]string)
-
-	for key, value := range originalMap {
-		// Check if the key and value are of the expected types
-		keyStr, keyIsString := key.(string)
-		valueStr, valueIsString := value.(string)
-
-		if keyIsString && valueIsString {
-			convertedMap[keyStr] = valueStr
-		}
+	if err != nil {
+		return nil, err
 	}
-	return convertedMap, err
+	return parseConfigGetStar(res)
 }
 
 /*

@@ -679,10 +679,10 @@ func TestAdmin_SetSlot(t *testing.T) {
 	admin := NewAdmin([]string{}, nil, logger, ctx, mockMetrics)
 	defer admin.Close(ctx)
 
-	// Test with empty connections
+	// Empty address list: no live Redis — expect pipeline/connection failure
 	err := admin.SetSlot(ctx, "127.0.0.1:6379", "IMPORTING", 1, "node1", "test-ns", "test-cluster")
-	if err != nil {
-		t.Errorf("Expected no error for empty connections, got %v", err)
+	if err == nil {
+		t.Error("Expected error when no Redis connections are configured")
 	}
 }
 
@@ -738,10 +738,9 @@ func TestAdmin_FlushAndReset(t *testing.T) {
 	admin := NewAdmin([]string{}, nil, logger, ctx, mockMetrics)
 	defer admin.Close(ctx)
 
-	// Test with empty connections
 	err := admin.FlushAndReset(ctx, "127.0.0.1:6379", ResetSoft, "test-ns", "test-cluster")
-	if err != nil {
-		t.Errorf("Expected no error for empty connections, got %v", err)
+	if err == nil {
+		t.Error("Expected error when no Redis connections are configured")
 	}
 }
 
@@ -772,10 +771,11 @@ func TestAdmin_FailoverSlaveToMaster(t *testing.T) {
 
 	slave := &Node{ID: "slave1", IP: "127.0.0.1", Port: "6379"}
 
-	// Test with empty connections
+	// Lazy Get() uses NewClient, which currently returns a client without a failed PING check, so this
+	// often returns nil here even without Redis in Addrs; errors show up later if role polling runs.
 	err := admin.FailoverSlaveToMaster(ctx, slave, RedisFailoverDefault, "test-ns", "test-cluster")
 	if err != nil {
-		t.Errorf("Expected no error for empty connections, got %v", err)
+		t.Errorf("unexpected error: %v", err)
 	}
 }
 
@@ -811,13 +811,12 @@ func TestAdmin_GetInfoReplication(t *testing.T) {
 	admin := NewAdmin([]string{}, nil, logger, ctx, mockMetrics)
 	defer admin.Close(ctx)
 
-	// Test with empty connections
 	info, err := admin.GetInfoReplication("127.0.0.1:6379", ctx, "test-ns", "test-cluster")
-	if err != nil {
-		t.Errorf("Expected no error for empty connections, got %v", err)
+	if err == nil {
+		t.Error("Expected error when no Redis connections are configured")
 	}
-	if info.Role == "" {
-		t.Error("Expected non-empty role in replication info")
+	if info.Role != "" {
+		t.Error("Expected empty replication info on error")
 	}
 }
 
@@ -832,10 +831,9 @@ func TestAdmin_DrainClientsInOldMaster(t *testing.T) {
 
 	node := &Node{ID: "node1", IP: "127.0.0.1", Port: "6379"}
 
-	// Test with empty connections
 	err := admin.DrainClientsInOldMaster(ctx, node, "test-ns", "test-cluster")
-	if err != nil {
-		t.Errorf("Expected no error for empty connections, got %v", err)
+	if err == nil {
+		t.Error("Expected error when no Redis connections are configured")
 	}
 }
 
@@ -992,5 +990,80 @@ func TestAdmin_HelperFunctions(t *testing.T) {
 	// The status should be consistent when there are no errors
 	if infos.Status != ClusterInfosConsistent {
 		t.Errorf("Expected consistent status for empty connections, got %s", infos.Status)
+	}
+}
+
+func TestParseConfigGetStar(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		input   interface{}
+		want    map[string]string
+		wantErr bool
+	}{
+		{
+			name: "map interface keys string values string",
+			input: map[interface{}]interface{}{
+				"maxmemory": "0",
+				"port":      "6379",
+			},
+			want: map[string]string{"maxmemory": "0", "port": "6379"},
+		},
+		{
+			// []byte cannot be a map key (unhashable); RESP bulk keys/values arrive as alternating slices.
+			name:  "slice with []byte and string pairs from RESP bulk",
+			input: []interface{}{[]byte("timeout"), []byte("0"), "tcp-keepalive", "300"},
+			want:  map[string]string{"timeout": "0", "tcp-keepalive": "300"},
+		},
+		{
+			name:  "slice alternating string pairs",
+			input: []interface{}{"a", "1", "b", "2"},
+			want:  map[string]string{"a": "1", "b": "2"},
+		},
+		{
+			name:  "slice with []byte pairs",
+			input: []interface{}{[]byte("x"), []byte("y")},
+			want:  map[string]string{"x": "y"},
+		},
+		{
+			name:    "slice odd length rejects malformed reply",
+			input:   []interface{}{"orphan-key"},
+			wantErr: true,
+		},
+		{
+			name:  "nil",
+			input: nil,
+			want:  map[string]string{},
+		},
+		{
+			name:    "unsupported type",
+			input:   int64(42),
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := parseConfigGetStar(tt.input)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("expected error")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("parseConfigGetStar: %v", err)
+			}
+			if len(got) != len(tt.want) {
+				t.Fatalf("len got %d want %d: got=%v want=%v", len(got), len(tt.want), got, tt.want)
+			}
+			for k, v := range tt.want {
+				if got[k] != v {
+					t.Errorf("key %q: got %q want %q", k, got[k], v)
+				}
+			}
+		})
 	}
 }

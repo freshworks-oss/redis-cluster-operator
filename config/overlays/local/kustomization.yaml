@@ -1,0 +1,10 @@
+# Use with Minikube / kind when images are built on the host and loaded into the cluster
+# (imagePullPolicy Never). Do not use for clusters that pull from a real registry.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+- ../../default
+
+patchesStrategicMerge:
+- manager_image_pull_policy_local.yaml

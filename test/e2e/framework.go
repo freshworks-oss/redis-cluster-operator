@@ -179,6 +179,12 @@ func (f *Framework) UpdateRedisCluster(instance *redisv1alpha1.DistributedRedisC
 
 // DeleteRedisCluster delete a DistributedRedisCluster in test namespace
 func (f *Framework) DeleteRedisCluster(instance *redisv1alpha1.DistributedRedisCluster) error {
+	if f == nil || f.Client == nil {
+		return nil
+	}
+	if instance == nil {
+		return nil
+	}
 	f.Logf("deleting DistributedRedisCluster %s", instance.Name)
 	return f.Client.Delete(context.TODO(), instance)
 }
@@ -206,15 +212,15 @@ func (f *Framework) deleteTestNamespace() error {
 	nsSpec := &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{Name: f.Namespace()},
 	}
-	return f.Client.Delete(context.TODO(), nsSpec)
+	if err := f.Client.Delete(context.TODO(), nsSpec); err != nil && !errors.IsNotFound(err) {
+		return err
+	}
+	return nil
 }
 
 func (f *Framework) createRBAC() error {
 	role := &rbacv1.ClusterRole{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      f.roleName(),
-			Namespace: f.nameSpace,
-		},
+		ObjectMeta: metav1.ObjectMeta{Name: f.roleName()},
 		Rules: []rbacv1.PolicyRule{
 			{
 				Verbs:     []string{"get", "list", "watch", "delete", "create", "patch", "update"},
@@ -267,8 +273,9 @@ func (f *Framework) rolebindingName() string {
 	return fmt.Sprintf("cr-redis~g-%s", f.nameSpace)
 }
 
+// ClusterRoles are cluster-scoped; a fixed name collides across e2e runs and suites.
 func (f *Framework) roleName() string {
-	return fmt.Sprintf("cr-redis")
+	return fmt.Sprintf("cr-redis-e2e-%s", f.nameSpace)
 }
 
 func (f *Framework) PasswordName() string {
@@ -287,14 +294,14 @@ func (f *Framework) deleteRBAC() error {
 	rbSpec := &rbacv1.RoleBinding{
 		ObjectMeta: metav1.ObjectMeta{Name: f.rolebindingName(), Namespace: f.nameSpace},
 	}
-	if err := f.Client.Delete(context.TODO(), rbSpec); err != nil {
+	if err := f.Client.Delete(context.TODO(), rbSpec); err != nil && !errors.IsNotFound(err) {
 		return err
 	}
 	role := &rbacv1.ClusterRole{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      f.roleName(),
-			Namespace: f.nameSpace,
-		},
+		ObjectMeta: metav1.ObjectMeta{Name: f.roleName()},
 	}
-	return f.Client.Delete(context.TODO(), role)
+	if err := f.Client.Delete(context.TODO(), role); err != nil && !errors.IsNotFound(err) {
+		return err
+	}
+	return nil
 }

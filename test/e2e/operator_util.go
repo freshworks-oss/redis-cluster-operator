@@ -38,6 +38,10 @@ const (
 	S3ENDPOINT  = "S3_ENDPOINT"
 	S3BUCKET    = "S3_BUCKET"
 
+	// EnvE2ERedisImage overrides the default Redis image for local/minikube clusters that cannot pull uhub.
+	EnvE2ERedisImage        = "E2E_REDIS_IMAGE"
+	EnvE2ERedisRollingImage = "E2E_REDIS_ROLLING_IMAGE"
+
 	// RedisRenameCommandsDefaultPath default path to volume storing rename commands
 	RedisRenameCommandsDefaultPath = "/etc/secret-volume"
 	// RedisRenameCommandsDefaultFile default file name containing rename commands
@@ -55,6 +59,22 @@ func init() {
 }
 
 var logger = logf.Log.WithName("e2e-test")
+
+// DefaultE2ERedisImage returns E2E_REDIS_IMAGE when set, otherwise Redis5_0_4 (uhub default).
+func DefaultE2ERedisImage() string {
+	if v := os.Getenv(EnvE2ERedisImage); v != "" {
+		return v
+	}
+	return Redis5_0_4
+}
+
+// DefaultE2ERedisRollingImage returns E2E_REDIS_ROLLING_IMAGE when set, otherwise Redis5_0_6 (minor upgrade test).
+func DefaultE2ERedisRollingImage() string {
+	if v := os.Getenv(EnvE2ERedisRollingImage); v != "" {
+		return v
+	}
+	return Redis5_0_6
+}
 
 func NewDistributedRedisCluster(name, namespace, image, passwordName string, masterSize, clusterReplicas int32) *redisv1alpha1.DistributedRedisCluster {
 	configParams := map[string]string{
@@ -122,7 +142,14 @@ func IsDistributedRedisClusterProperly(f *Framework, drc *redisv1alpha1.Distribu
 			if result.Status.Status == redisv1alpha1.ClusterStatusKO {
 				f.Logf("DistributedRedisCluster %s is %s, reason: %s", drc.Name, result.Status.Status, result.Status.Reason)
 			}
-			return LogAndReturnErrorf("DistributedRedisCluster %s status not healthy, current: %s", drc.Name, result.Status.Status)
+			msg := fmt.Sprintf("DistributedRedisCluster %s status not healthy, current=%q", drc.Name, result.Status.Status)
+			if result.Status.Reason != "" {
+				msg += fmt.Sprintf(", reason=%q", result.Status.Reason)
+			}
+			if result.Status.Status == "" {
+				msg += " (empty status: deploy the redis-cluster-operator controller and ensure it watches this namespace; kubectl get pods -n redis-cluster-operator-system)"
+			}
+			return LogAndReturnErrorf("%s", msg)
 		}
 		stsList, err := f.GetDRCStatefulSetByLabels(getLabels(drc))
 		if err != nil {
@@ -254,7 +281,7 @@ func ResetPassword(drc *redisv1alpha1.DistributedRedisCluster, passwordSecret st
 }
 
 func RollingUpdateDRC(drc *redisv1alpha1.DistributedRedisCluster) {
-	drc.Spec.Image = Redis5_0_6
+	drc.Spec.Image = DefaultE2ERedisRollingImage()
 }
 
 func RestoreDRC(drc *redisv1alpha1.DistributedRedisCluster, drcb *redisv1alpha1.RedisClusterBackup) *redisv1alpha1.DistributedRedisCluster {

@@ -28,8 +28,13 @@ var _ = BeforeSuite(func() {
 })
 
 var _ = AfterSuite(func() {
-	if err := f.DeleteRedisCluster(rdrc); err != nil {
-		f.Logf("deleting DistributedRedisCluster err: %s", err.Error())
+	if f == nil || f.Client == nil {
+		return
+	}
+	if rdrc != nil {
+		if err := f.DeleteRedisCluster(rdrc); err != nil {
+			f.Logf("deleting DistributedRedisCluster err: %s", err.Error())
+		}
 	}
 	if err := f.AfterEach(); err != nil {
 		f.Failf("Framework AfterSuite err: %s", err.Error())

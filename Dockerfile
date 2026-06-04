@@ -1,12 +1,13 @@
 # Build the manager binary
-FROM --platform=$BUILDPLATFORM golang:1.19 as builder
+FROM --platform=$BUILDPLATFORM golang:1.25 as builder
 
 ARG BUILDPLATFORM
 ARG TARGETOS
 ARG TARGETARCH
 
+# Binary name (no hyphen) must match ENTRYPOINT; module path must match go.mod exactly.
 ARG PROJECT_NAME=rediscluster-operator
-ARG REPO_PATH=github.com/freshworks/$PROJECT_NAME
+ARG REPO_PATH=github.com/freshworks/redis-cluster-operator
 ARG BUILD_PATH=${REPO_PATH}
 
 # Build version and commit should be passed in when performing docker build
@@ -48,7 +49,8 @@ ARG PROJECT_NAME=rediscluster-operator
 
 COPY --from=builder ${GOBIN}/${PROJECT_NAME} /usr/local/bin/${PROJECT_NAME}
 
-RUN adduser -D ${PROJECT_NAME}
-USER ${PROJECT_NAME}
+# Numeric USER required when the pod sets runAsNonRoot (Kubernetes cannot verify string usernames).
+RUN adduser -D -u 65532 ${PROJECT_NAME} && chown 65532:65532 /usr/local/bin/${PROJECT_NAME}
+USER 65532:65532
 
 ENTRYPOINT ["/usr/local/bin/rediscluster-operator"]

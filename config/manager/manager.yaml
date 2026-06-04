@@ -66,14 +66,23 @@ spec:
         # seccompProfile:
         #   type: RuntimeDefault
       containers:
-      - command:
-        - /manager
-        args:
+      # Do not set command: it would replace the image ENTRYPOINT (/usr/local/bin/rediscluster-operator).
+      - args:
         - --leader-elect
         image: controller:latest
         name: manager
+        env:
+        - name: LEADER_ELECTION_ID
+          value: redis-cluster-operator.kun
+        # Required by utils.GetNamespacesList (LookupEnv must find both). Empty = cluster scope, watch all except unwatch list.
+        - name: WATCH_NAMESPACE
+          value: ""
+        - name: UNWATCH_NAMESPACE
+          value: ""
         securityContext:
           allowPrivilegeEscalation: false
+          runAsUser: 65532
+          runAsGroup: 65532
           capabilities:
             drop:
               - "ALL"
