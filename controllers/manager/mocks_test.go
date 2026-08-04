@@ -199,6 +199,14 @@ func (m *MockAdmin) GetClusterInfos(ctx context.Context, namespace string, name 
 	return args.Get(0).(*redisutil.ClusterInfos), args.Error(1)
 }
 
+func (m *MockAdmin) GetClusterNodeInfos(ctx context.Context, addr string, namespace string, name string) (*redisutil.NodeInfos, error) {
+	args := m.Called(ctx, addr, namespace, name)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*redisutil.NodeInfos), args.Error(1)
+}
+
 func (m *MockAdmin) ClusterManagerNodeIsEmpty(ctx context.Context, namespace string, name string) (bool, error) {
 	args := m.Called(ctx, namespace, name)
 	return args.Bool(0), args.Error(1)
@@ -296,6 +304,16 @@ func (m *MockAdmin) GetInfoReplication(ipPort string, ctx context.Context, names
 
 func (m *MockAdmin) DrainClientsInOldMaster(ctx context.Context, oldMaster *redisutil.Node, namespace string, name string) error {
 	args := m.Called(ctx, oldMaster, namespace, name)
+	return args.Error(0)
+}
+
+func (m *MockAdmin) MeetNodeFromAddr(ctx context.Context, fromAddr, targetHost, targetPort, namespace, name string) error {
+	args := m.Called(ctx, fromAddr, targetHost, targetPort, namespace, name)
+	return args.Error(0)
+}
+
+func (m *MockAdmin) SetConfigOnAddr(ctx context.Context, addr string, config map[string]string, namespace, name string) error {
+	args := m.Called(ctx, addr, config, namespace, name)
 	return args.Error(0)
 }
 

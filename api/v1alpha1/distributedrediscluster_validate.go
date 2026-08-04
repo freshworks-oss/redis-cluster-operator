@@ -2,6 +2,7 @@ package v1alpha1
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -16,6 +17,39 @@ func (r *DistributedRedisCluster) ValidateEngineAndImage() error {
 		return nil
 	}
 	return validateImageMatchesEngine(r.EffectiveEngine(), r.Spec.Image)
+}
+
+// ValidateBootstrapNode validates spec.bootstrapNode when present.
+func (r *DistributedRedisCluster) ValidateBootstrapNode() error {
+	if r.Spec.BootstrapNode == nil {
+		return nil
+	}
+	bootstrap := r.Spec.BootstrapNode
+	host := strings.TrimSpace(bootstrap.Host)
+	if host == "" {
+		return fmt.Errorf("spec.bootstrapNode.host is required when bootstrapNode is set")
+	}
+	if bootstrap.Port != "" {
+		if err := validateBootstrapPort(bootstrap.Port); err != nil {
+			return fmt.Errorf("spec.bootstrapNode.port: %w", err)
+		}
+	}
+	if r.IsRestoreFromBackup() {
+		return fmt.Errorf("spec.bootstrapNode cannot be set when restore from backup is configured")
+	}
+	return nil
+}
+
+func validateBootstrapPort(port string) error {
+	port = strings.TrimSpace(port)
+	p, err := strconv.ParseUint(port, 10, 16)
+	if err != nil {
+		return fmt.Errorf("must be a numeric port, got %q", port)
+	}
+	if p == 0 {
+		return fmt.Errorf("must be between 1 and 65535, got %q", port)
+	}
+	return nil
 }
 
 func validateDatabaseEngineValue(e DatabaseEngine) error {

@@ -181,16 +181,19 @@ func (cnx *AdminConnections) Remove(ctx context.Context, addr string) {
 
 func NewClient(ctx context.Context, addr string, password string, cnxTimeout time.Duration, commandsMapping map[string]string) (*redis.Client, error) {
 	client := redis.NewClient(&redis.Options{
-		Addr:       addr,
-		Password:   password,
-		Username:   "admin",
-		ClientName: "default",
-		Protocol:   2, // Pin to RESP2 for Redis 7.2 compatibility
+		Addr:         addr,
+		Password:     password,
+		Username:     "admin",
+		ClientName:   "default",
+		Protocol:     2, // Pin to RESP2 for Redis 7.2 compatibility
+		DialTimeout:  cnxTimeout,
+		ReadTimeout:  cnxTimeout,
+		WriteTimeout: cnxTimeout,
 	})
 	ping := client.Ping(ctx)
-	err := fmt.Errorf("unable to PING %s", addr)
-	if ping == nil {
-		return nil, err
+	if ping.Err() != nil {
+		_ = client.Close()
+		return nil, fmt.Errorf("unable to PING %s: %w", addr, ping.Err())
 	}
 	return client, nil
 }

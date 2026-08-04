@@ -96,6 +96,8 @@ const (
 
 const (
 	PodEvictAnnotation string = "cluster-autoscaler.kubernetes.io/safe-to-evict"
+	// BootstrapAnnotation when set to "true" on a source cluster CR, reconciliation is skipped.
+	BootstrapAnnotation = "bootstrap"
 )
 
 // Redis Status Redis server status
@@ -145,6 +147,21 @@ const (
 )
 
 type RestorePhase string
+
+// BootstrapPhase denotes bootstrap join progress for blue-green cluster migration.
+type BootstrapPhase string
+
+const (
+	BootstrapPhaseInProgress BootstrapPhase = "InProgress"
+	BootstrapPhaseHealthy    BootstrapPhase = "Healthy"
+	BootstrapPhaseFailed     BootstrapPhase = "Failed"
+	// BootstrapPhaseMigrating is used when bootstrapNode.reconcile is false and local
+	// shard masters are still being promoted during cutover (local masters < masterSize).
+	BootstrapPhaseMigrating BootstrapPhase = "Migrating"
+	// BootstrapPhaseMigrated is used when bootstrapNode.reconcile is false and every
+	// expected shard master is owned by a local pod (local masters == masterSize).
+	BootstrapPhaseMigrated BootstrapPhase = "Migrated"
+)
 
 const (
 	// RestorePhaseRunning used for Restore that are currently running.

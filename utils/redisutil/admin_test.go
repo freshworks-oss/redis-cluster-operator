@@ -8,6 +8,9 @@ import (
 	"github.com/freshworks/redis-cluster-operator/utils/testutil"
 )
 
+// unreachableRedisAddr guarantees connection failure even when a local Redis listens on :6379.
+const unreachableRedisAddr = "127.0.0.1:1"
+
 // TestNewAdmin tests the NewAdmin constructor
 func TestNewAdmin(t *testing.T) {
 	logger := testutil.NewTestLogger()
@@ -575,7 +578,7 @@ func TestAdmin_AttachNodeToCluster(t *testing.T) {
 	defer admin.Close(ctx)
 
 	// Test with empty connections - should return error
-	err := admin.AttachNodeToCluster(ctx, "127.0.0.1:6379", "test-ns", "test-cluster")
+	err := admin.AttachNodeToCluster(ctx, unreachableRedisAddr, "test-ns", "test-cluster")
 	if err == nil {
 		t.Error("Expected error for empty connections")
 	}
@@ -590,7 +593,7 @@ func TestAdmin_AttachSlaveToMaster(t *testing.T) {
 	admin := NewAdmin([]string{}, nil, logger, ctx, mockMetrics)
 	defer admin.Close(ctx)
 
-	slave := &Node{ID: "slave1", IP: "127.0.0.1", Port: "6379"}
+	slave := &Node{ID: "slave1", IP: "127.0.0.1", Port: "1"}
 	masterID := "master1"
 
 	// Test with empty connections - should return error
@@ -609,7 +612,7 @@ func TestAdmin_DetachSlave(t *testing.T) {
 	admin := NewAdmin([]string{}, nil, logger, ctx, mockMetrics)
 	defer admin.Close(ctx)
 
-	slave := &Node{ID: "slave1", IP: "127.0.0.1", Port: "6379"}
+	slave := &Node{ID: "slave1", IP: "127.0.0.1", Port: "1"}
 
 	// Test with empty connections - should return error
 	err := admin.DetachSlave(ctx, slave, "test-ns", "test-cluster")
@@ -646,7 +649,7 @@ func TestAdmin_SetSlots(t *testing.T) {
 	slots := []Slot{1, 2, 3}
 
 	// Test with empty connections - should return error
-	err := admin.SetSlots(ctx, "127.0.0.1:6379", "IMPORTING", slots, "node1", "test-ns", "test-cluster")
+	err := admin.SetSlots(ctx, unreachableRedisAddr, "IMPORTING", slots, "node1", "test-ns", "test-cluster")
 	if err == nil {
 		t.Error("Expected error for empty connections")
 	}
@@ -664,7 +667,7 @@ func TestAdmin_AddSlots(t *testing.T) {
 	slots := []Slot{1, 2, 3}
 
 	// Test with empty connections - should return error
-	err := admin.AddSlots(ctx, "127.0.0.1:6379", slots)
+	err := admin.AddSlots(ctx, unreachableRedisAddr, slots)
 	if err == nil {
 		t.Error("Expected error for empty connections")
 	}
@@ -680,7 +683,7 @@ func TestAdmin_SetSlot(t *testing.T) {
 	defer admin.Close(ctx)
 
 	// Empty address list: no live Redis — expect pipeline/connection failure
-	err := admin.SetSlot(ctx, "127.0.0.1:6379", "IMPORTING", 1, "node1", "test-ns", "test-cluster")
+	err := admin.SetSlot(ctx, unreachableRedisAddr, "IMPORTING", 1, "node1", "test-ns", "test-cluster")
 	if err == nil {
 		t.Error("Expected error when no Redis connections are configured")
 	}
@@ -699,7 +702,7 @@ func TestAdmin_MigrateKeys(t *testing.T) {
 	slots := []Slot{1, 2, 3}
 
 	// Test with empty connections - should return error
-	count, err := admin.MigrateKeys(ctx, "127.0.0.1:6379", dest, slots, 10, 1000, false, "test-ns", "test-cluster")
+	count, err := admin.MigrateKeys(ctx, unreachableRedisAddr, dest, slots, 10, 1000, false, "test-ns", "test-cluster")
 	if err == nil {
 		t.Error("Expected error for empty connections")
 	}
@@ -720,7 +723,7 @@ func TestAdmin_MigrateKeysInSlot(t *testing.T) {
 	dest := &Node{ID: "dest1", IP: "127.0.0.1", Port: "6380"}
 
 	// Test with empty connections - should return error
-	count, err := admin.MigrateKeysInSlot(ctx, "127.0.0.1:6379", dest, 1, 10, 1000, false, "test-ns", "test-cluster")
+	count, err := admin.MigrateKeysInSlot(ctx, unreachableRedisAddr, dest, 1, 10, 1000, false, "test-ns", "test-cluster")
 	if err == nil {
 		t.Error("Expected error for empty connections")
 	}
@@ -738,7 +741,7 @@ func TestAdmin_FlushAndReset(t *testing.T) {
 	admin := NewAdmin([]string{}, nil, logger, ctx, mockMetrics)
 	defer admin.Close(ctx)
 
-	err := admin.FlushAndReset(ctx, "127.0.0.1:6379", ResetSoft, "test-ns", "test-cluster")
+	err := admin.FlushAndReset(ctx, unreachableRedisAddr, ResetSoft, "test-ns", "test-cluster")
 	if err == nil {
 		t.Error("Expected error when no Redis connections are configured")
 	}
@@ -769,13 +772,11 @@ func TestAdmin_FailoverSlaveToMaster(t *testing.T) {
 	admin := NewAdmin([]string{}, nil, logger, ctx, mockMetrics)
 	defer admin.Close(ctx)
 
-	slave := &Node{ID: "slave1", IP: "127.0.0.1", Port: "6379"}
+	slave := &Node{ID: "slave1", IP: "127.0.0.1", Port: "1"}
 
-	// Lazy Get() uses NewClient, which currently returns a client without a failed PING check, so this
-	// often returns nil here even without Redis in Addrs; errors show up later if role polling runs.
 	err := admin.FailoverSlaveToMaster(ctx, slave, RedisFailoverDefault, "test-ns", "test-cluster")
-	if err != nil {
-		t.Errorf("unexpected error: %v", err)
+	if err == nil {
+		t.Error("Expected error when no Redis connections are configured")
 	}
 }
 
@@ -811,7 +812,7 @@ func TestAdmin_GetInfoReplication(t *testing.T) {
 	admin := NewAdmin([]string{}, nil, logger, ctx, mockMetrics)
 	defer admin.Close(ctx)
 
-	info, err := admin.GetInfoReplication("127.0.0.1:6379", ctx, "test-ns", "test-cluster")
+	info, err := admin.GetInfoReplication(unreachableRedisAddr, ctx, "test-ns", "test-cluster")
 	if err == nil {
 		t.Error("Expected error when no Redis connections are configured")
 	}
@@ -829,7 +830,7 @@ func TestAdmin_DrainClientsInOldMaster(t *testing.T) {
 	admin := NewAdmin([]string{}, nil, logger, ctx, mockMetrics)
 	defer admin.Close(ctx)
 
-	node := &Node{ID: "node1", IP: "127.0.0.1", Port: "6379"}
+	node := &Node{ID: "node1", IP: "127.0.0.1", Port: "1"}
 
 	err := admin.DrainClientsInOldMaster(ctx, node, "test-ns", "test-cluster")
 	if err == nil {

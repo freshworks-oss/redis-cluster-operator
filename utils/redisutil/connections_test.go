@@ -352,6 +352,13 @@ func TestAdminConnections_ValidateResp(t *testing.T) {
 	}
 }
 
+// netTimeoutErr satisfies net.Error so handleError classifies it as a network error.
+type netTimeoutErr struct{}
+
+func (netTimeoutErr) Error() string   { return "i/o timeout" }
+func (netTimeoutErr) Timeout() bool   { return true }
+func (netTimeoutErr) Temporary() bool { return true }
+
 // TestAdminConnections_ValidatePipeResp tests the ValidatePipeResp method
 func TestAdminConnections_ValidatePipeResp(t *testing.T) {
 	logger := testutil.NewTestLogger()
@@ -380,10 +387,20 @@ func TestAdminConnections_ValidatePipeResp(t *testing.T) {
 			expected: true,
 		},
 		{
-			name:     "Valid response with error",
+			// Non-network (Redis-reply) errors are tolerated: handleError returns false and
+			// ValidatePipeResp falls through to true. Callers surface real command failures via
+			// resp inspection, not via this bool.
+			name:     "Non-network error is tolerated",
 			resp:     []redis.Cmder{redis.NewCmd(ctx)},
 			err:      errors.New("pipe error"),
-			expected: true, // Still returns true if not a network error
+			expected: true,
+		},
+		{
+			// Network errors trigger a reconnect and are not tolerated.
+			name:     "Network error is not tolerated",
+			resp:     []redis.Cmder{redis.NewCmd(ctx)},
+			err:      netTimeoutErr{},
+			expected: false,
 		},
 	}
 

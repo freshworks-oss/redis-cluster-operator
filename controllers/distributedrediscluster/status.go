@@ -187,9 +187,14 @@ func buildClusterStatus(clusterInfos *redisutil.ClusterInfos, pods []*corev1.Pod
 		SecretsVer:   oldStatus.SecretsVer,
 		Restore:      oldStatus.Restore,
 		HAStatus:     oldStatus.HAStatus,
+		Bootstrap:    oldStatus.Bootstrap,
 	}
 	nbMaster := int32(0)
 	nbSlaveByMaster := map[string]int{}
+
+	if clusterInfos == nil {
+		clusterInfos = redisutil.NewClusterInfos()
+	}
 
 	for _, pod := range pods {
 		redisNodes, err := clusterInfos.GetNodes().GetNodesByFunc(func(node *redisutil.Node) bool {
@@ -271,7 +276,9 @@ func (r *DistributedRedisClusterReconciler) updateClusterIfNeed(cluster *redisv1
 		reqLogger.WithValues("namespace", cluster.Namespace, "name", cluster.Name).
 			V(3).Info("status changed")
 		cluster.Status = *newStatus
-		r.CrController.UpdateCRStatus(cluster)
+		if err := r.CrController.UpdateCRStatus(cluster); err != nil {
+			reqLogger.Error(err, "UpdateCRStatus failed", "namespace", cluster.Namespace, "name", cluster.Name)
+		}
 	}
 }
 
@@ -307,6 +314,10 @@ func compareStatus(old, new *redisv1alpha1.DistributedRedisClusterStatus, reqLog
 	}
 
 	if utils.CompareStringValue("restoreSucceeded", string(old.Restore.Phase), string(new.Restore.Phase), reqLogger) {
+		return true
+	}
+
+	if compareBootstrapStatus(old.Bootstrap, new.Bootstrap, reqLogger) {
 		return true
 	}
 

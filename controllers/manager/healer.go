@@ -27,6 +27,10 @@ func (h *realHeal) Heal(cluster *redisv1alpha1.DistributedRedisCluster, clusterI
 
 	var stopReconcile bool = false
 
+	if cluster.BootstrapMode() {
+		return false, false, nil
+	}
+
 	if stopReconcile, actionDone, err := h.CheckandRecoverCluster(cluster, clusterInfos, admin, context); err != nil {
 		h.MetricsClient.ReconcileCluster(cluster.Name, cluster.Namespace, "CHECK_AND_RECOVER_CLUSTER", metrics.CHECK_AND_HEAL, metrics.FAIL, err.Error())
 		return stopReconcile, actionDone, err

@@ -70,6 +70,26 @@ type DistributedRedisClusterSpec struct {
 	ServiceAccountName       string                        `json:"serviceAccountName"`
 	ModuleEnabled            bool                          `json:"moduleEnabled"`
 	AllowedModules           string                        `json:"allowedModules"`
+	// BootstrapNode configures joining an existing Redis cluster from a seed node
+	// during blue-green Kubernetes cluster upgrades.
+	// +optional
+	BootstrapNode *BootstrapNodeSpec `json:"bootstrapNode,omitempty"`
+}
+
+// BootstrapNodeSpec holds seed node details for joining an existing Redis cluster.
+type BootstrapNodeSpec struct {
+	// Host is the reachable IP or hostname of a seed Redis node (typically a source shard master).
+	// +kubebuilder:validation:MinLength=1
+	Host string `json:"host"`
+	// Port is the client port of the seed node. Defaults to 6379 when unset.
+	// +optional
+	// +kubebuilder:validation:Pattern=`^([1-9]|[1-9][0-9]{1,3}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5])$`
+	Port string `json:"port,omitempty"`
+	// Reconcile controls whether the operator actively fixes bootstrap errors.
+	// Defaults to true. When false, reconciliation stops after reporting status.
+	// +optional
+	// +kubebuilder:default:=true
+	Reconcile *bool `json:"reconcile,omitempty"`
 }
 
 type HAspec struct {
@@ -150,17 +170,27 @@ type RedisStorage struct {
 type DistributedRedisClusterStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
-	Status               ClusterStatus      `json:"status"`
-	HAStatus             HaStatus           `json:"haStatus"`
-	SecretStatus         string             `json:"secretstatus"`
-	SecretsVer           map[string]string  `json:"secretverisons"`
-	Reason               string             `json:"reason,omitempty"`
-	NumberOfMaster       int32              `json:"numberOfMaster,omitempty"`
-	MinReplicationFactor int32              `json:"minReplicationFactor,omitempty"`
-	MaxReplicationFactor int32              `json:"maxReplicationFactor,omitempty"`
-	Nodes                []RedisClusterNode `json:"nodes"`
+	Status               ClusterStatus     `json:"status"`
+	HAStatus             HaStatus          `json:"haStatus"`
+	SecretStatus         string            `json:"secretstatus"`
+	SecretsVer           map[string]string `json:"secretverisons"`
+	Reason               string            `json:"reason,omitempty"`
+	NumberOfMaster       int32             `json:"numberOfMaster,omitempty"`
+	MinReplicationFactor int32             `json:"minReplicationFactor,omitempty"`
+	MaxReplicationFactor int32             `json:"maxReplicationFactor,omitempty"`
+	// +optional
+	Nodes []RedisClusterNode `json:"nodes,omitempty"`
 	// +optional
 	Restore Restore `json:"restore,omitempty"`
+	// +optional
+	Bootstrap BootstrapStatus `json:"bootstrap,omitempty"`
+}
+
+// BootstrapStatus reports bootstrap join health and progress.
+type BootstrapStatus struct {
+	Phase    BootstrapPhase `json:"phase,omitempty"`
+	Progress string         `json:"progress,omitempty"`
+	Reason   string         `json:"reason,omitempty"`
 }
 
 type Restore struct {

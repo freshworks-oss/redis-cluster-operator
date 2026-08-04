@@ -136,6 +136,8 @@ func (r *DistributedRedisClusterReconciler) validateAndSetDefault(cluster *redis
 	var update bool
 	var err error
 
+	applyBootstrapRedisConfig(cluster)
+
 	if strings.HasPrefix(cluster.Name, redisv1alpha1.CrResourcesprefix) {
 		nameSpace := cluster.Name[len(redisv1alpha1.CrResourcesprefix):]
 		if len(nameSpace) <= 0 {
@@ -352,6 +354,11 @@ func (r *DistributedRedisClusterReconciler) waitForClusterJoin(ctx *syncContext,
 	for _, nodeInfo := range ctx.clusterInfos.Infos {
 		firstNode = nodeInfo.Node
 		break
+	}
+	if firstNode == nil {
+		// No reachable cluster node to meet against (e.g. every source pod restarted with a new IP
+		// mid-migration, leaving an empty Infos map). Requeue rather than dereference a nil node.
+		return Requeue.New("no reachable cluster node to CLUSTER MEET against")
 	}
 	ctx.reqLogger.Info(">>> Sending CLUSTER MEET messages to join the cluster")
 	err := ctx.admin.AttachNodeToCluster(context, firstNode.IPPort(), cluster.Namespace, cluster.Name)

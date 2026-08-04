@@ -31,6 +31,9 @@ func (m *MockRedisAdmin) Close(ctx context.Context)                {}
 func (m *MockRedisAdmin) GetClusterInfos(ctx context.Context, namespace string, name string) (*redisutil.ClusterInfos, error) {
 	return nil, nil
 }
+func (m *MockRedisAdmin) GetClusterNodeInfos(ctx context.Context, addr string, namespace string, name string) (*redisutil.NodeInfos, error) {
+	return nil, nil
+}
 func (m *MockRedisAdmin) ClusterManagerNodeIsEmpty(ctx context.Context, namespace string, name string) (bool, error) {
 	return false, nil
 }
@@ -84,6 +87,12 @@ func (m *MockRedisAdmin) GetInfoReplication(ipPort string, ctx context.Context, 
 	return redisutil.ReplicationInfo{}, nil
 }
 func (m *MockRedisAdmin) DrainClientsInOldMaster(ctx context.Context, oldMaster *redisutil.Node, namespace string, name string) error {
+	return nil
+}
+func (m *MockRedisAdmin) MeetNodeFromAddr(ctx context.Context, fromAddr, targetHost, targetPort, namespace, name string) error {
+	return nil
+}
+func (m *MockRedisAdmin) SetConfigOnAddr(ctx context.Context, addr string, config map[string]string, namespace, name string) error {
 	return nil
 }
 

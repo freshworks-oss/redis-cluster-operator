@@ -70,6 +70,9 @@ func (r *DistributedRedisCluster) ValidateCreate(ctx context.Context, obj runtim
 	if err := r.ValidateEngineAndImage(); err != nil {
 		return nil, err
 	}
+	if err := r.ValidateBootstrapNode(); err != nil {
+		return nil, err
+	}
 	/*
 		if r.Spec.Resources != nil {
 			if errs := validation.ValidateResourceRequirements(r.Spec.Resources, field.NewPath("resources")); len(errs) > 0 {
@@ -95,6 +98,9 @@ func (r *DistributedRedisCluster) ValidateUpdate(ctx context.Context, oldObj, ne
 		return nil, fmt.Errorf("the custom service is invalid: invalid value: %s, %s", r.Spec.ServiceName, strings.Join(errs, ","))
 	}
 	if err := r.ValidateEngineAndImage(); err != nil {
+		return nil, err
+	}
+	if err := r.ValidateBootstrapNode(); err != nil {
 		return nil, err
 	}
 	/*

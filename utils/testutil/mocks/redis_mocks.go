@@ -70,6 +70,14 @@ func (m *MockRedisAdmin) GetClusterInfos(ctx context.Context, namespace, name st
 	return args.Get(0).(*redisutil.ClusterInfos), args.Error(1)
 }
 
+func (m *MockRedisAdmin) GetClusterNodeInfos(ctx context.Context, addr, namespace, name string) (*redisutil.NodeInfos, error) {
+	args := m.Called(ctx, addr, namespace, name)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*redisutil.NodeInfos), args.Error(1)
+}
+
 func (m *MockRedisAdmin) ClusterManagerNodeIsEmpty(ctx context.Context, namespace, name string) (bool, error) {
 	args := m.Called(ctx, namespace, name)
 	return args.Bool(0), args.Error(1)
@@ -122,6 +130,16 @@ func (m *MockRedisAdmin) GetInfoReplication(ipPort string, ctx context.Context, 
 
 func (m *MockRedisAdmin) DrainClientsInOldMaster(ctx context.Context, node *redisutil.Node, namespace, name string) error {
 	args := m.Called(ctx, node, namespace, name)
+	return args.Error(0)
+}
+
+func (m *MockRedisAdmin) MeetNodeFromAddr(ctx context.Context, fromAddr, targetHost, targetPort, namespace, name string) error {
+	args := m.Called(ctx, fromAddr, targetHost, targetPort, namespace, name)
+	return args.Error(0)
+}
+
+func (m *MockRedisAdmin) SetConfigOnAddr(ctx context.Context, addr string, config map[string]string, namespace, name string) error {
+	args := m.Called(ctx, addr, config, namespace, name)
 	return args.Error(0)
 }
 

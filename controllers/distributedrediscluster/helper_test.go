@@ -304,7 +304,7 @@ func TestUpdateClusterInfos(t *testing.T) {
 
 			mockMetrics := &testutil.MockMetrics{}
 
-			err := UpdateClusterInfos(tt.clusterInfos, tt.pods, fakeClient, testutil.NewTestLogger(), mockMetrics)
+			err := UpdateClusterInfos(tt.clusterInfos, tt.pods, fakeClient, testutil.NewTestLogger(), mockMetrics, false)
 
 			if tt.expectedError {
 				assert.Error(t, err)

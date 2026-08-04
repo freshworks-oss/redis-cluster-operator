@@ -84,6 +84,36 @@ func (in *DistributedRedisCluster) IsRestoreRestarting() bool {
 	return in.Status.Restore.Phase == RestorePhaseRestart
 }
 
+// BootstrapMode returns true when the CR is configured to join an existing cluster via bootstrapNode.
+func (in *DistributedRedisCluster) BootstrapMode() bool {
+	return in.Spec.BootstrapNode != nil && in.Spec.BootstrapNode.Host != ""
+}
+
+// BootstrapReconcileEnabled returns whether the operator should actively fix bootstrap errors.
+// Defaults to true when bootstrapNode is nil or bootstrapNode.reconcile is unset.
+func (in *DistributedRedisCluster) BootstrapReconcileEnabled() bool {
+	if in.Spec.BootstrapNode == nil || in.Spec.BootstrapNode.Reconcile == nil {
+		return true
+	}
+	return *in.Spec.BootstrapNode.Reconcile
+}
+
+// HasBootstrapAnnotation returns true when the bootstrap annotation is set, pausing reconciliation.
+func (in *DistributedRedisCluster) HasBootstrapAnnotation() bool {
+	if in.Annotations == nil {
+		return false
+	}
+	return in.Annotations[BootstrapAnnotation] == "true"
+}
+
+// BootstrapSeedPort returns the seed client port, defaulting to 6379.
+func (in *DistributedRedisCluster) BootstrapSeedPort() string {
+	if in.Spec.BootstrapNode == nil || in.Spec.BootstrapNode.Port == "" {
+		return "6379"
+	}
+	return in.Spec.BootstrapNode.Port
+}
+
 func defaultResource() *v1.ResourceRequirements {
 	return &v1.ResourceRequirements{
 		Requests: v1.ResourceList{

@@ -85,6 +85,8 @@ type IAdmin interface {
 	Close(ctx context.Context)
 	// GetClusterInfos get node infos for all nodes
 	GetClusterInfos(ctx context.Context, namespace string, name string) (*ClusterInfos, error)
+	// GetClusterNodeInfos returns CLUSTER NODES view from a single redis address.
+	GetClusterNodeInfos(ctx context.Context, addr string, namespace string, name string) (*NodeInfos, error)
 	// ClusterManagerNodeIsEmpty Checks whether the node is empty. Node is considered not-empty if it has
 	// some key or if it already knows other nodes
 	ClusterManagerNodeIsEmpty(ctx context.Context, namespace string, name string) (bool, error)
@@ -129,6 +131,10 @@ type IAdmin interface {
 	GetInfoReplication(ipPort string, ctx context.Context, namespace string, name string) (ReplicationInfo, error)
 
 	DrainClientsInOldMaster(ctx context.Context, node *Node, namespace string, name string) error
+	// MeetNodeFromAddr runs CLUSTER MEET on fromAddr toward targetHost:targetPort.
+	MeetNodeFromAddr(ctx context.Context, fromAddr, targetHost, targetPort, namespace, name string) error
+	// SetConfigOnAddr applies CONFIG SET entries on a specific redis address.
+	SetConfigOnAddr(ctx context.Context, addr string, config map[string]string, namespace, name string) error
 }
 
 // AdminOptions optional options for redis admin
@@ -1073,5 +1079,44 @@ func (a *Admin) DrainClientsInOldMaster(ctx context.Context, node *Node, namespa
 		return err
 	}
 
+	return nil
+}
+
+// MeetNodeFromAddr runs CLUSTER MEET on fromAddr toward targetHost:targetPort.
+func (a *Admin) MeetNodeFromAddr(ctx context.Context, fromAddr, targetHost, targetPort, namespace, name string) error {
+	c, err := a.Connections().Get(ctx, fromAddr)
+	if err != nil {
+		return err
+	}
+	a.log.V(3).Info("CLUSTER MEET", "from", fromAddr, "to", targetHost, "port", targetPort)
+	resp := c.Do(ctx, "CLUSTER", "MEET", targetHost, targetPort)
+	err = a.Connections().ValidateResp(ctx, resp, fromAddr, "cannot meet node to cluster")
+	utils.RecordRedisMetrics(namespace, name, metrics.CLUSTER_MEET, fromAddr, err, a.metrics)
+	if err != nil {
+		return err
+	}
+	if resp.Err() != nil {
+		return resp.Err()
+	}
+	return nil
+}
+
+// SetConfigOnAddr applies CONFIG SET entries on a specific redis address.
+func (a *Admin) SetConfigOnAddr(ctx context.Context, addr string, config map[string]string, namespace, name string) error {
+	c, err := a.Connections().Get(ctx, addr)
+	if err != nil {
+		return err
+	}
+	for key, value := range config {
+		resp := c.Do(ctx, "CONFIG", "SET", key, value)
+		err = a.Connections().ValidateResp(ctx, resp, addr, "unable to set config")
+		utils.RecordRedisMetrics(namespace, name, metrics.REDIS_CONFIG_SET, addr, err, a.metrics)
+		if err != nil {
+			return err
+		}
+		if resp.Err() != nil {
+			return resp.Err()
+		}
+	}
 	return nil
 }

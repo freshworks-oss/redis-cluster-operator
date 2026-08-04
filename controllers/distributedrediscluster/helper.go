@@ -33,7 +33,7 @@ func getLabels(cluster *redisv1alpha1.DistributedRedisCluster) map[string]string
 }
 
 // Helper functin to upadte the cluster info with additional information from other sources
-func UpdateClusterInfos(clusterInfos *redisutil.ClusterInfos, pods []*corev1.Pod, Client client.Client, reqLogger logr.Logger, metrics metrics.Recorder) error {
+func UpdateClusterInfos(clusterInfos *redisutil.ClusterInfos, pods []*corev1.Pod, Client client.Client, reqLogger logr.Logger, metrics metrics.Recorder, bootstrapMode bool) error {
 
 	nodectrl := k8sutil.NewNodeController(Client, metrics)
 	nodes := clusterInfos.GetNodes()
@@ -44,6 +44,10 @@ func UpdateClusterInfos(clusterInfos *redisutil.ClusterInfos, pods []*corev1.Pod
 		}
 		pod := getpodFromlist(pods, node.IP)
 		if pod == nil {
+			if bootstrapMode {
+				reqLogger.V(4).Info("UpdateClusterInfos", "Skipping remote node without local pod", "nodeIP", node.IP)
+				continue
+			}
 			return fmt.Errorf("pod not found for node %s", node.IP)
 		}
 		node.NodeName = pod.Spec.NodeName
@@ -212,6 +216,9 @@ func verifyIfSingleAzDeployment(instance *redisv1alpha1.DistributedRedisCluster)
 }
 
 func needClusterOperation(cluster *redisv1alpha1.DistributedRedisCluster, reqLogger logr.Logger) bool {
+	if cluster.BootstrapMode() {
+		return false
+	}
 	if utils.CompareIntValue("NumberOfMaster", &cluster.Status.NumberOfMaster, &cluster.Spec.MasterSize, reqLogger) {
 		reqLogger.V(4).Info("needClusterOperation---NumberOfMaster")
 		return true

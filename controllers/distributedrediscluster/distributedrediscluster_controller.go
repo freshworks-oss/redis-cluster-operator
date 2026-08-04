@@ -301,6 +301,28 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 	//reqLogger.WithValues("adminpassword:", password).Info("please check adminpass")
 	// Setting this context for request flow
 
+	proxyAz, err := findProxyAz(r, syncCtx)
+	if err != nil {
+		r.MetricsClient.ReconcileCluster(request.Namespace, request.Name, "FIND_PROXY_AZ", metrics.RECONCILE, metrics.FAIL, err.Error())
+		reqLogger.Error(err, "findProxyAz", "Error when finding proxy az", err)
+		return reconcile.Result{RequeueAfter: 10 * time.Second}, nil
+	}
+
+	if instance.BootstrapMode() {
+		syncCtx.admin = admin
+		return r.reconcileBootstrapMode(syncCtx, context, instance, admin, proxyAz, reqLogger)
+	}
+
+	// Source cluster paused for blue-green migration: structural maintenance (ensureCluster,
+	// secrets, HA) has already run above. Keep source pods attached as replicas (join + replicate)
+	// but skip heal, clustering, and redis-config resync, which would destabilize a cluster that
+	// intentionally contains destination nodes and migration-specific config.
+	if instance.HasBootstrapAnnotation() {
+		syncCtx.admin = admin
+		reqLogger.Info("bootstrap annotation set")
+		return r.reconcileSourcePaused(syncCtx, context, instance, admin, proxyAz, reqLogger)
+	}
+
 	healClusterInfo, infoErr := admin.GetClusterInfos(context, request.Namespace, request.Name)
 	if infoErr != nil {
 		if clusterErr, ok := infoErr.(redisutil.ClusterInfosError); ok {
@@ -311,14 +333,8 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 			}
 		}
 	}
-	proxyAz, err := findProxyAz(r, syncCtx)
-	if err != nil {
-		r.MetricsClient.ReconcileCluster(request.Namespace, request.Name, "FIND_PROXY_AZ", metrics.RECONCILE, metrics.FAIL, err.Error())
-		reqLogger.Error(err, "findProxyAz", "Error when finding proxy az", err)
-		return reconcile.Result{RequeueAfter: 10 * time.Second}, nil
-	}
 
-	updateErr := UpdateClusterInfos(healClusterInfo, syncCtx.pods, r.Client, reqLogger, r.MetricsClient)
+	updateErr := UpdateClusterInfos(healClusterInfo, syncCtx.pods, r.Client, reqLogger, r.MetricsClient, false)
 	if updateErr != nil {
 		r.MetricsClient.ReconcileCluster(request.Namespace, request.Name, "UPDATE_CLUSTER_INFO", metrics.RECONCILE, metrics.FAIL, updateErr.Error())
 		reqLogger.Error(updateErr, "UpdateClusterInfos", "Error when updating cluster infos", updateErr)
@@ -382,7 +398,7 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 		clusterInfos.ProxyPodAz = proxyAz
 	}
 
-	err1 := UpdateClusterInfos(clusterInfos, syncCtx.pods, r.Client, reqLogger, r.MetricsClient)
+	err1 := UpdateClusterInfos(clusterInfos, syncCtx.pods, r.Client, reqLogger, r.MetricsClient, false)
 	if err1 != nil {
 		r.MetricsClient.ReconcileCluster(request.Namespace, request.Name, "UPDATE_CLUSTER_INFO", metrics.RECONCILE, metrics.FAIL, err1.Error())
 		reqLogger.Error(err1, "UpdateClusterInfos", "Error when updating cluster infos", err1)
@@ -482,7 +498,7 @@ func (r *DistributedRedisClusterReconciler) Reconcile(ctx context.Context, reque
 			return reconcile.Result{RequeueAfter: 10 * time.Second}, nil
 		}
 	}
-	err2 := UpdateClusterInfos(newClusterInfos, syncCtx.pods, r.Client, reqLogger, r.MetricsClient)
+	err2 := UpdateClusterInfos(newClusterInfos, syncCtx.pods, r.Client, reqLogger, r.MetricsClient, false)
 	if err2 != nil {
 		r.MetricsClient.ReconcileCluster(request.Namespace, request.Name, "UPDATE_CLUSTER_INFO", metrics.RECONCILE, metrics.FAIL, err2.Error())
 		reqLogger.Error(err1, "UpdateClusterInfos", "Error when updating cluster infos", err1)
